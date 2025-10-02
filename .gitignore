@@ -1,0 +1,16 @@
+# IDE
+.idea/
+*.iml
+
+# Env / secrets
+.env
+*.env
+infra/.env
+
+# Backups / temp
+*.bak
+*.tmp
+*.log
+
+# Specific big dump
+infra/oracle/migrations/V1__export.sql

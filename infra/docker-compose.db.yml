@@ -1,0 +1,45 @@
+services:
+  oracle-xe:
+    image: gvenzl/oracle-xe:21-slim
+    platform: linux/amd64
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
+      APP_USER: ${ORACLE_APP_USER}
+      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD}
+      ORACLE_CHARACTERSET: AL32UTF8
+    volumes:
+      - xe-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XEPDB1"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+    ports:
+      - "127.0.0.1:1521:1521"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  oracle-ensure-user:
+    image: gvenzl/oracle-xe:21-slim
+    depends_on:
+      oracle-xe:
+        condition: service_healthy
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
+    entrypoint: [ "bash", "-lc", "cat /scripts/ensure_in_wprg.sql | sqlplus -s system/${ORACLE_PASSWORD}@oracle-xe:1521/XEPDB1" ]
+    volumes:
+      - ./oracle/bootstrap/ensure_in_wprg.sql:/scripts/ensure_in_wprg.sql:ro
+    restart: "no"
+
+volumes:
+  xe-data:
+  pgdata:
