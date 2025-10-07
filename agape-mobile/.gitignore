@@ -1,21 +1,4 @@
-# IDE
-.idea/
-*.iml
-
-# Env / secrets
-.env
-*.env
-infra/.env
-
-# Backups / temp
-*.bak
-*.tmp
-*.log
-
-# Specific big dump
-infra/oracle/migrations/V1__export.sql
-
-# EXPO 
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
 # dependencies
 node_modules/
@@ -56,10 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-/web
 
-#.vscode
-.vscode/
-
-# Excalidraw
-Excalidraw/
+#VSCode
+.vscode/*
