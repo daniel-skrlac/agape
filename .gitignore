@@ -63,3 +63,6 @@ yarn-error.*
 
 # Excalidraw
 Excalidraw/
+
+infra/oracle/dumps/*.DMP
+!infra/oracle/dumps/data.DMP
