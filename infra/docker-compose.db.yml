@@ -1,6 +1,6 @@
 services:
   oracle-xe:
-    image: gvenzl/oracle-xe:11
+    image: gvenzl/oracle-xe:21-slim
     platform: linux/amd64
     environment:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD}
@@ -9,104 +9,13 @@ services:
       ORACLE_CHARACTERSET: AL32UTF8
     volumes:
       - xe-data:/opt/oracle/oradata
-      - ./oracle/dumps:/dumps
-      - ./oracle/bootstrap:/bootstrap:ro
     healthcheck:
-      test: ["CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XE"]
+      test: ["CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XEPDB1"]
       interval: 15s
       timeout: 5s
       retries: 40
     ports:
       - "127.0.0.1:1521:1521"
-
-  oracle-ensure-user:
-    image: gvenzl/oracle-xe:11
-    depends_on:
-      oracle-xe:
-        condition: service_healthy
-    environment:
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
-    volumes:
-      - ./oracle/bootstrap:/bootstrap:ro
-    entrypoint:
-      [
-        "bash","-lc",
-        "sqlplus -s system/${ORACLE_PASSWORD}@oracle-xe:1521/XE @/bootstrap/ensure_in_wprg.sql"
-      ]
-    restart: "no"
-
-  oracle-impdp:
-    image: gvenzl/oracle-xe:11
-    depends_on:
-      oracle-xe:
-        condition: service_healthy
-    environment:
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
-      ORACLE_APP_USER: ${ORACLE_APP_USER}
-    volumes:
-      - ./oracle/dumps:/dumps
-    entrypoint:
-      [
-        "bash","-lc",
-        "set -euo pipefail; \
-         echo 'Creating DIRECTORY dp_dir...'; \
-         sqlplus -s system/${ORACLE_PASSWORD}@//oracle-xe:1521/XE <<'SQL'\n\
-         CREATE OR REPLACE DIRECTORY dp_dir AS '/dumps';\n\
-         GRANT READ, WRITE ON DIRECTORY dp_dir TO ${ORACLE_APP_USER};\n\
-         SQL\n\
-         echo \"Running impdp for schema IN_WPRG (dump=data.DMP)...\"; \
-         set +e; \
-         impdp system/${ORACLE_PASSWORD}@//oracle-xe:1521/XE \\\n\
-           directory=dp_dir \\\n\
-           dumpfile=data.DMP \\\n\
-           logfile=data.DMP_imp.log \\\n\
-           schemas=IN_WPRG; \
-         imp_rc=$?; set -e; echo \"impdp exit code: $$imp_rc (continuing to recompile & validate)\"; \
-         echo 'Compile ALL views in IN_WPRG...'; \
-         set +H; \
-         printf \"%s\\n\" \\\n\
-           \"CONNECT IN_WPRG/\\\"InWprgPass123!\\\"@//oracle-xe:1521/XE\" \\\n\
-           \"SET SERVEROUTPUT ON FEEDBACK OFF\" \\\n\
-           \"BEGIN\" \\\n\
-           \"  FOR r IN (SELECT object_name FROM user_objects WHERE object_type = 'VIEW') LOOP\" \\\n\
-           \"    BEGIN\" \\\n\
-           \"      EXECUTE IMMEDIATE 'ALTER VIEW '||r.object_name||' COMPILE';\" \\\n\
-           \"    EXCEPTION WHEN OTHERS THEN NULL;\" \\\n\
-           \"    END;\" \\\n\
-           \"  END LOOP;\" \\\n\
-           \"END;\" \\\n\
-           \"/\" \\\n\
-           \"EXIT\" >/tmp/compile_views.sql; \
-         sqlplus -s /nolog @/tmp/compile_views.sql; \
-         echo 'Recompile schema via DBMS_UTILITY.COMPILE_SCHEMA...'; \
-         sqlplus -s /nolog <<SQL\n\
-         CONNECT system/\"${ORACLE_PASSWORD}\"@//oracle-xe:1521/XE\n\
-         BEGIN\n\
-           DBMS_UTILITY.COMPILE_SCHEMA(schema => 'IN_WPRG', compile_all => FALSE);\n\
-         END;\n\
-         /\n\
-         EXIT\n\
-SQL\n\
-         echo 'Verify and fail if invalids remain...'; \
-         printf \"%s\\n\" \\\n\
-           \"CONNECT IN_WPRG/\\\"InWprgPass123!\\\"@//oracle-xe:1521/XE\" \\\n\
-           \"SET PAGES 200 LINES 200 TRIMS ON\" \\\n\
-           \"SPOOL /dumps/IN_WPRG_compile_errors.lst\" \\\n\
-           \"SELECT NAME, TYPE, LINE, POSITION, TEXT FROM USER_ERRORS ORDER BY NAME, SEQUENCE;\" \\\n\
-           \"SPOOL OFF\" \\\n\
-           \"WHENEVER SQLERROR EXIT SQL.SQLCODE\" \\\n\
-           \"DECLARE v_cnt NUMBER; BEGIN\" \\\n\
-           \"  SELECT COUNT(*) INTO v_cnt FROM user_objects WHERE status <> 'VALID';\" \\\n\
-           \"  IF v_cnt > 0 THEN\" \\\n\
-           \"    RAISE_APPLICATION_ERROR(-20000, 'Invalid objects remain in IN_WPRG: '||v_cnt||' (see /dumps/IN_WPRG_compile_errors.lst)');\" \\\n\
-           \"  END IF; END;\" \\\n\
-           \"/\" \\\n\
-           \"EXIT\" >/tmp/check_invalids.sql; \
-         sqlplus -s /nolog @/tmp/check_invalids.sql; \
-         echo 'Schema IN_WPRG is clean: no invalid objects.' \
-        "
-      ]
-    restart: "no"
 
   postgres:
     image: postgres:16-alpine
@@ -118,6 +27,18 @@ SQL\n\
       - pgdata:/var/lib/postgresql/data
     ports:
       - "127.0.0.1:5432:5432"
+
+  oracle-ensure-user:
+    image: gvenzl/oracle-xe:21-slim
+    depends_on:
+      oracle-xe:
+        condition: service_healthy
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
+    entrypoint: [ "bash", "-lc", "cat /scripts/ensure_in_wprg.sql | sqlplus -s system/${ORACLE_PASSWORD}@oracle-xe:1521/XEPDB1" ]
+    volumes:
+      - ./oracle/bootstrap/ensure_in_wprg.sql:/scripts/ensure_in_wprg.sql:ro
+    restart: "no"
 
 volumes:
   xe-data:
