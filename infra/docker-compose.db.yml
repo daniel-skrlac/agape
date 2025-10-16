@@ -122,3 +122,7 @@ SQL\n\
 volumes:
   xe-data:
   pgdata:
+
+networks:
+  infra_net:
+    name: infra_default
