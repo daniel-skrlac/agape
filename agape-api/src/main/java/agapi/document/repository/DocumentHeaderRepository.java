@@ -3,7 +3,8 @@ package agapi.document.repository;
 import agapi.document.domain.DocumentHeader;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import io.smallrye.common.annotation.Blocking;
+import oracle.jdbc.OraclePreparedStatement;
+import oracle.jdbc.OracleTypes;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -12,6 +13,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @ApplicationScoped
 public class DocumentHeaderRepository {
@@ -24,75 +28,64 @@ public class DocumentHeaderRepository {
         this.dataSource = dataSource;
     }
 
-    /**
-     * Obtain next value from SD_GLAVA_SEQ.
-     */
-    public long nextId(Connection c) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement("SELECT SD_GLAVA_SEQ.NEXTVAL FROM dual");
-             ResultSet rs = ps.executeQuery()) {
-            rs.next();
-            return rs.getLong(1);
+    public DocumentHeader insert(DocumentHeader h) throws SQLException {
+        try (Connection c = dataSource.getConnection()) {
+            return doInsertHeader(c, h);
         }
     }
 
-    /**
-     * Inserts SD_GLAVA with an explicit ID (sequence), leaving DOKUMENTBR null
-     * so trigger SD_GLAVA_BIU assigns it. Returns the inserted header with
-     * final (documentNumber, documentDate).
-     */
-    @Blocking
-    public DocumentHeader insert(DocumentHeader header) throws SQLException {
+    public List<DocumentHeader> insertAll(List<DocumentHeader> headers) throws SQLException {
+        List<DocumentHeader> out = new ArrayList<>(headers.size());
         try (Connection c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                long id = nextId(c);
-
-                try (PreparedStatement ps = c.prepareStatement(
-                        "INSERT INTO SD_GLAVA " +
-                                " (ID, DOKUMENT_ID, DATUM_DOKUMENTA, PARTNER_ID, BROJOTPREMNICE, DOKUMENTBR) " +
-                                " VALUES (?, ?, ?, ?, ?, NULL)")) {
-                    ps.setLong(1, id);
-                    ps.setObject(2, header.getDocumentId(), Types.INTEGER);
-                    if (header.getDocumentDate() != null) {
-                        ps.setDate(3, Date.valueOf(header.getDocumentDate()));
-                    } else {
-                        ps.setNull(3, Types.DATE);
-                    }
-                    ps.setObject(4, header.getPartnerId(), Types.INTEGER);
-                    if (header.getDispatchNumber() != null) {
-                        ps.setString(5, header.getDispatchNumber());
-                    } else {
-                        ps.setNull(5, Types.VARCHAR);
-                    }
-                    ps.executeUpdate();
-                }
-
-                DocumentHeader out;
-                try (PreparedStatement ps = c.prepareStatement(
-                        "SELECT ID, DOKUMENT_ID, DOKUMENTBR, DATUM_DOKUMENTA, PARTNER_ID, BROJOTPREMNICE " +
-                                "FROM SD_GLAVA WHERE ID = ?")) {
-                    ps.setLong(1, id);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        rs.next();
-                        out = DocumentHeader.builder()
-                                .id(rs.getLong("ID"))
-                                .documentId(rs.getInt("DOKUMENT_ID"))
-                                .documentNumber(rs.getInt("DOKUMENTBR"))
-                                .documentDate(rs.getDate("DATUM_DOKUMENTA") != null
-                                        ? rs.getDate("DATUM_DOKUMENTA").toLocalDate()
-                                        : null)
-                                .partnerId(rs.getInt("PARTNER_ID"))
-                                .dispatchNumber(rs.getString("BROJOTPREMNICE"))
-                                .build();
-                    }
-                }
-
-                c.commit();
-                return out;
-            } catch (SQLException e) {
-                c.rollback();
-                throw e;
+            for (DocumentHeader h : headers) {
+                out.add(doInsertHeader(c, h));
             }
+        }
+        return out;
+    }
+
+    private DocumentHeader doInsertHeader(Connection c, DocumentHeader h) throws SQLException {
+        final String sql =
+                "INSERT INTO SD_GLAVA " +
+                        " (DOKUMENT_ID, DATUM_DOKUMENTA, PARTNER_ID, BROJOTPREMNICE, DOKUMENTBR) " +
+                        " VALUES (?, ?, ?, ?, NULL) " +
+                        " RETURNING ID, DOKUMENTBR, DATUM_DOKUMENTA INTO ?, ?, ?";
+
+        try (PreparedStatement ps0 = c.prepareStatement(sql)) {
+            OraclePreparedStatement ps = (OraclePreparedStatement) ps0;
+
+            ps.setObject(1, h.getDocumentId(), Types.INTEGER);
+            if (h.getDocumentDate() != null) ps.setDate(2, Date.valueOf(h.getDocumentDate()));
+            else ps.setNull(2, Types.DATE);
+            ps.setObject(3, h.getPartnerId(), Types.INTEGER);
+            if (h.getDispatchNumber() != null) ps.setString(4, h.getDispatchNumber());
+            else ps.setNull(4, Types.VARCHAR);
+
+            ps.registerReturnParameter(5, OracleTypes.NUMBER);
+            ps.registerReturnParameter(6, OracleTypes.NUMBER);
+            ps.registerReturnParameter(7, OracleTypes.DATE);
+
+            ps.executeUpdate();
+
+            long id;
+            int documentNmbr;
+            LocalDate date;
+            try (ResultSet rs = ps.getReturnResultSet()) {
+                rs.next();
+                id = rs.getLong(1);
+                documentNmbr = rs.getInt(2);
+                Date d = rs.getDate(3);
+                date = (d != null ? d.toLocalDate() : null);
+            }
+
+            return DocumentHeader.builder()
+                    .id(id)
+                    .documentId(h.getDocumentId())
+                    .documentNumber(documentNmbr)
+                    .documentDate(date)
+                    .partnerId(h.getPartnerId())
+                    .dispatchNumber(h.getDispatchNumber())
+                    .build();
         }
     }
 }

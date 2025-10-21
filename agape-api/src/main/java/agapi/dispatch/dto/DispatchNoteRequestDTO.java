@@ -1,5 +1,6 @@
 package agapi.dispatch.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -72,6 +73,7 @@ public class DispatchNoteRequestDTO {
          * Quantity to dispatch. Maps to SD_STAVKE.KOLICINA.
          */
         @NotNull
+        @DecimalMin(value = "0.0", inclusive = false, message = "quantity must be > 0")
         private Double quantity;
     }
 }

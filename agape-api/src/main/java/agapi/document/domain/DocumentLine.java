@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 /**
  * Domain model for SD_STAVKE (document line).
  * <p>
@@ -67,5 +69,5 @@ public class DocumentLine {
      * Column: SD_STAVKE.KOLICINA
      * <p>Triggers will compute stock-change flags and update inventory counters.</p>
      */
-    private Double quantity;
+    private BigDecimal quantity;
 }
