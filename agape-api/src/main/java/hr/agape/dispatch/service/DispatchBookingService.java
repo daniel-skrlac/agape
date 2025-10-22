@@ -85,7 +85,7 @@ public class DispatchBookingService {
     }
 
     @Transactional
-    public ServiceResponse<List<DispatchNoteResponseDTO>> bookBulkAtomic(List<DispatchNoteRequestDTO> requests) {
+    public ServiceResponse<List<DispatchNoteResponseDTO>> bookBulk(List<DispatchNoteRequestDTO> requests) {
         try {
             for (int i = 0; i < requests.size(); i++) {
                 var r = requests.get(i);

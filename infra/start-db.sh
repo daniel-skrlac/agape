@@ -75,6 +75,21 @@
     red "Oracle did not become healthy in time."; return 1
   }
 
+  wait_for_postgres() {
+    local cname="infra-postgres-1"
+    step "Waiting for Postgres container ($cname) to be healthy..."
+    for _ in {1..60}; do
+      local status
+      status="$(docker inspect -f '{{json .State.Health.Status}}' "$cname" 2>/dev/null || echo '"starting"')"
+      if [[ "$status" == "\"healthy\"" ]]; then
+        green "Postgres is healthy."
+        return 0
+      fi
+      sleep 2
+    done
+    red "Postgres did not become healthy in time."; return 1
+  }
+
   follow_oracle_alert() {
     local cname="infra-oracle-xe-1"
     local alert="/opt/oracle/diag/rdbms/xe/XE/trace/alert_XE.log"
@@ -102,6 +117,7 @@
   section "2) Start DB stack (Oracle + Postgres)"
   docker compose -f "$DB_COMPOSE" up -d --build oracle-xe postgres
   wait_for_oracle
+  wait_for_postgres
 
   if [[ "$DB_LOGS" == "1" ]]; then
     follow_container_logs infra-oracle-xe-1

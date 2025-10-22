@@ -24,7 +24,7 @@ public class DocumentHeaderRepository {
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public DocumentHeaderRepository(DataSource dataSource) {
+    public DocumentHeaderRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
         this.dataSource = dataSource;
     }
 

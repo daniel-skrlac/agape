@@ -18,7 +18,7 @@ public class DocumentLineRepository {
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public DocumentLineRepository(DataSource dataSource) {
+    public DocumentLineRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
         this.dataSource = dataSource;
     }
 

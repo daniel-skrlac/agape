@@ -32,11 +32,11 @@ public interface DispatchApiMapper {
 
     List<DocumentLine> toLines(List<DispatchNoteRequestDTO.DispatchItemRequest> list);
 
-    @Mapping(source = "id", target = "headerId")
+    @Mapping(source = "id", target = "documentHeaderId")
     @Mapping(source = "documentId", target = "documentId")
-    @Mapping(source = "documentNumber", target = "documentNumber")
+    @Mapping(source = "documentNumber", target = "documentBr")
     @Mapping(source = "documentDate", target = "documentDate")
     @Mapping(source = "partnerId", target = "partnerId")
-    @Mapping(target = "status", constant = "BOOKED")
+        //@Mapping(target = "status", constant = "BOOKED")
     DispatchNoteResponseDTO toResponse(DocumentHeader header);
 }

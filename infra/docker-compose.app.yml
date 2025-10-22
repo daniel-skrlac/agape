@@ -24,10 +24,10 @@ services:
       QUARKUS_DATASOURCE_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       QUARKUS_DATASOURCE_POSTGRES_JDBC_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB}"
 
-      QUARKUS_FLYWAY_ORACLE_MIGRATE_AT_START: "false"
-      QUARKUS_FLYWAY_ORACLE_LOCATIONS: "filesystem:/migrations/oracle"
-      QUARKUS_FLYWAY_POSTGRES_MIGRATE_AT_START: "false"
-      QUARKUS_FLYWAY_POSTGRES_LOCATIONS: "filesystem:/migrations/postgres"
+      #QUARKUS_FLYWAY_ORACLE_MIGRATE_AT_START: "false"
+      #QUARKUS_FLYWAY_ORACLE_LOCATIONS: "filesystem:/migrations/oracle"
+      #QUARKUS_FLYWAY_POSTGRES_MIGRATE_AT_START: "false"
+      #QUARKUS_FLYWAY_POSTGRES_LOCATIONS: "filesystem:/migrations/postgres"
 
     volumes:
       - ./oracle/migrations:/migrations/oracle:ro

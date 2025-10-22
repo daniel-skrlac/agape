@@ -16,7 +16,7 @@ public class PartnerRepository {
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public PartnerRepository(DataSource dataSource) {
+    public PartnerRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
         this.dataSource = dataSource;
     }
 

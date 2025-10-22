@@ -1,4 +1,4 @@
-package hr.agape.document.ref.domain;
+package hr.agape.document.domain;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

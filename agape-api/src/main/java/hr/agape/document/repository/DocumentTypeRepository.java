@@ -1,6 +1,6 @@
 package hr.agape.document.repository;
 
-import hr.agape.document.ref.domain.DocumentType;
+import hr.agape.document.domain.DocumentType;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -18,7 +18,7 @@ public class DocumentTypeRepository {
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public DocumentTypeRepository(DataSource dataSource) {
+    public DocumentTypeRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
         this.dataSource = dataSource;
     }
 

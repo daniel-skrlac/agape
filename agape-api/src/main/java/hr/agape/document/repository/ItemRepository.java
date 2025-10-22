@@ -16,7 +16,7 @@ public class ItemRepository {
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public ItemRepository(DataSource dataSource) {
+    public ItemRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
