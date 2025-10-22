@@ -2,6 +2,7 @@ package hr.agape.dispatch.dto;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,7 +21,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class DispatchNoteRequestDTO {
+public class DispatchRequestDTO {
 
     /**
      * Logical document slot used by the warehouse, e.g. 3, 9, 23, 32.
@@ -42,18 +43,22 @@ public class DispatchNoteRequestDTO {
     private Integer partnerId;
 
     /**
-     * Human-facing dispatch number printed on paper (optional).
-     * Not the same as DOKUMENTBR (internal sequence).
-     */
-    private String dispatchNumber;
-
-    /**
      * Lines to book on this document. At least one is required.
      * Each item needs itemId (ARTIKL_ID) and quantity (KOLICINA).
      */
     @NotNull
     @Size(min = 1)
     private List<DispatchItemRequest> items;
+
+    /**
+     * User/employee who created the document.
+     *
+     * <p>Maps to {@code SD_GLAVA.IZRADIO}. This is required by the schema.
+     * Typical value: the application user ID or employee ID performing the booking.</p>
+     */
+    @NotNull
+    @Positive
+    private Integer createdBy;
 
     /**
      * One line on the dispatch note.

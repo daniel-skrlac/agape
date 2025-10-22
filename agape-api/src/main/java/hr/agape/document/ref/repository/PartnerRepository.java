@@ -1,4 +1,4 @@
-package hr.agape.document.repository;
+package hr.agape.document.ref.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;

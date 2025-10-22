@@ -10,7 +10,6 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.time.LocalDate;
@@ -47,44 +46,46 @@ public class DocumentHeaderRepository {
     private DocumentHeader doInsertHeader(Connection c, DocumentHeader h) throws SQLException {
         final String sql =
                 "INSERT INTO SD_GLAVA " +
-                        " (DOKUMENT_ID, DATUM_DOKUMENTA, PARTNER_ID, BROJOTPREMNICE, DOKUMENTBR) " +
+                        " (DOKUMENT_ID, DATUM_DOKUMENTA, PARTNER_ID, IZRADIO, DOKUMENTBR) " +
                         " VALUES (?, ?, ?, ?, NULL) " +
                         " RETURNING ID, DOKUMENTBR, DATUM_DOKUMENTA INTO ?, ?, ?";
 
-        try (PreparedStatement ps0 = c.prepareStatement(sql)) {
-            OraclePreparedStatement ps = (OraclePreparedStatement) ps0;
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            var ops = ps.unwrap(OraclePreparedStatement.class);
 
-            ps.setObject(1, h.getDocumentId(), Types.INTEGER);
-            if (h.getDocumentDate() != null) ps.setDate(2, Date.valueOf(h.getDocumentDate()));
-            else ps.setNull(2, Types.DATE);
-            ps.setObject(3, h.getPartnerId(), Types.INTEGER);
-            if (h.getDispatchNumber() != null) ps.setString(4, h.getDispatchNumber());
-            else ps.setNull(4, Types.VARCHAR);
+            if (h.getDocumentId() != null) ops.setInt(1, h.getDocumentId());
+            else ops.setNull(1, Types.INTEGER);
+            if (h.getDocumentDate() != null) ops.setDate(2, Date.valueOf(h.getDocumentDate()));
+            else ops.setNull(2, Types.DATE);
+            if (h.getPartnerId() != null) ops.setInt(3, h.getPartnerId());
+            else ops.setNull(3, Types.INTEGER);
+            if (h.getCreatedBy() != null) ops.setInt(4, h.getCreatedBy());
+            else ops.setNull(4, Types.INTEGER);
 
-            ps.registerReturnParameter(5, OracleTypes.NUMBER);
-            ps.registerReturnParameter(6, OracleTypes.NUMBER);
-            ps.registerReturnParameter(7, OracleTypes.DATE);
+            ops.registerReturnParameter(5, OracleTypes.NUMBER);
+            ops.registerReturnParameter(6, OracleTypes.NUMBER);
+            ops.registerReturnParameter(7, OracleTypes.DATE);
 
-            ps.executeUpdate();
+            ops.executeUpdate();
 
             long id;
-            int documentNmbr;
+            int docNum;
             LocalDate date;
-            try (ResultSet rs = ps.getReturnResultSet()) {
+            try (var rs = ops.getReturnResultSet()) {
                 rs.next();
                 id = rs.getLong(1);
-                documentNmbr = rs.getInt(2);
-                Date d = rs.getDate(3);
+                docNum = rs.getInt(2);
+                var d = rs.getDate(3);
                 date = (d != null ? d.toLocalDate() : null);
             }
 
             return DocumentHeader.builder()
                     .id(id)
                     .documentId(h.getDocumentId())
-                    .documentNumber(documentNmbr)
+                    .documentNumber(docNum)
                     .documentDate(date)
                     .partnerId(h.getPartnerId())
-                    .dispatchNumber(h.getDispatchNumber())
+                    .createdBy(h.getCreatedBy())
                     .build();
         }
     }

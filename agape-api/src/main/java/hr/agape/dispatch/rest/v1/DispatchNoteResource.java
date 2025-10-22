@@ -1,7 +1,7 @@
 package hr.agape.dispatch.rest.v1;
 
 import hr.agape.common.response.Responses;
-import hr.agape.dispatch.dto.DispatchNoteRequestDTO;
+import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.service.DispatchBookingService;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
@@ -29,13 +29,13 @@ public class DispatchNoteResource {
     }
 
     @POST
-    public Response bookOne(@Valid DispatchNoteRequestDTO request) {
+    public Response bookOne(@Valid DispatchRequestDTO request) {
         return Responses.from(service.bookOne(request));
     }
 
     @POST
     @Path("/bulk")
-    public Response bookBulkAtomic(@Valid List<DispatchNoteRequestDTO> requests) {
+    public Response bookBulkAtomic(@Valid List<DispatchRequestDTO> requests) {
         return Responses.from(service.bookBulk(requests));
     }
 }

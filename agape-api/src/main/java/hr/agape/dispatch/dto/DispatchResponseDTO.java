@@ -18,7 +18,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class DispatchNoteResponseDTO {
+public class DispatchResponseDTO {
 
     /**
      * Technical primary key of the document in {@code SD_GLAVA}.

@@ -60,9 +60,10 @@ public class DocumentHeader {
     private Integer partnerId;
 
     /**
-     * Human-facing dispatch number printed on paper.
-     * Column: SD_GLAVA.BROJOTPREMNICE
-     * <p>Not the same as {@link #documentNumber} (internal sequence per document slot).</p>
+     * User/employee who created the document.
+     *
+     * <p>Column: {@code SD_GLAVA.IZRADIO} (NOT NULL). Typically, stores the application user ID
+     * or employee ID that performed the booking.</p>
      */
-    private String dispatchNumber;
+    private Integer createdBy;
 }
