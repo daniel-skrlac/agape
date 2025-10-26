@@ -2,6 +2,7 @@ package hr.agape.dispatch.mapper;
 
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.dto.DispatchResponseDTO;
+import hr.agape.dispatch.dto.DispatchSummaryResponseDTO;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import hr.agape.document.domain.DocumentLineEntity;
 import org.mapstruct.Mapper;
@@ -16,7 +17,7 @@ public interface DispatchApiMapper {
     @Mapping(source = "documentId", target = "documentId")
     @Mapping(source = "documentDate", target = "documentDate")
     @Mapping(source = "partnerId", target = "partnerId")
-    @Mapping(source = "createdBy",     target = "createdBy")
+    @Mapping(source = "createdBy", target = "createdBy")
     @Mapping(target = "documentNumber", ignore = true)
     DocumentHeaderEntity toHeader(DispatchRequestDTO req);
 
@@ -31,6 +32,8 @@ public interface DispatchApiMapper {
     DocumentLineEntity toLine(DispatchRequestDTO.DispatchItemRequest r);
 
     List<DocumentLineEntity> toLines(List<DispatchRequestDTO.DispatchItemRequest> list);
+
+    DispatchSummaryResponseDTO toDto(DocumentHeaderEntity entity);
 
     @Mapping(source = "id", target = "documentHeaderId")
     @Mapping(source = "documentId", target = "documentId")

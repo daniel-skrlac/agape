@@ -2,11 +2,14 @@ package hr.agape.dispatch.rest.v1;
 
 import hr.agape.common.response.Responses;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
+import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.dispatch.service.DispatchBookingService;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -26,6 +29,11 @@ public class DispatchNoteResource {
     @Inject
     public DispatchNoteResource(DispatchBookingService service) {
         this.service = service;
+    }
+
+    @GET
+    public Response search(@BeanParam @Valid DispatchSearchFilter filter) {
+        return Responses.from(service.searchDispatches(filter));
     }
 
     @POST

@@ -1,9 +1,12 @@
 package hr.agape.dispatch.service;
 
+import hr.agape.common.dto.PagedResult;
 import hr.agape.common.response.ServiceResponse;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.dispatch.dto.DispatchResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
+import hr.agape.dispatch.dto.DispatchSearchFilter;
+import hr.agape.dispatch.dto.DispatchSummaryResponseDTO;
 import hr.agape.dispatch.mapper.DispatchApiMapper;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import hr.agape.document.lookup.repository.DocumentVatLookupRepository;
@@ -161,6 +164,33 @@ public class DispatchBookingService {
             tsr.setRollbackOnly();
             return ServiceResponseDirector.errorInternal(
                     "Bulk booking failed; nothing was booked: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public ServiceResponse<PagedResult<DispatchSummaryResponseDTO>> searchDispatches(DispatchSearchFilter filter) {
+        try {
+            long total = headerRepo.countFiltered(filter);
+
+            List<DocumentHeaderEntity> headers = headerRepo.pageFiltered(filter);
+
+            List<DispatchSummaryResponseDTO> dtoItems = headers.stream()
+                    .map(mapper::toDto)
+                    .collect(Collectors.toList());
+
+            PagedResult<DispatchSummaryResponseDTO> result = PagedResult.<DispatchSummaryResponseDTO>builder()
+                    .items(dtoItems)
+                    .page(filter.getPage())
+                    .size(filter.getSize())
+                    .total(total)
+                    .build();
+
+            return ServiceResponseDirector.successOk(result, "OK");
+        } catch (Exception e) {
+            tsr.setRollbackOnly();
+            return ServiceResponseDirector.errorInternal(
+                    "Failed to search dispatch notes: " + e.getMessage()
+            );
         }
     }
 
