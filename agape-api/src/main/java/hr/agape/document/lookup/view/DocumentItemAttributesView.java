@@ -1,4 +1,4 @@
-package hr.agape.document.ref.domain;
+package hr.agape.document.lookup.view;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +17,7 @@ import lombok.Data;
 @Data
 @Builder
 @AllArgsConstructor
-public class ItemAttributes {
+public class DocumentItemAttributesView {
     Integer nameId;
     Integer unitOfMeasureId;
 }

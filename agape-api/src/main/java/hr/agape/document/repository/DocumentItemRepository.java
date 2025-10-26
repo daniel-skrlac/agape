@@ -1,4 +1,4 @@
-package hr.agape.document.ref.repository;
+package hr.agape.document.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -9,14 +9,15 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+//SKL_ARTIKLIG
 @ApplicationScoped
-public class ItemRepository {
+public class DocumentItemRepository {
 
     private final DataSource dataSource;
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public ItemRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
+    public DocumentItemRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
         this.dataSource = dataSource;
     }
 

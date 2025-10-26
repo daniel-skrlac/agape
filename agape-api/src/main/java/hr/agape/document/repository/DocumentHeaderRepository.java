@@ -1,6 +1,6 @@
 package hr.agape.document.repository;
 
-import hr.agape.document.domain.DocumentHeader;
+import hr.agape.document.domain.DocumentHeaderEntity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import oracle.jdbc.OraclePreparedStatement;
@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+//SD_GLAVA
 @ApplicationScoped
 public class DocumentHeaderRepository {
 
@@ -27,23 +28,23 @@ public class DocumentHeaderRepository {
         this.dataSource = dataSource;
     }
 
-    public DocumentHeader insert(DocumentHeader h) throws SQLException {
+    public DocumentHeaderEntity insert(DocumentHeaderEntity h) throws SQLException {
         try (Connection c = dataSource.getConnection()) {
             return doInsertHeader(c, h);
         }
     }
 
-    public List<DocumentHeader> insertAll(List<DocumentHeader> headers) throws SQLException {
-        List<DocumentHeader> out = new ArrayList<>(headers.size());
+    public List<DocumentHeaderEntity> insertAll(List<DocumentHeaderEntity> headers) throws SQLException {
+        List<DocumentHeaderEntity> out = new ArrayList<>(headers.size());
         try (Connection c = dataSource.getConnection()) {
-            for (DocumentHeader h : headers) {
+            for (DocumentHeaderEntity h : headers) {
                 out.add(doInsertHeader(c, h));
             }
         }
         return out;
     }
 
-    private DocumentHeader doInsertHeader(Connection c, DocumentHeader h) throws SQLException {
+    private DocumentHeaderEntity doInsertHeader(Connection c, DocumentHeaderEntity h) throws SQLException {
         final String sql =
                 "INSERT INTO SD_GLAVA " +
                         " (DOKUMENT_ID, DATUM_DOKUMENTA, PARTNER_ID, IZRADIO, DOKUMENTBR) " +
@@ -79,7 +80,7 @@ public class DocumentHeaderRepository {
                 date = (d != null ? d.toLocalDate() : null);
             }
 
-            return DocumentHeader.builder()
+            return DocumentHeaderEntity.builder()
                     .id(id)
                     .documentId(h.getDocumentId())
                     .documentNumber(docNum)

@@ -1,4 +1,4 @@
-package hr.agape.document.domain;
+package hr.agape.document.lookup.view;
 
 import lombok.*;
 
@@ -18,7 +18,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class DocumentTypeMapping {
+public class DocumentSlotTypeView {
 
     /**
      * Document slot used by the application and stored in {@code SD_GLAVA.DOKUMENT_ID}.

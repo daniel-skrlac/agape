@@ -19,7 +19,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class DocumentType {
+public class DocumentTypeEntity {
     /**
      * SD_SIFREZ.SD_SIFREZ_ID (PK).
      */

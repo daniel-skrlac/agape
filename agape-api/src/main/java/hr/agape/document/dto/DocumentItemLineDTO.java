@@ -1,4 +1,4 @@
-package hr.agape.document.ref.domain;
+package hr.agape.document.dto;
 
 
 import lombok.AllArgsConstructor;
@@ -21,7 +21,7 @@ import java.math.BigDecimal;
 @Builder
 @Data
 @AllArgsConstructor
-public class PreparedLine {
+public class DocumentItemLineDTO {
     Integer itemId;
     BigDecimal quantity;
     Integer nameId;

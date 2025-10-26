@@ -1,4 +1,4 @@
-package hr.agape.document.ref.repository;
+package hr.agape.document.warehouse.repository;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -9,6 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+//PARTNERI
 @ApplicationScoped
 public class PartnerRepository {
 

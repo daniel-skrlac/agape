@@ -1,6 +1,6 @@
 package hr.agape.document.repository;
 
-import hr.agape.document.ref.domain.PreparedLine;
+import hr.agape.document.dto.DocumentItemLineDTO;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -12,6 +12,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.List;
 
+//SD_STAVKE
 @ApplicationScoped
 public class DocumentLineRepository {
 
@@ -23,7 +24,7 @@ public class DocumentLineRepository {
         this.dataSource = dataSource;
     }
 
-    public void insert(long headerId, List<PreparedLine> lines) throws SQLException {
+    public void insert(long headerId, List<DocumentItemLineDTO> lines) throws SQLException {
         final String sql =
                 "INSERT INTO SD_STAVKE " +
                         " (ID, SD_GLAVA_ID, ARTIKL_ID, KOLICINA, STAVKABR, NAZIV_ID, PDV_ID, JMJ_ID) " +
@@ -31,7 +32,7 @@ public class DocumentLineRepository {
 
         try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, headerId);
-            for (PreparedLine pl : lines) {
+            for (DocumentItemLineDTO pl : lines) {
                 ps.setObject(2, pl.getItemId(), Types.INTEGER);
                 ps.setObject(3, pl.getQuantity(), Types.NUMERIC);
                 ps.setObject(4, pl.getLineNumber(), Types.INTEGER);

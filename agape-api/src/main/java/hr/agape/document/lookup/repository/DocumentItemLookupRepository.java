@@ -1,6 +1,6 @@
-package hr.agape.document.ref.repository;
+package hr.agape.document.lookup.repository;
 
-import hr.agape.document.ref.domain.ItemAttributes;
+import hr.agape.document.lookup.view.DocumentItemAttributesView;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -14,17 +14,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+//SKL_ARTIKLIG + SKL_ARTIKLIZ join
 @ApplicationScoped
-public class ItemAttributesRepository {
+public class DocumentItemLookupRepository {
 
     private final DataSource ds;
 
     @Inject
-    public ItemAttributesRepository(@io.quarkus.agroal.DataSource("oracle") DataSource ds) {
+    public DocumentItemLookupRepository(@io.quarkus.agroal.DataSource("oracle") DataSource ds) {
         this.ds = ds;
     }
 
-    public Map<Integer, ItemAttributes> findAttributes(Set<Integer> itemIds) throws SQLException {
+    public Map<Integer, DocumentItemAttributesView> findAttributes(Set<Integer> itemIds) throws SQLException {
         String placeholders = itemIds.stream().map(x -> "?").collect(Collectors.joining(","));
         String sql =
                 "SELECT g.ARTIKL_ID, g.NAZIV_ID, z.JMJ_ID " +
@@ -32,7 +33,7 @@ public class ItemAttributesRepository {
                         "  JOIN SKL_ARTIKLIZ z ON z.ARTIKLIZ_ID = g.ARTIKLIZ_ID " +
                         " WHERE g.ARTIKL_ID IN (" + placeholders + ")";
 
-        Map<Integer, ItemAttributes> out = new HashMap<>(itemIds.size());
+        Map<Integer, DocumentItemAttributesView> out = new HashMap<>(itemIds.size());
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             int i = 1;
             for (Integer id : itemIds) ps.setInt(i++, id);
@@ -41,12 +42,12 @@ public class ItemAttributesRepository {
                 while (rs.next()) {
                     int itemId = rs.getInt("ARTIKL_ID");
 
-                    Number nNaziv = (Number) rs.getObject("NAZIV_ID");
-                    Number nJmj = (Number) rs.getObject("JMJ_ID");
-                    Integer nameId = (nNaziv != null) ? nNaziv.intValue() : null;
-                    Integer unitOfMeasureId = (nJmj != null) ? nJmj.intValue() : null;
+                    Number name = (Number) rs.getObject("NAZIV_ID");
+                    Number uom = (Number) rs.getObject("JMJ_ID");
+                    Integer nameId = (name != null) ? name.intValue() : null;
+                    Integer unitOfMeasureId = (uom != null) ? uom.intValue() : null;
 
-                    out.put(itemId, ItemAttributes.builder()
+                    out.put(itemId, DocumentItemAttributesView.builder()
                             .nameId(nameId)
                             .unitOfMeasureId(unitOfMeasureId)
                             .build());
