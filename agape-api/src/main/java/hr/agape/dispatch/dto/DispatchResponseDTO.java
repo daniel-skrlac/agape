@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 /**
  * Response payload returned after successfully booking a single dispatch note
@@ -33,14 +34,14 @@ public class DispatchResponseDTO {
      * type/ruleset via {@code SD_SIFREG -> SD_SIFREZ} and defines the numbering
      * scope for {@code DOKUMENTBR}.</p>
      */
-    private Integer documentId;
+    private Long documentId;
 
     /**
      * Human-readable internal document number within the selected slot.
      * <p>Maps to {@code SD_GLAVA.DOKUMENTBR}. Auto-incremented per
      * {@code DOKUMENT_ID} by trigger {@code SD_GLAVA_BIU}.</p>
      */
-    private Integer documentBr;
+    private Long documentBr;
 
     /**
      * Final business date persisted for the document.
@@ -53,7 +54,7 @@ public class DispatchResponseDTO {
      * Recipient/partner for whom goods were dispatched.
      * <p>Maps to {@code SD_GLAVA.PARTNER_ID} (FK to {@code PARTNERI}).</p>
      */
-    private Integer partnerId;
+    private Long partnerId;
 
     /**
      * Processing outcome for client UX/logging (not stored in legacy tables).
@@ -62,4 +63,7 @@ public class DispatchResponseDTO {
      * In this simple flow it will be {@code "BOOKED"} on success.</p>
      */
     private String status;
+
+    // SD_GLAVA.DATUM_IZRADE (actual persisted timestamp with time)
+    private OffsetDateTime createdAt;
 }

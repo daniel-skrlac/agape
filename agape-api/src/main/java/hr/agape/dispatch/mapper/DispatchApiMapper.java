@@ -19,6 +19,7 @@ public interface DispatchApiMapper {
     @Mapping(source = "partnerId", target = "partnerId")
     @Mapping(source = "createdBy", target = "createdBy")
     @Mapping(target = "documentNumber", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
     DocumentHeaderEntity toHeader(DispatchRequestDTO req);
 
     @Mapping(target = "id", ignore = true)
@@ -40,6 +41,7 @@ public interface DispatchApiMapper {
     @Mapping(source = "documentNumber", target = "documentBr")
     @Mapping(source = "documentDate", target = "documentDate")
     @Mapping(source = "partnerId", target = "partnerId")
+    @Mapping(source = "createdAt", target = "createdAt")
         //@Mapping(target = "status", constant = "BOOKED")
     DispatchResponseDTO toResponse(DocumentHeaderEntity header);
 }

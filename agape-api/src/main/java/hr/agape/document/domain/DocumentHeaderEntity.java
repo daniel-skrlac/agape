@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 /**
  * Domain model for SD_GLAVA (document header).
@@ -37,14 +38,14 @@ public class DocumentHeaderEntity {
      * <p>Maps to a row in SD_SIFREG → SD_SIFREZ that defines the business type
      * (e.g. DOKUMENTID=OTPREMNICA, NAZIVDOKUMENTA=IZDATNICA) and stock-change rules.</p>
      */
-    private Integer documentId;
+    private Long documentId;
 
     /**
      * Sequential number within a given {@link #documentId}.
      * Column: SD_GLAVA.DOKUMENTBR
      * <p>Assigned by trigger SD_GLAVA_BIU if not provided.</p>
      */
-    private Integer documentNumber;
+    private Long documentNumber;
 
     /**
      * Business date of the document.
@@ -57,7 +58,7 @@ public class DocumentHeaderEntity {
      * Recipient/partner for whom the goods are dispatched.
      * Column: SD_GLAVA.PARTNER_ID (FK → PARTNERI.PARTNER_ID)
      */
-    private Integer partnerId;
+    private Long partnerId;
 
     /**
      * User/employee who created the document.
@@ -65,5 +66,7 @@ public class DocumentHeaderEntity {
      * <p>Column: {@code SD_GLAVA.IZRADIO} (NOT NULL). Typically, stores the application user ID
      * or employee ID that performed the booking.</p>
      */
-    private Integer createdBy;
+    private Long createdBy;
+
+    private OffsetDateTime createdAt;
 }
