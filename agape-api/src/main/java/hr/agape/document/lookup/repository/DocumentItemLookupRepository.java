@@ -25,7 +25,7 @@ public class DocumentItemLookupRepository {
         this.ds = ds;
     }
 
-    public Map<Integer, DocumentItemAttributesView> findAttributes(Set<Integer> itemIds) throws SQLException {
+    public Map<Long, DocumentItemAttributesView> findAttributes(Set<Long> itemIds) throws SQLException {
         String placeholders = itemIds.stream().map(x -> "?").collect(Collectors.joining(","));
         String sql =
                 "SELECT g.ARTIKL_ID, g.NAZIV_ID, z.JMJ_ID " +
@@ -33,14 +33,14 @@ public class DocumentItemLookupRepository {
                         "  JOIN SKL_ARTIKLIZ z ON z.ARTIKLIZ_ID = g.ARTIKLIZ_ID " +
                         " WHERE g.ARTIKL_ID IN (" + placeholders + ")";
 
-        Map<Integer, DocumentItemAttributesView> out = new HashMap<>(itemIds.size());
+        Map<Long, DocumentItemAttributesView> out = new HashMap<>(itemIds.size());
         try (Connection c = ds.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             int i = 1;
-            for (Integer id : itemIds) ps.setInt(i++, id);
+            for (Long id : itemIds) ps.setLong(i++, id);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    int itemId = rs.getInt("ARTIKL_ID");
+                    long itemId = rs.getLong("ARTIKL_ID");
 
                     Number name = (Number) rs.getObject("NAZIV_ID");
                     Number uom = (Number) rs.getObject("JMJ_ID");

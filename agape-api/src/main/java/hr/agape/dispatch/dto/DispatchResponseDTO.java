@@ -64,6 +64,15 @@ public class DispatchResponseDTO {
      */
     private String status;
 
+    private Boolean posted;
+    private Long postedBy;
+    private OffsetDateTime postedAt;
+
+    private Boolean cancelled;
+    private Long cancelledBy;
+    private OffsetDateTime cancelledAt;
+    private String cancelNote;
+
     // SD_GLAVA.DATUM_IZRADE (actual persisted timestamp with time)
     private OffsetDateTime createdAt;
 }

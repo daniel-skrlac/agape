@@ -69,4 +69,12 @@ public class DocumentHeaderEntity {
     private Long createdBy;
 
     private OffsetDateTime createdAt;
+
+    private Long postedBy;          // SD_GLAVA.KNJIZIO
+    private OffsetDateTime postedAt;   // SD_GLAVA.DATUM_KNJIZENJA
+    private Boolean posted;            // SD_GLAVA.KNJIZENO == 1
+
+    private Long cancelledBy;       // SD_GLAVA.STORNIRAO
+    private OffsetDateTime cancelledAt;// SD_GLAVA.DATUM_STORNO
+    private String cancelNote;         // SD_GLAVA.NAPOMENA
 }

@@ -28,10 +28,10 @@ public class DispatchRequestDTO {
      * Maps to SD_GLAVA.DOKUMENT_ID (via SD_SIFREG → SD_SIFREZ decides “outgoing stock” rules).
      */
     @NotNull
-    private Integer documentId;
+    private Long documentId;
 
     @NotNull
-    private Integer warehouseId; // SD_SIFREG.SKLADISTE_ID
+    private Long warehouseId; // SD_SIFREG.SKLADISTE_ID
 
     /**
      * Business date of the document (optional).
@@ -43,7 +43,7 @@ public class DispatchRequestDTO {
      * Recipient/partner for whom goods are dispatched (FK → PARTNERI.PARTNER_ID).
      */
     @NotNull
-    private Integer partnerId;
+    private Long partnerId;
 
     /**
      * Lines to book on this document. At least one is required.
@@ -61,7 +61,11 @@ public class DispatchRequestDTO {
      */
     @NotNull
     @Positive
-    private Integer createdBy;
+    private Long createdBy;
+
+    // if true (or omitted -> default false), we just create a draft.
+    // if false, we create and POST immediately.
+    private boolean draft;
 
     /**
      * One line on the dispatch note.
@@ -75,7 +79,7 @@ public class DispatchRequestDTO {
          * Item/article to dispatch. Maps to SD_STAVKE.ARTIKL_ID.
          */
         @NotNull
-        private Integer itemId;
+        private Long itemId;
 
         /**
          * Quantity to dispatch. Maps to SD_STAVKE.KOLICINA.

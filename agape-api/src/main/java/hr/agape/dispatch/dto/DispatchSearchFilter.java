@@ -19,14 +19,14 @@ public class DispatchSearchFilter {
     private int size;
 
     @QueryParam("createdBy")
-    private Integer createdBy;          // SD_GLAVA.IZRADIO
+    private Long createdBy;          // SD_GLAVA.IZRADIO
 
     @QueryParam("documentId")
     @NotNull(message = "documentId is required")
-    private Integer documentId;         // SD_GLAVA.DOKUMENT_ID
+    private Long documentId;         // SD_GLAVA.DOKUMENT_ID
 
     @QueryParam("partnerId")
-    private Integer partnerId;          // SD_GLAVA.PARTNER_ID
+    private Long partnerId;          // SD_GLAVA.PARTNER_ID
 
     @QueryParam("dateFrom")
     private LocalDate dateFrom;         // SD_GLAVA.DATUM_DOKUMENTA >=

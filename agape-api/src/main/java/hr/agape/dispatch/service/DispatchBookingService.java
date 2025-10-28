@@ -3,32 +3,25 @@ package hr.agape.dispatch.service;
 import hr.agape.common.dto.PagedResult;
 import hr.agape.common.response.ServiceResponse;
 import hr.agape.common.response.ServiceResponseDirector;
-import hr.agape.dispatch.dto.DispatchResponseDTO;
-import hr.agape.dispatch.dto.DispatchRequestDTO;
-import hr.agape.dispatch.dto.DispatchSearchFilter;
-import hr.agape.dispatch.dto.DispatchSummaryResponseDTO;
+import hr.agape.dispatch.dto.*;
 import hr.agape.dispatch.mapper.DispatchApiMapper;
 import hr.agape.document.domain.DocumentHeaderEntity;
-import hr.agape.document.lookup.repository.DocumentVatLookupRepository;
-import hr.agape.document.lookup.view.DocumentItemAttributesView;
 import hr.agape.document.dto.DocumentItemLineDTO;
 import hr.agape.document.lookup.repository.DocumentItemLookupRepository;
+import hr.agape.document.lookup.repository.DocumentVatLookupRepository;
+import hr.agape.document.lookup.view.DocumentItemAttributesView;
+import hr.agape.document.repository.DocumentHeaderRepository;
 import hr.agape.document.repository.DocumentItemRepository;
+import hr.agape.document.repository.DocumentLineRepository;
 import hr.agape.document.repository.DocumentSlotRepository;
 import hr.agape.document.warehouse.repository.PartnerRepository;
-import hr.agape.document.repository.DocumentHeaderRepository;
-import hr.agape.document.repository.DocumentLineRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.TransactionSynchronizationRegistry;
 import jakarta.transaction.Transactional;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
@@ -50,7 +43,9 @@ public class DispatchBookingService {
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
     public DispatchBookingService(
-            DocumentSlotRepository slotRepo, DocumentVatLookupRepository vatLookupRepo, DocumentHeaderRepository headerRepo,
+            DocumentSlotRepository slotRepo,
+            DocumentVatLookupRepository vatLookupRepo,
+            DocumentHeaderRepository headerRepo,
             DocumentLineRepository lineRepo,
             DispatchApiMapper mapper,
             PartnerRepository partnerRepo,
@@ -69,21 +64,25 @@ public class DispatchBookingService {
         this.itemAttrsRepo = itemAttrsRepo;
     }
 
+    // CREATE SINGLE (draft or posted)
     @Transactional
     public ServiceResponse<DispatchResponseDTO> bookOne(DispatchRequestDTO req) {
         try {
             String err = validateReferences(req, 0);
             if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
-            Integer pdvId = resolveVat(req.getDocumentId(), req.getWarehouseId());
+            Long docId = req.getDocumentId();
+            Long whId  = req.getWarehouseId();
+
+            Integer pdvId = resolveVat(docId, whId);
             if (pdvId == null) {
                 return ServiceResponseDirector.errorBadRequest(
-                        PDV_MISSING_FOR_DOC + req.getDocumentId()
-                                + " in warehouse " + req.getWarehouseId() + "."
+                        PDV_MISSING_FOR_DOC + docId + " in warehouse " + whId + "."
                 );
             }
 
-            Map<Integer, DocumentItemAttributesView> attrsByItem =
+            // attributes
+            Map<Long, DocumentItemAttributesView> attrsByItem =
                     itemAttrsRepo.findAttributes(
                             req.getItems().stream()
                                     .map(DispatchRequestDTO.DispatchItemRequest::getItemId)
@@ -93,17 +92,23 @@ public class DispatchBookingService {
             err = validateItemAttrsPresent(req, attrsByItem, 0);
             if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
-            DocumentHeaderEntity header = headerRepo.insert(mapper.toHeader(req));
+            DocumentHeaderEntity headerInput = mapper.toHeader(req);
 
+            // persist header with "postNow = !draft"
+            DocumentHeaderEntity header = headerRepo.insert(headerInput, !req.isDraft());
+
+            // persist lines
             int nextLineNo = lineRepo.nextLineNumber(header.getId());
             List<DocumentItemLineDTO> prepared =
                     prepareLines(req, attrsByItem, pdvId, nextLineNo);
 
             lineRepo.insert(header.getId(), prepared);
 
+            DispatchResponseDTO out = mapper.toResponse(header);
+
             return ServiceResponseDirector.successOk(
-                    mapper.toResponse(header),
-                    "Dispatch note booked."
+                    out,
+                    req.isDraft() ? "Dispatch note saved as DRAFT." : "Dispatch note booked (POSTED)."
             );
         } catch (Exception e) {
             tsr.setRollbackOnly();
@@ -112,6 +117,7 @@ public class DispatchBookingService {
         }
     }
 
+    // CREATE BULK
     @Transactional
     public ServiceResponse<List<DispatchResponseDTO>> bookBulk(List<DispatchRequestDTO> requests) {
         try {
@@ -122,17 +128,24 @@ public class DispatchBookingService {
 
             Map<String, Integer> vatByKey = resolveVatForRequests(requests);
 
-            Set<Integer> allItemIds = requests.stream()
+            // load attrs for ALL items
+            Set<Long> allItemIds = requests.stream()
                     .flatMap(r -> r.getItems().stream())
                     .map(DispatchRequestDTO.DispatchItemRequest::getItemId)
                     .collect(Collectors.toSet());
 
-            Map<Integer, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(allItemIds);
+            Map<Long, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(allItemIds);
 
-            List<DocumentHeaderEntity> persistedHeaders = headerRepo.insertAll(
-                    requests.stream().map(mapper::toHeader).collect(Collectors.toList())
-            );
+            // persist headers first
+            // NOTE: we assume SAME draft flag for all? you could allow mixed; here we'll honor per-request
+            List<DocumentHeaderEntity> persistedHeaders = new ArrayList<>(requests.size());
+            for (DispatchRequestDTO r : requests) {
+                DocumentHeaderEntity hdrIn = mapper.toHeader(r);
+                DocumentHeaderEntity hdr   = headerRepo.insert(hdrIn, !r.isDraft());
+                persistedHeaders.add(hdr);
+            }
 
+            // now persist lines for each
             for (int i = 0; i < requests.size(); i++) {
                 DispatchRequestDTO req = requests.get(i);
                 DocumentHeaderEntity hdr = persistedHeaders.get(i);
@@ -167,11 +180,11 @@ public class DispatchBookingService {
         }
     }
 
+    // SEARCH
     @Transactional
     public ServiceResponse<PagedResult<DispatchSummaryResponseDTO>> searchDispatches(DispatchSearchFilter filter) {
         try {
             long total = headerRepo.countFiltered(filter);
-
             List<DocumentHeaderEntity> headers = headerRepo.pageFiltered(filter);
 
             List<DispatchSummaryResponseDTO> dtoItems = headers.stream()
@@ -194,6 +207,136 @@ public class DispatchBookingService {
         }
     }
 
+    // UPDATE (edit draft or cancel posted)
+    @Transactional
+    public ServiceResponse<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
+        try {
+            // Load header
+            DocumentHeaderEntity existing = headerRepo.findHeader(headerId);
+            if (existing == null) {
+                return ServiceResponseDirector.errorNotFound("Dispatch " + headerId + " not found.");
+            }
+
+            // CANCEL FLOW
+            if (body.isCancel()) {
+                // must be POSTED and not CANCELLED already
+                if (!Boolean.TRUE.equals(existing.getPosted())) {
+                    return ServiceResponseDirector.errorBadRequest("Cannot cancel: dispatch is not POSTED.");
+                }
+                if (existing.getCancelledBy() != null) {
+                    return ServiceResponseDirector.errorBadRequest("Cannot cancel: already CANCELLED.");
+                }
+
+                DocumentHeaderEntity cancelled = headerRepo.cancelDispatch(
+                        headerId,
+                        body.getActorUserId(),
+                        body.getCancelReason()
+                );
+                if (cancelled == null) {
+                    return ServiceResponseDirector.errorBadRequest("Unable to cancel (already cancelled or not posted).");
+                }
+
+                return ServiceResponseDirector.successOk(
+                        mapper.toResponse(cancelled),
+                        "Dispatch cancelled."
+                );
+            }
+
+            // EDIT DRAFT FLOW
+            // Only allowed if not posted and not cancelled
+            if (Boolean.TRUE.equals(existing.getPosted())) {
+                return ServiceResponseDirector.errorBadRequest("Cannot edit: dispatch already POSTED.");
+            }
+            if (existing.getCancelledBy() != null) {
+                return ServiceResponseDirector.errorBadRequest("Cannot edit: dispatch CANCELLED.");
+            }
+
+            // if items provided -> replace lines
+            if (body.getItems() != null && !body.getItems().isEmpty()) {
+                // validate each item is active
+                Set<Long> itemIds = body.getItems().stream()
+                        .map(DispatchUpdateRequestDTO.DispatchItemPatch::getItemId)
+                        .collect(Collectors.toSet());
+
+                for (Long itId : itemIds) {
+                    if (itemRepo.isMissingOrInactive(itId.intValue())) {
+                        return ServiceResponseDirector.errorBadRequest(
+                                "Item not found or inactive: " + itId
+                        );
+                    }
+                }
+
+                // attributes
+                Map<Long, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(itemIds);
+
+                // we STILL need PDV_ID for each line. We do not currently persist warehouseId in header,
+                // which means we don't know which warehouse's VAT rule applies after the fact.
+                // TEMP approach: assume warehouseId=1 or some fixed known warehouse.
+                // You SHOULD persist warehouseId in SD_GLAVA in real life.
+                Integer pdvId = resolveVat(existing.getDocumentId(), 1L);
+                if (pdvId == null) {
+                    return ServiceResponseDirector.errorBadRequest(
+                            "No PDV_ID for documentId=" + existing.getDocumentId()
+                                    + " (updateDraftHeader). Warehouse missing in header."
+                    );
+                }
+
+                // build fresh lines
+                List<DocumentItemLineDTO> newLines = new ArrayList<>(body.getItems().size());
+                int ln = 1;
+                for (DispatchUpdateRequestDTO.DispatchItemPatch p : body.getItems()) {
+                    DocumentItemAttributesView a = attrsByItem.get(p.getItemId());
+                    if (a == null || a.getNameId() == null || a.getUnitOfMeasureId() == null) {
+                        return ServiceResponseDirector.errorBadRequest(
+                                "Item attributes missing (NAZIV_ID/JMJ_ID) for itemId=" + p.getItemId()
+                        );
+                    }
+
+                    newLines.add(
+                            DocumentItemLineDTO.builder()
+                                    .itemId(p.getItemId().intValue())
+                                    .quantity(BigDecimal.valueOf(p.getQuantity()))
+                                    .nameId(a.getNameId())
+                                    .unitOfMeasureId(a.getUnitOfMeasureId())
+                                    .valueAddedTaxId(pdvId)
+                                    .lineNumber(ln++)
+                                    .build()
+                    );
+                }
+
+                // replace lines in DB
+                lineRepo.deleteByHeader(existing.getId());
+                lineRepo.insert(existing.getId(), newLines);
+            }
+
+            // update draft header itself (partner, note)
+            DocumentHeaderEntity updatedHeader = headerRepo.updateDraftHeader(
+                    headerId,
+                    body.getPartnerId(),
+                    body.getOverrideNote()
+            );
+
+            if (updatedHeader == null) {
+                return ServiceResponseDirector.errorBadRequest(
+                        "Draft update failed (maybe already posted or cancelled)"
+                );
+            }
+
+            return ServiceResponseDirector.successOk(
+                    mapper.toResponse(updatedHeader),
+                    "Draft dispatch updated."
+            );
+
+        } catch (Exception e) {
+            tsr.setRollbackOnly();
+            return ServiceResponseDirector.errorInternal(
+                    "Failed to update dispatch note: " + e.getMessage()
+            );
+        }
+    }
+
+    // helpers
+
     private Map<String, Integer> resolveVatForRequests(List<DispatchRequestDTO> requests) throws Exception {
         Map<String, Integer> vatByKey = new HashMap<>();
         for (DispatchRequestDTO r : requests) {
@@ -213,29 +356,32 @@ public class DispatchBookingService {
     }
 
     private String validateReferences(DispatchRequestDTO r, int idx) throws Exception {
-        if (!slotRepo.existsForWarehouse(r.getDocumentId(), r.getWarehouseId())) {
+        if (!slotRepo.existsForWarehouse(r.getDocumentId().intValue(), r.getWarehouseId().intValue())) {
             return REQ_PREFIX + idx + "]: unknown (documentId, warehouseId)=(" +
                     r.getDocumentId() + "," + r.getWarehouseId() + ")";
         }
-        if (partnerRepo.isMissingOrInactive(r.getPartnerId())) {
+        if (partnerRepo.isMissingOrInactive(r.getPartnerId().intValue())) {
             return REQ_PREFIX + idx + "]: partner not found or inactive: " + r.getPartnerId();
         }
         for (DispatchRequestDTO.DispatchItemRequest it : r.getItems()) {
-            if (itemRepo.isMissingOrInactive(it.getItemId())) {
+            if (itemRepo.isMissingOrInactive(it.getItemId().intValue())) {
                 return REQ_PREFIX + idx + "]: item not found or inactive: " + it.getItemId();
             }
         }
         return null;
     }
 
-    private Integer resolveVat(Integer documentId, Integer warehouseId) throws Exception {
-        var opt = vatLookupRepo.valueAddedTaxIdForDocumentAndWarehouse(documentId, warehouseId);
+    private Integer resolveVat(Long documentId, Long warehouseId) throws Exception {
+        var opt = vatLookupRepo.valueAddedTaxIdForDocumentAndWarehouse(
+                documentId.intValue(),
+                warehouseId.intValue()
+        );
         return opt.orElse(null);
     }
 
     private static String validateItemAttrsPresent(
             DispatchRequestDTO req,
-            Map<Integer, DocumentItemAttributesView> attrsByItem,
+            Map<Long, DocumentItemAttributesView> attrsByItem,
             int idx
     ) {
         for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
@@ -249,7 +395,7 @@ public class DispatchBookingService {
 
     private static List<DocumentItemLineDTO> prepareLines(
             DispatchRequestDTO req,
-            Map<Integer, DocumentItemAttributesView> attrsByItem,
+            Map<Long, DocumentItemAttributesView> attrsByItem,
             Integer pdvId,
             int startingLineNo
     ) {
@@ -258,7 +404,7 @@ public class DispatchBookingService {
         for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
             DocumentItemAttributesView a = attrsByItem.get(it.getItemId());
             out.add(DocumentItemLineDTO.builder()
-                    .itemId(it.getItemId())
+                    .itemId(it.getItemId().intValue())
                     .quantity(BigDecimal.valueOf(it.getQuantity()))
                     .nameId(a.getNameId())
                     .unitOfMeasureId(a.getUnitOfMeasureId())

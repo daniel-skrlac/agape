@@ -12,7 +12,6 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.List;
 
-//SD_STAVKE
 @ApplicationScoped
 public class DocumentLineRepository {
 
@@ -24,35 +23,98 @@ public class DocumentLineRepository {
         this.dataSource = dataSource;
     }
 
-    public void insert(long headerId, List<DocumentItemLineDTO> lines) throws SQLException {
-        final String sql =
-                "INSERT INTO SD_STAVKE " +
-                        " (ID, SD_GLAVA_ID, ARTIKL_ID, KOLICINA, STAVKABR, NAZIV_ID, PDV_ID, JMJ_ID) " +
-                        " VALUES (SD_STAVKE_SEQ.NEXTVAL, ?, ?, ?, ?, ?, ?, ?)";
+    public void insert(Long headerId, List<DocumentItemLineDTO> lines) throws SQLException {
+        final String sql = """
+                INSERT INTO SD_STAVKE
+                  (ID,
+                   SD_GLAVA_ID,
+                   ARTIKL_ID,
+                   KOLICINA,
+                   STAVKABR,
+                   NAZIV_ID,
+                   PDV_ID,
+                   JMJ_ID)
+                VALUES
+                  (SD_STAVKE_SEQ.NEXTVAL,
+                   ?, ?, ?, ?, ?, ?, ?)
+                """;
 
-        try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, headerId);
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+
             for (DocumentItemLineDTO pl : lines) {
-                ps.setObject(2, pl.getItemId(), Types.INTEGER);
-                ps.setObject(3, pl.getQuantity(), Types.NUMERIC);
-                ps.setObject(4, pl.getLineNumber(), Types.INTEGER);
-                ps.setObject(5, pl.getNameId(), Types.INTEGER);
-                ps.setObject(6, pl.getUnitOfMeasureId(), Types.INTEGER);
-                ps.setObject(7, pl.getValueAddedTaxId(), Types.INTEGER);
+                ps.setLong(1, headerId);
+
+                if (pl.getItemId() != null) {
+                    ps.setObject(2, pl.getItemId(), Types.NUMERIC);
+                } else {
+                    ps.setNull(2, Types.NUMERIC);
+                }
+
+                if (pl.getQuantity() != null) {
+                    ps.setObject(3, pl.getQuantity(), Types.NUMERIC);
+                } else {
+                    ps.setNull(3, Types.NUMERIC);
+                }
+
+                if (pl.getLineNumber() != null) {
+                    ps.setObject(4, pl.getLineNumber(), Types.NUMERIC);
+                } else {
+                    ps.setNull(4, Types.NUMERIC);
+                }
+
+                if (pl.getNameId() != null) {
+                    ps.setObject(5, pl.getNameId(), Types.NUMERIC);
+                } else {
+                    ps.setNull(5, Types.NUMERIC);
+                }
+
+                if (pl.getValueAddedTaxId() != null) {
+                    ps.setObject(6, pl.getValueAddedTaxId(), Types.NUMERIC);
+                } else {
+                    ps.setNull(6, Types.NUMERIC);
+                }
+
+                if (pl.getUnitOfMeasureId() != null) {
+                    ps.setObject(7, pl.getUnitOfMeasureId(), Types.NUMERIC);
+                } else {
+                    ps.setNull(7, Types.NUMERIC);
+                }
+
                 ps.addBatch();
             }
+
             ps.executeBatch();
         }
     }
 
-    public int nextLineNumber(long headerId) throws SQLException {
-        final String sql = "SELECT NVL(MAX(STAVKABR), 0) + 1 FROM SD_STAVKE WHERE SD_GLAVA_ID = ?";
-        try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+    public int nextLineNumber(Long headerId) throws SQLException {
+        final String sql = """
+                SELECT NVL(MAX(STAVKABR), 0) + 1
+                  FROM SD_STAVKE
+                 WHERE SD_GLAVA_ID = ?
+                """;
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+
             ps.setLong(1, headerId);
+
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getInt(1);
             }
+        }
+    }
+
+    public void deleteByHeader(Long headerId) throws SQLException {
+        final String sql = "DELETE FROM SD_STAVKE WHERE SD_GLAVA_ID = ?";
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+
+            ps.setLong(1, headerId);
+            ps.executeUpdate();
         }
     }
 }
