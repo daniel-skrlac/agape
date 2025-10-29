@@ -30,9 +30,6 @@ public class DispatchRequestDTO {
     @NotNull
     private Long documentId;
 
-    @NotNull
-    private Long warehouseId; // SD_SIFREG.SKLADISTE_ID
-
     /**
      * Business date of the document (optional).
      * If omitted, SD_GLAVA_BIU trigger assigns/normalizes it.

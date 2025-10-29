@@ -21,7 +21,9 @@ public class DocumentVatLookupRepository {
         this.ds = ds;
     }
 
-    public Optional<Integer> valueAddedTaxIdForDocumentAndWarehouse(int documentId, int warehouseId) throws SQLException {
+    public Optional<Long> valueAddedTaxIdForDocumentAndWarehouse(Long documentId, Long warehouseId)
+            throws SQLException {
+
         final String sql = """
                 SELECT s.PDV_ID
                   FROM SD_SIFREG r
@@ -35,15 +37,20 @@ public class DocumentVatLookupRepository {
         try (Connection c = ds.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
 
-            ps.setInt(1, documentId);
-            ps.setInt(2, warehouseId);
+            ps.setLong(1, documentId);
+            ps.setLong(2, warehouseId);
 
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return Optional.of(rs.getInt("PDV_ID"));
-                } else {
+                if (!rs.next()) {
                     return Optional.empty();
                 }
+
+                long raw = rs.getLong("PDV_ID");
+                if (rs.wasNull()) {
+                    return Optional.empty();
+                }
+
+                return Optional.of(raw);
             }
         }
     }

@@ -1,5 +1,10 @@
 package hr.agape.dispatch.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,27 +18,37 @@ import java.util.List;
 @Builder
 public class DispatchUpdateRequestDTO {
 
-    // who is performing the update (required)
+    @NotNull
+    @Positive
     private Long actorUserId;
 
-    // 1) CANCEL A POSTED DOC
-    // if true -> we cancel this dispatch (storno)
     private boolean cancel;
 
-    // optional cancellation note, goes to SD_GLAVA.NAPOMENA
     private String cancelReason;
 
-    // 2) EDIT DRAFT
-    // If 'cancel' is false, we treat this as "edit draft"
-    // Allowed only if KNJIZENO = 0 and STORNIRAO is null.
-    // Editable fields:
     private Long partnerId;
-    private String overrideNote; // you can update NAPOMENA for draft if you want
-    private List<DispatchItemPatch> items; // full replace of lines
+
+    private String overrideNote;
+
+    @Valid
+    @Size(min = 1, message = "items must contain at least one line when provided")
+    private List<DispatchItemPatch> items;
 
     @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class DispatchItemPatch {
+
+        @NotNull
         private Long itemId;
-        private double quantity;
+
+        @NotNull
+        @DecimalMin(
+                value = "0.0",
+                inclusive = false,
+                message = "quantity must be > 0"
+        )
+        private Double quantity;
     }
 }

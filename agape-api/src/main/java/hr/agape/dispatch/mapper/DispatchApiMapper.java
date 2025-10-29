@@ -14,7 +14,6 @@ import java.util.List;
 @Mapper(componentModel = "cdi")
 public interface DispatchApiMapper {
 
-    // Incoming create request -> initial header skeleton
     @Mapping(target = "id", ignore = true)
     @Mapping(source = "documentId", target = "documentId")
     @Mapping(source = "documentDate", target = "documentDate")
@@ -30,7 +29,6 @@ public interface DispatchApiMapper {
     @Mapping(target = "cancelNote", ignore = true)
     DocumentHeaderEntity toHeader(DispatchRequestDTO req);
 
-    // Request item -> line entity shell
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "headerId", ignore = true)
     @Mapping(source = "itemId", target = "itemId")
@@ -43,27 +41,40 @@ public interface DispatchApiMapper {
 
     List<DocumentLineEntity> toLines(List<DispatchRequestDTO.DispatchItemRequest> list);
 
-    // For summary list
-    @Mapping(target = "status", qualifiedByName = "statusFromEntity")
-    @Mapping(target = "cancelled", source = "cancelledBy", qualifiedByName = "isCancelled")
+    @Mapping(
+            target = "status",
+            source = "entity",
+            qualifiedByName = "statusFromEntity"
+    )
+    @Mapping(
+            target = "cancelled",
+            source = "cancelledBy",
+            qualifiedByName = "isCancelled"
+    )
     DispatchSummaryResponseDTO toDto(DocumentHeaderEntity entity);
 
-    // For single create/update response
     @Mapping(source = "id", target = "documentHeaderId")
     @Mapping(source = "documentId", target = "documentId")
     @Mapping(source = "documentNumber", target = "documentBr")
     @Mapping(source = "documentDate", target = "documentDate")
     @Mapping(source = "partnerId", target = "partnerId")
-    @Mapping(source = "createdBy", target = "createdBy")
     @Mapping(source = "createdAt", target = "createdAt")
     @Mapping(source = "posted", target = "posted")
     @Mapping(source = "postedBy", target = "postedBy")
     @Mapping(source = "postedAt", target = "postedAt")
-    @Mapping(target = "cancelled", source = "cancelledBy", qualifiedByName = "isCancelled")
+    @Mapping(
+            target = "cancelled",
+            source = "cancelledBy",
+            qualifiedByName = "isCancelled"
+    )
     @Mapping(source = "cancelledBy", target = "cancelledBy")
     @Mapping(source = "cancelledAt", target = "cancelledAt")
     @Mapping(source = "cancelNote", target = "cancelNote")
-    @Mapping(target = "status", qualifiedByName = "statusFromEntity")
+    @Mapping(
+            target = "status",
+            source = "header",
+            qualifiedByName = "statusFromEntity"
+    )
     DispatchResponseDTO toResponse(DocumentHeaderEntity header);
 
     @Named("isCancelled")

@@ -22,10 +22,9 @@ import java.math.BigDecimal;
 @Data
 @AllArgsConstructor
 public class DocumentItemLineDTO {
-    Integer itemId;
-    BigDecimal quantity;
-    Integer nameId;
-    Integer unitOfMeasureId;
-    Integer valueAddedTaxId;
-    Integer lineNumber;
+    private Long itemId;              // ARTIKL_ID
+    private BigDecimal quantity;      // KOLICINA
+    private Long nameId;              // NAZIV_ID
+    private Long unitOfMeasureId;     // JMJ_ID
+    private Long valueAddedTaxId;     // PDV_ID
 }

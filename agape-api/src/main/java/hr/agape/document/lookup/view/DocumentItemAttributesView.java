@@ -18,6 +18,6 @@ import lombok.Data;
 @Builder
 @AllArgsConstructor
 public class DocumentItemAttributesView {
-    Integer nameId;
-    Integer unitOfMeasureId;
+    Long nameId;
+    Long unitOfMeasureId;
 }

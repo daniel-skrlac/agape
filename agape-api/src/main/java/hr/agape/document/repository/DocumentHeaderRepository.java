@@ -38,16 +38,6 @@ public class DocumentHeaderRepository {
         }
     }
 
-    public List<DocumentHeaderEntity> insertAll(List<DocumentHeaderEntity> headers, boolean postNow) throws SQLException {
-        List<DocumentHeaderEntity> out = new ArrayList<>(headers.size());
-        try (Connection c = dataSource.getConnection()) {
-            for (DocumentHeaderEntity h : headers) {
-                out.add(doInsertHeader(c, h, postNow));
-            }
-        }
-        return out;
-    }
-
     private DocumentHeaderEntity doInsertHeader(Connection c, DocumentHeaderEntity h, boolean postNow)
             throws SQLException {
 

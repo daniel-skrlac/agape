@@ -21,16 +21,19 @@ public class DocumentItemRepository {
         this.dataSource = dataSource;
     }
 
-    public boolean isMissingOrInactive(int itemId) throws SQLException {
-        String sql = """
-                    SELECT 1
-                      FROM SKL_ARTIKLIG
-                     WHERE ARTIKL_ID = ?
-                       AND NVL(AKTIVANARTIKL, 1) = 1
+    public boolean isMissingOrInactive(Long itemId) throws SQLException {
+        final String sql = """
+                SELECT 1
+                  FROM SKL_ARTIKLIG
+                 WHERE ARTIKL_ID = ?
+                   AND NVL(AKTIVANARTIKL, 1) = 1
                 """;
+
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, itemId);
+
+            ps.setLong(1, itemId);
+
             try (ResultSet rs = ps.executeQuery()) {
                 return !rs.next();
             }

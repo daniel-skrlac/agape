@@ -7,7 +7,6 @@ import jakarta.inject.Inject;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.List;
@@ -36,7 +35,7 @@ public class DocumentLineRepository {
                    JMJ_ID)
                 VALUES
                   (SD_STAVKE_SEQ.NEXTVAL,
-                   ?, ?, ?, ?, ?, ?, ?)
+                   ?, ?, ?, NULL, ?, ?, ?)
                 """;
 
         try (Connection c = dataSource.getConnection();
@@ -57,53 +56,28 @@ public class DocumentLineRepository {
                     ps.setNull(3, Types.NUMERIC);
                 }
 
-                if (pl.getLineNumber() != null) {
-                    ps.setObject(4, pl.getLineNumber(), Types.NUMERIC);
+                if (pl.getNameId() != null) {
+                    ps.setObject(4, pl.getNameId(), Types.NUMERIC);
                 } else {
                     ps.setNull(4, Types.NUMERIC);
                 }
 
-                if (pl.getNameId() != null) {
-                    ps.setObject(5, pl.getNameId(), Types.NUMERIC);
+                if (pl.getValueAddedTaxId() != null) {
+                    ps.setObject(5, pl.getValueAddedTaxId(), Types.NUMERIC);
                 } else {
                     ps.setNull(5, Types.NUMERIC);
                 }
 
-                if (pl.getValueAddedTaxId() != null) {
-                    ps.setObject(6, pl.getValueAddedTaxId(), Types.NUMERIC);
+                if (pl.getUnitOfMeasureId() != null) {
+                    ps.setObject(6, pl.getUnitOfMeasureId(), Types.NUMERIC);
                 } else {
                     ps.setNull(6, Types.NUMERIC);
-                }
-
-                if (pl.getUnitOfMeasureId() != null) {
-                    ps.setObject(7, pl.getUnitOfMeasureId(), Types.NUMERIC);
-                } else {
-                    ps.setNull(7, Types.NUMERIC);
                 }
 
                 ps.addBatch();
             }
 
             ps.executeBatch();
-        }
-    }
-
-    public int nextLineNumber(Long headerId) throws SQLException {
-        final String sql = """
-                SELECT NVL(MAX(STAVKABR), 0) + 1
-                  FROM SD_STAVKE
-                 WHERE SD_GLAVA_ID = ?
-                """;
-
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setLong(1, headerId);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getInt(1);
-            }
         }
     }
 

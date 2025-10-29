@@ -9,7 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-//SD_SIFREZ
+//SD_SIFREG
 @ApplicationScoped
 public class DocumentSlotRepository {
 
@@ -21,7 +21,7 @@ public class DocumentSlotRepository {
         this.dataSource = dataSource;
     }
 
-    public boolean existsForWarehouse(int documentId, int warehouseId) throws SQLException {
+    public boolean existsForWarehouse(Long documentId, Long warehouseId) throws SQLException {
         final String sql = """
                 SELECT 1
                   FROM SD_SIFREG
@@ -33,11 +33,34 @@ public class DocumentSlotRepository {
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
 
-            ps.setInt(1, documentId);
-            ps.setInt(2, warehouseId);
+            ps.setLong(1, documentId);
+            ps.setLong(2, warehouseId);
 
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
+            }
+        }
+    }
+
+    public Long warehouseForDocument(Long documentId) throws SQLException {
+        final String sql = """
+                SELECT SKLADISTE_ID
+                  FROM SD_SIFREG
+                 WHERE DOKUMENT_ID = ?
+                   AND ROWNUM = 1
+                """;
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+
+            ps.setLong(1, documentId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return null;
+                }
+                long whRaw = rs.getLong("SKLADISTE_ID");
+                return rs.wasNull() ? null : whRaw;
             }
         }
     }

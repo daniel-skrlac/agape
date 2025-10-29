@@ -46,7 +46,7 @@ public class DispatchNoteResource {
 
     @POST
     @Path("/bulk")
-    public Response bookBulkAtomic(@Valid List<DispatchRequestDTO> requests) {
+    public Response bookBulk(@Valid List<DispatchRequestDTO> requests) {
         return Responses.from(service.bookBulk(requests));
     }
 
