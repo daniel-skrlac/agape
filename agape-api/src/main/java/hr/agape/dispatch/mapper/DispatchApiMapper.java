@@ -70,11 +70,6 @@ public interface DispatchApiMapper {
     @Mapping(source = "cancelledBy", target = "cancelledBy")
     @Mapping(source = "cancelledAt", target = "cancelledAt")
     @Mapping(source = "cancelNote", target = "cancelNote")
-    @Mapping(
-            target = "status",
-            source = "header",
-            qualifiedByName = "statusFromEntity"
-    )
     DispatchResponseDTO toResponse(DocumentHeaderEntity header);
 
     @Named("isCancelled")

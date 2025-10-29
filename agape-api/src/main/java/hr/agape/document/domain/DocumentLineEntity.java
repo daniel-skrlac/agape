@@ -36,33 +36,33 @@ public class DocumentLineEntity {
      * Item/article being dispatched.
      * Column: SDC_STAVKE.ARTIKL_ID (FK → SKL_ARTIKLIG.ARTIKL_ID)
      */
-    private Integer itemId;
+    private Long itemId;
 
     /**
      * Normalized name/label of the item (often derived).
      * Column: SD_STAVKE.NAZIV_ID (FK → SKL_ANAZIVI.NAZIV_ID)
      * <p>Usually set by triggers based on the chosen {@link #itemId}.</p>
      */
-    private Integer nameId;
+    private Long nameId;
 
     /**
      * VAT code (derived from the item’s definition).
      * Column: SD_STAVKE.PDV_ID (FK → SIFREPDV.PDV_ID)
      */
-    private Integer vatId;
+    private Long vatId;
 
     /**
      * Unit of measure (derived from the item’s definition).
      * Column: SD_STAVKE.JMJ_ID (FK → SIFRE_JMJ.JMJ_ID)
      */
-    private Integer uomId;
+    private Long uomId;
 
     /**
      * Line ordinal on the document (1, 2, 3…).
      * Column: SD_STAVKE.STAVKABR
      * <p>Assigned by trigger if not provided.</p>
      */
-    private Integer lineNumber;
+    private Long lineNumber;
 
     /**
      * Quantity to dispatch.
