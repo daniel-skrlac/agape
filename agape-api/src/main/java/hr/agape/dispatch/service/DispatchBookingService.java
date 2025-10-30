@@ -18,7 +18,7 @@ import hr.agape.document.repository.DocumentHeaderRepository;
 import hr.agape.document.repository.DocumentItemRepository;
 import hr.agape.document.repository.DocumentLineRepository;
 import hr.agape.document.repository.DocumentSlotRepository;
-import hr.agape.document.warehouse.repository.PartnerRepository;
+import hr.agape.partner.repository.PartnerRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.TransactionSynchronizationRegistry;

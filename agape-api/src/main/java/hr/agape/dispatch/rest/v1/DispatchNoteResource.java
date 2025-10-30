@@ -53,9 +53,7 @@ public class DispatchNoteResource {
     @PUT
     @Path("/{id}")
     public Response updateOne(
-            @PathParam("id") Long headerId,
-            @Valid DispatchUpdateRequestDTO body
-    ) {
+            @PathParam("id") Long headerId, @Valid DispatchUpdateRequestDTO body) {
         return Responses.from(service.updateDispatch(headerId, body));
     }
 }

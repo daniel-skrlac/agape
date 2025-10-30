@@ -1,22 +1,16 @@
 package hr.agape.dispatch.dto;
 
+import hr.agape.common.dto.BaseSearchFilter;
 import jakarta.validation.constraints.NotNull;
-import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.QueryParam;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.time.LocalDate;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
-public class DispatchSearchFilter {
-
-    @QueryParam("page")
-    @DefaultValue("0")
-    private int page;
-
-    @QueryParam("size")
-    @DefaultValue("10")
-    private int size;
+public class DispatchSearchFilter extends BaseSearchFilter {
 
     @QueryParam("createdBy")
     private Long createdBy;          // SD_GLAVA.IZRADIO
