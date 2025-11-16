@@ -1,9 +1,9 @@
 package hr.agape.dispatch.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,8 +18,10 @@ import java.util.List;
 @Builder
 public class DispatchUpdateRequestDTO {
 
-    @NotNull
-    @Positive
+    /**
+     * Filled from JWT on the backend, FRONTEND MUST NOT SEND IT.
+     */
+    @JsonIgnore
     private Long actorUserId;
 
     private boolean cancel;

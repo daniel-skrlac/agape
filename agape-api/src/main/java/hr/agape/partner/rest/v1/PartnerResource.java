@@ -1,10 +1,13 @@
 package hr.agape.partner.rest.v1;
 
+import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
 import hr.agape.partner.dto.PartnerCreateRequest;
 import hr.agape.partner.dto.PartnerSearchFilter;
 import hr.agape.partner.dto.PartnerUpdateRequest;
 import hr.agape.partner.service.PartnerService;
+import io.quarkus.security.Authenticated;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -23,6 +26,7 @@ import jakarta.ws.rs.core.Response;
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 @RequestScoped
+@RolesAllowed(Roles.USER)
 public class PartnerResource {
 
     private final PartnerService service;

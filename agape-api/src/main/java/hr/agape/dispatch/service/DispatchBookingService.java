@@ -19,6 +19,7 @@ import hr.agape.document.repository.DocumentItemRepository;
 import hr.agape.document.repository.DocumentLineRepository;
 import hr.agape.document.repository.DocumentSlotRepository;
 import hr.agape.partner.repository.PartnerRepository;
+import hr.agape.user.util.AuthUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.TransactionSynchronizationRegistry;
@@ -47,6 +48,7 @@ public class DispatchBookingService {
     private final DocumentItemRepository itemRepo;
     private final TransactionSynchronizationRegistry tsr;
     private final DocumentItemLookupRepository itemAttrsRepo;
+    private final AuthUtil authUtil;
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
@@ -59,7 +61,7 @@ public class DispatchBookingService {
             PartnerRepository partnerRepo,
             DocumentItemRepository itemRepo,
             TransactionSynchronizationRegistry tsr,
-            DocumentItemLookupRepository itemAttrsRepo
+            DocumentItemLookupRepository itemAttrsRepo, AuthUtil authUtil
     ) {
         this.slotRepo = slotRepo;
         this.vatLookupRepo = vatLookupRepo;
@@ -70,11 +72,13 @@ public class DispatchBookingService {
         this.itemRepo = itemRepo;
         this.tsr = tsr;
         this.itemAttrsRepo = itemAttrsRepo;
+        this.authUtil = authUtil;
     }
 
     @Transactional
     public ServiceResponse<DispatchResponseDTO> bookOne(DispatchRequestDTO req) {
         try {
+            req.setCreatedBy(authUtil.requireUserId());
             Long whId = slotRepo.warehouseForDocument(req.getDocumentId());
             String err = validateReferences(req, whId, 0);
             if (err != null) {
@@ -127,6 +131,7 @@ public class DispatchBookingService {
     @Transactional
     public ServiceResponse<List<DispatchResponseDTO>> bookBulk(List<DispatchRequestDTO> requests) {
         try {
+            requests.forEach(r -> r.setCreatedBy(authUtil.requireUserId()));
             List<Long> derivedWhIds = new ArrayList<>(requests.size());
             for (int i = 0; i < requests.size(); i++) {
                 DispatchRequestDTO r = requests.get(i);
@@ -228,6 +233,7 @@ public class DispatchBookingService {
     @Transactional
     public ServiceResponse<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
         try {
+            body.setActorUserId(authUtil.requireUserId());
             DocumentHeaderEntity existing = headerRepo.findHeader(headerId);
             if (existing == null) {
                 return ServiceResponseDirector.errorNotFound("Dispatch " + headerId + " not found.");

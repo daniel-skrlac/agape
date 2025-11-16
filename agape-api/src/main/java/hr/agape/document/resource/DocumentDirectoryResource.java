@@ -1,7 +1,10 @@
 package hr.agape.document.resource;
 
+import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
 import hr.agape.document.service.DocumentDirectoryService;
+import io.quarkus.security.Authenticated;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DefaultValue;
@@ -16,6 +19,7 @@ import jakarta.ws.rs.core.Response;
 @Path("/api/v1/document-directory")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@RolesAllowed(Roles.USER)
 public class DocumentDirectoryResource {
 
     private final DocumentDirectoryService service;

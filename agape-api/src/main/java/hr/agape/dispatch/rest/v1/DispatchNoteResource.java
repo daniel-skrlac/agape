@@ -1,10 +1,13 @@
 package hr.agape.dispatch.rest.v1;
 
+import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.dispatch.dto.DispatchUpdateRequestDTO;
 import hr.agape.dispatch.service.DispatchBookingService;
+import io.quarkus.security.Authenticated;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -25,6 +28,7 @@ import java.util.List;
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 @RequestScoped
+@RolesAllowed(Roles.USER)
 public class DispatchNoteResource {
 
     private final DispatchBookingService service;

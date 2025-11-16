@@ -1,8 +1,8 @@
 package hr.agape.dispatch.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -55,9 +55,9 @@ public class DispatchRequestDTO {
      *
      * <p>Maps to {@code SD_GLAVA.IZRADIO}. This is required by the schema.
      * Typical value: the application user ID or employee ID performing the booking.</p>
+     * Filled from JWT on the backend, FRONTEND MUST NOT SEND IT.
      */
-    @NotNull
-    @Positive
+    @JsonIgnore
     private Long createdBy;
 
     // if true (or omitted -> default false), we just create a draft.
