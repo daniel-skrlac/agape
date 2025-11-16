@@ -9,6 +9,4 @@ public class AuthResponseDTO {
     private String username;
     private String name;
     private String token;
-    private String tokenType;
-    private long expiresIn;
 }

@@ -6,7 +6,6 @@ import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.dispatch.dto.DispatchUpdateRequestDTO;
 import hr.agape.dispatch.service.DispatchBookingService;
-import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;

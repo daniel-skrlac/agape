@@ -123,6 +123,6 @@ public class AuthService {
                 .claim("roles", roleNames)
                 .sign();
 
-        return authMapper.toAuthResponseDto(user, token, expirationSeconds);
+        return authMapper.toAuthResponseDto(user, token);
     }
 }

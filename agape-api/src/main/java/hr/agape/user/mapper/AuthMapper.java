@@ -13,9 +13,7 @@ public interface AuthMapper {
     @Mapping(target = "username", source = "user.username")
     @Mapping(target = "name", source = "user.name")
     @Mapping(target = "token", source = "token")
-    @Mapping(target = "tokenType", constant = "Bearer")
-    @Mapping(target = "expiresIn", source = "expiresIn")
-    AuthResponseDTO toAuthResponseDto(UserEntity user, String token, long expiresIn);
+    AuthResponseDTO toAuthResponseDto(UserEntity user, String token);
 
     @Mapping(target = "userId", source = "id")
     @Mapping(target = "username", source = "username")
