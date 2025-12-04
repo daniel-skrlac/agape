@@ -10,6 +10,7 @@ import hr.agape.partner.dto.PartnerSearchFilter;
 import hr.agape.partner.dto.PartnerUpdateRequest;
 import hr.agape.partner.mapper.PartnerApiMapper;
 import hr.agape.partner.repository.PartnerRepository;
+import hr.agape.user.util.AuthUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.TransactionSynchronizationRegistry;
@@ -23,19 +24,22 @@ public class PartnerService {
 
     private final PartnerRepository repo;
     private final PartnerApiMapper mapper;
+    private final AuthUtil authUtil;
     private final TransactionSynchronizationRegistry tsr;
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public PartnerService(PartnerRepository repo, PartnerApiMapper mapper, TransactionSynchronizationRegistry tsr) {
+    public PartnerService(PartnerRepository repo, PartnerApiMapper mapper, AuthUtil authUtil, TransactionSynchronizationRegistry tsr) {
         this.repo = repo;
         this.mapper = mapper;
+        this.authUtil = authUtil;
         this.tsr = tsr;
     }
 
     @Transactional
     public ServiceResponse<PartnerResponseDTO> create(PartnerCreateRequest req) {
         try {
+            req.setTenantId(authUtil.requireUserId());
             PartnerEntity in = mapper.toEntity(req);
             if (in.getActive() == null) in.setActive(Boolean.TRUE);
 

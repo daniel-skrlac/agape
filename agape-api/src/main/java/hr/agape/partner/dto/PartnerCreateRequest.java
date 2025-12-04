@@ -5,7 +5,6 @@ import lombok.Data;
 
 @Data
 public class PartnerCreateRequest {
-    @NotNull
     private Long tenantId;        // KORISNIK_ID
 
     @NotNull
