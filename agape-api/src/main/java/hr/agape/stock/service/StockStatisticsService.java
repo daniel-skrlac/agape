@@ -24,6 +24,7 @@ public class StockStatisticsService {
     private final StockTotalsMapper totalsMapper;
 
     @Inject
+    @SuppressWarnings("CdiInjectionPointsInspection")
     public StockStatisticsService(
             StockStatisticsRepository repo,
             StockItemMapper itemMapper,
@@ -35,19 +36,23 @@ public class StockStatisticsService {
     }
 
     @Transactional
-    public ServiceResponseDTO<StockStatisticsResponseDTO> getStatistics() {
+    public ServiceResponseDTO<StockStatisticsResponseDTO> getStatistics(Long warehouseId) {
         try {
-            StockStatisticsTotalsDTO totals = repo.loadTotals();
+            if (warehouseId == null) {
+                return ServiceResponseDirector.errorBadRequest("warehouseId is required");
+            }
+
+            StockStatisticsTotalsDTO totals = repo.loadTotals(warehouseId);
             StockStatisticsTotalsDTO totalsDto = totalsMapper.toDto(totals);
 
             List<StockItemSummaryDTO> missing =
-                    repo.findMissing(HOME_LIMIT).stream().map(itemMapper::toDto).toList();
+                    repo.findMissing(warehouseId, HOME_LIMIT).stream().map(itemMapper::toDto).toList();
 
             List<StockItemSummaryDTO> needsFill =
-                    repo.findNeedsFill(HOME_LIMIT).stream().map(itemMapper::toDto).toList();
+                    repo.findNeedsFill(warehouseId, HOME_LIMIT).stream().map(itemMapper::toDto).toList();
 
             List<StockItemSummaryDTO> most =
-                    repo.findMostInStock(HOME_LIMIT).stream().map(itemMapper::toDto).toList();
+                    repo.findMostInStock(warehouseId, HOME_LIMIT).stream().map(itemMapper::toDto).toList();
 
             StockStatisticsResponseDTO dto = StockStatisticsResponseDTO.builder()
                     .totals(totalsDto)
@@ -57,11 +62,8 @@ public class StockStatisticsService {
                     .build();
 
             return ServiceResponseDirector.successOk(dto, "OK");
-
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal(
-                    "Failed to load stock statistics: " + e.getMessage()
-            );
+            return ServiceResponseDirector.errorInternal("Failed to load stock statistics: " + e.getMessage());
         }
     }
 }

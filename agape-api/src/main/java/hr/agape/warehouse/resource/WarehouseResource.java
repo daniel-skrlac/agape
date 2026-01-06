@@ -1,8 +1,8 @@
-package hr.agape.stock.resource;
+package hr.agape.warehouse.resource;
 
 import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
-import hr.agape.stock.service.StockStatisticsService;
+import hr.agape.warehouse.service.WarehouseService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
@@ -10,27 +10,25 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
-@Path("/api/v1/stock-statistics")
+@Path("/api/v1/warehouses")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 @RequestScoped
 @RolesAllowed(Roles.USER)
-public class StockStatisticsResource {
+public class WarehouseResource {
 
-    private final StockStatisticsService service;
+    private final WarehouseService service;
 
     @Inject
-    public StockStatisticsResource(StockStatisticsService service) {
+    public WarehouseResource(WarehouseService service) {
         this.service = service;
     }
 
     @GET
-    public Response getStatistics(@QueryParam("warehouseId") Long warehouseId) {
-        return Responses.from(service.getStatistics(warehouseId));
+    public Response getWarehouses() {
+        return Responses.from(service.getWarehouses());
     }
-
 }
