@@ -85,16 +85,16 @@ public class AuthService {
         try {
             UserEntity user = userRepo.findByUsername(req.getUsername());
             if (user == null) {
-                return ServiceResponseDirector.errorBadRequest("Nesipravni podaci.");
+                return ServiceResponseDirector.errorBadRequest("Invalid credentials.");
             }
 
             if (!BcryptUtil.matches(req.getPassword(), user.getPasswordHash())) {
-                return ServiceResponseDirector.errorBadRequest("Nesipravni podaci.");
+                return ServiceResponseDirector.errorBadRequest("Invalid credentials.");
             }
 
             AuthResponseDTO dto = buildAuthResponse(user);
 
-            return ServiceResponseDirector.successOk(dto, "Prijava uspješna.");
+            return ServiceResponseDirector.successOk(dto, "Login successful.");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal(
                     "Failed to login: " + e.getMessage()
