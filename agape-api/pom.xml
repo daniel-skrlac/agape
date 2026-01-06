@@ -195,6 +195,39 @@
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
+
+            <!-- TypeScript generator -->
+            <plugin>
+                <groupId>cz.habarta.typescript-generator</groupId>
+                <artifactId>typescript-generator-maven-plugin</artifactId>
+                <version>3.2.1263</version>
+                <executions>
+                    <execution>
+                        <id>generate-ts</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <jsonLibrary>jackson2</jsonLibrary>
+
+                            <optionalProperties>useSpecifiedAnnotations</optionalProperties>
+                            <optionalAnnotations>
+                                <optionalAnnotation>jakarta.annotation.Nullable</optionalAnnotation>
+                            </optionalAnnotations>
+                            <optionalPropertiesDeclaration>questionMark</optionalPropertiesDeclaration>
+
+                            <outputKind>module</outputKind>
+
+                            <classPatterns>
+                                <param>**.*DTO</param>
+                            </classPatterns>
+
+                            <outputFile>${project.basedir}/../agape-mobile/app/models/generated.d.ts</outputFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

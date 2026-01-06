@@ -11,7 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class PagedResult<T> {
+public class PagedResultDTO<T> {
     private List<T> items;
     private int page;
     private int size;

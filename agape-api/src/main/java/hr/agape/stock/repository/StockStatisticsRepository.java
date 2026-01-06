@@ -22,10 +22,6 @@ public class StockStatisticsRepository {
         this.dataSource = dataSource;
     }
 
-    // -------------------------------------------------------------------------
-    //   LIST QUERIES
-    // -------------------------------------------------------------------------
-
     public List<StockItemStatus> findMissing(int limit) throws SQLException {
         StringBuilder inner = baseSelect();
         inner.append(" AND (a.ZALIHATRENUTNA IS NULL OR a.ZALIHATRENUTNA <= 0) ");
@@ -76,10 +72,6 @@ public class StockStatisticsRepository {
             return mapMany(ps.executeQuery());
         }
     }
-
-    // -------------------------------------------------------------------------
-    //   TOTALS
-    // -------------------------------------------------------------------------
 
     public StockStatisticsTotalsDTO loadTotals() throws SQLException {
         try (Connection c = dataSource.getConnection()) {
@@ -138,10 +130,6 @@ public class StockStatisticsRepository {
                     .build();
         }
     }
-
-    // -------------------------------------------------------------------------
-    // SQL helpers
-    // -------------------------------------------------------------------------
 
     private static Long queryLong(Connection c, String sql) throws SQLException {
         try (PreparedStatement ps = c.prepareStatement(sql);

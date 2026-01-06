@@ -1,7 +1,7 @@
 package hr.agape.partner.service;
 
-import hr.agape.common.dto.PagedResult;
-import hr.agape.common.response.ServiceResponse;
+import hr.agape.common.dto.PagedResultDTO;
+import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.partner.domain.PartnerEntity;
 import hr.agape.partner.dto.PartnerCreateRequest;
@@ -37,7 +37,7 @@ public class PartnerService {
     }
 
     @Transactional
-    public ServiceResponse<PartnerResponseDTO> create(PartnerCreateRequest req) {
+    public ServiceResponseDTO<PartnerResponseDTO> create(PartnerCreateRequest req) {
         try {
             req.setTenantId(authUtil.requireUserId());
             PartnerEntity in = mapper.toEntity(req);
@@ -53,7 +53,7 @@ public class PartnerService {
     }
 
     @Transactional
-    public ServiceResponse<PartnerResponseDTO> update(Long id, PartnerUpdateRequest req) {
+    public ServiceResponseDTO<PartnerResponseDTO> update(Long id, PartnerUpdateRequest req) {
         try {
             PartnerEntity existing = repo.findById(id);
             if (existing == null) {
@@ -76,7 +76,7 @@ public class PartnerService {
     }
 
     @Transactional
-    public ServiceResponse<PartnerResponseDTO> getOne(Long id) {
+    public ServiceResponseDTO<PartnerResponseDTO> getOne(Long id) {
         try {
             PartnerEntity e = repo.findById(id);
             if (e == null) {
@@ -89,7 +89,7 @@ public class PartnerService {
     }
 
     @Transactional
-    public ServiceResponse<PagedResult<PartnerResponseDTO>> search(PartnerSearchFilter filter) {
+    public ServiceResponseDTO<PagedResultDTO<PartnerResponseDTO>> search(PartnerSearchFilter filter) {
         try {
             long total = repo.countFiltered(filter);
             List<PartnerEntity> items = repo.pageFiltered(filter);
@@ -98,7 +98,7 @@ public class PartnerService {
                     .map(mapper::toResponse)
                     .collect(Collectors.toList());
 
-            PagedResult<PartnerResponseDTO> result = PagedResult.<PartnerResponseDTO>builder()
+            PagedResultDTO<PartnerResponseDTO> result = PagedResultDTO.<PartnerResponseDTO>builder()
                     .items(dtoItems)
                     .page(filter.getPage())
                     .size(filter.getSize())

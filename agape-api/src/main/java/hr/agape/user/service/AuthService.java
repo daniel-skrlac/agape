@@ -1,6 +1,6 @@
 package hr.agape.user.service;
 
-import hr.agape.common.response.ServiceResponse;
+import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.user.domain.RoleEntity;
 import hr.agape.user.domain.UserEntity;
@@ -49,7 +49,7 @@ public class AuthService {
     }
 
     @Transactional
-    public ServiceResponse<RegisterResponseDTO> register(RegisterRequestDTO req) {
+    public ServiceResponseDTO<RegisterResponseDTO> register(RegisterRequestDTO req) {
         try {
             if (userRepo.existsByUsername(req.getUsername())) {
                 return ServiceResponseDirector.errorBadRequest("Username already taken.");
@@ -81,20 +81,20 @@ public class AuthService {
     }
 
     @Transactional
-    public ServiceResponse<AuthResponseDTO> login(LoginRequestDTO req) {
+    public ServiceResponseDTO<AuthResponseDTO> login(LoginRequestDTO req) {
         try {
             UserEntity user = userRepo.findByUsername(req.getUsername());
             if (user == null) {
-                return ServiceResponseDirector.errorBadRequest("Invalid credentials.");
+                return ServiceResponseDirector.errorBadRequest("Nesipravni podaci.");
             }
 
             if (!BcryptUtil.matches(req.getPassword(), user.getPasswordHash())) {
-                return ServiceResponseDirector.errorBadRequest("Invalid credentials.");
+                return ServiceResponseDirector.errorBadRequest("Nesipravni podaci.");
             }
 
             AuthResponseDTO dto = buildAuthResponse(user);
 
-            return ServiceResponseDirector.successOk(dto, "Login successful.");
+            return ServiceResponseDirector.successOk(dto, "Prijava uspješna.");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal(
                     "Failed to login: " + e.getMessage()

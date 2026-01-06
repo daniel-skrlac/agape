@@ -1,7 +1,7 @@
 package hr.agape.common.response;
 
 public class ServiceResponseBuilder<T> {
-    private final ServiceResponse<T> response = new ServiceResponse<>();
+    private final ServiceResponseDTO<T> response = new ServiceResponseDTO<>();
 
     public ServiceResponseBuilder<T> success(boolean success) {
         response.setSuccess(success);
@@ -23,7 +23,7 @@ public class ServiceResponseBuilder<T> {
         return this;
     }
 
-    public ServiceResponse<T> build() {
+    public ServiceResponseDTO<T> build() {
         return response;
     }
 }

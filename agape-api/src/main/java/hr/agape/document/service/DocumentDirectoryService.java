@@ -1,7 +1,7 @@
 package hr.agape.document.service;
 
-import hr.agape.common.dto.PagedResult;
-import hr.agape.common.response.ServiceResponse;
+import hr.agape.common.dto.PagedResultDTO;
+import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.document.dto.DocumentDescriptorResponseDTO;
 import hr.agape.document.lookup.view.DocumentSlotTypeView;
@@ -40,7 +40,7 @@ public class DocumentDirectoryService {
     }
 
     @Transactional
-    public ServiceResponse<DocumentDescriptorResponseDTO> getDocumentDescriptor(int documentId) {
+    public ServiceResponseDTO<DocumentDescriptorResponseDTO> getDocumentDescriptor(int documentId) {
         try {
             return docTypeRepo.findDocumentSlot(documentId)
                     .map(slotView ->
@@ -63,7 +63,7 @@ public class DocumentDirectoryService {
     }
 
     @Transactional
-    public ServiceResponse<PagedResult<DocumentDescriptorResponseDTO>> pageDocumentDescriptors(int page, int size) {
+    public ServiceResponseDTO<PagedResultDTO<DocumentDescriptorResponseDTO>> pageDocumentDescriptors(int page, int size) {
         try {
             int p = Math.max(0, page);
             int s = Math.max(1, size);
@@ -77,8 +77,8 @@ public class DocumentDirectoryService {
                     .map(mapper::toResponseDto)
                     .collect(Collectors.toList());
 
-            PagedResult<DocumentDescriptorResponseDTO> pageResult =
-                    PagedResult.<DocumentDescriptorResponseDTO>builder()
+            PagedResultDTO<DocumentDescriptorResponseDTO> pageResult =
+                    PagedResultDTO.<DocumentDescriptorResponseDTO>builder()
                             .items(dtoList)
                             .page(p)
                             .size(s)
@@ -95,7 +95,7 @@ public class DocumentDirectoryService {
     }
 
     @Transactional
-    public ServiceResponse<PagedResult<WarehouseDTO>> pageWarehousesForDocument(int documentId, int page, int size) {
+    public ServiceResponseDTO<PagedResultDTO<WarehouseDTO>> pageWarehousesForDocument(int documentId, int page, int size) {
         try {
             int p = Math.max(0, page);
             int s = Math.max(1, size);
@@ -110,8 +110,8 @@ public class DocumentDirectoryService {
 
             List<WarehouseDTO> items = warehouseRepo.pageWarehousesForDocument(documentId, offset, s);
 
-            PagedResult<WarehouseDTO> result =
-                    PagedResult.<WarehouseDTO>builder()
+            PagedResultDTO<WarehouseDTO> result =
+                    PagedResultDTO.<WarehouseDTO>builder()
                             .items(items)
                             .page(p)
                             .size(s)

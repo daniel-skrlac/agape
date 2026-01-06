@@ -1,6 +1,6 @@
 package hr.agape.stock.service;
 
-import hr.agape.common.response.ServiceResponse;
+import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.stock.dto.StockItemSummaryDTO;
 import hr.agape.stock.dto.StockStatisticsResponseDTO;
@@ -35,7 +35,7 @@ public class StockStatisticsService {
     }
 
     @Transactional
-    public ServiceResponse<StockStatisticsResponseDTO> getStatistics() {
+    public ServiceResponseDTO<StockStatisticsResponseDTO> getStatistics() {
         try {
             StockStatisticsTotalsDTO totals = repo.loadTotals();
             StockStatisticsTotalsDTO totalsDto = totalsMapper.toDto(totals);

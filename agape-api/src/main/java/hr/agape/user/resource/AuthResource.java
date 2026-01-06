@@ -1,6 +1,6 @@
 package hr.agape.user.resource;
 
-import hr.agape.common.response.ServiceResponse;
+import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.user.dto.AuthResponseDTO;
 import hr.agape.user.dto.LoginRequestDTO;
 import hr.agape.user.dto.RegisterRequestDTO;
@@ -30,13 +30,13 @@ public class AuthResource {
 
     @POST
     @Path("/register")
-    public ServiceResponse<RegisterResponseDTO> register(@Valid RegisterRequestDTO request) {
+    public ServiceResponseDTO<RegisterResponseDTO> register(@Valid RegisterRequestDTO request) {
         return authService.register(request);
     }
 
     @POST
     @Path("/login")
-    public ServiceResponse<AuthResponseDTO> login(@Valid LoginRequestDTO request) {
+    public ServiceResponseDTO<AuthResponseDTO> login(@Valid LoginRequestDTO request) {
         return authService.login(request);
     }
 }

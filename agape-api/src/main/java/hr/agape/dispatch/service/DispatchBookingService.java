@@ -1,7 +1,7 @@
 package hr.agape.dispatch.service;
 
-import hr.agape.common.dto.PagedResult;
-import hr.agape.common.response.ServiceResponse;
+import hr.agape.common.dto.PagedResultDTO;
+import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.dto.DispatchResponseDTO;
@@ -76,7 +76,7 @@ public class DispatchBookingService {
     }
 
     @Transactional
-    public ServiceResponse<DispatchResponseDTO> bookOne(DispatchRequestDTO req) {
+    public ServiceResponseDTO<DispatchResponseDTO> bookOne(DispatchRequestDTO req) {
         try {
             req.setCreatedBy(authUtil.requireUserId());
             Long whId = slotRepo.warehouseForDocument(req.getDocumentId());
@@ -129,7 +129,7 @@ public class DispatchBookingService {
     }
 
     @Transactional
-    public ServiceResponse<List<DispatchResponseDTO>> bookBulk(List<DispatchRequestDTO> requests) {
+    public ServiceResponseDTO<List<DispatchResponseDTO>> bookBulk(List<DispatchRequestDTO> requests) {
         try {
             requests.forEach(r -> r.setCreatedBy(authUtil.requireUserId()));
             List<Long> derivedWhIds = new ArrayList<>(requests.size());
@@ -205,7 +205,7 @@ public class DispatchBookingService {
     }
 
     @Transactional
-    public ServiceResponse<PagedResult<DispatchSummaryResponseDTO>> searchDispatches(DispatchSearchFilter filter) {
+    public ServiceResponseDTO<PagedResultDTO<DispatchSummaryResponseDTO>> searchDispatches(DispatchSearchFilter filter) {
         try {
             long total = headerRepo.countFiltered(filter);
             List<DocumentHeaderEntity> headers = headerRepo.pageFiltered(filter);
@@ -214,7 +214,7 @@ public class DispatchBookingService {
                     .map(mapper::toDto)
                     .collect(Collectors.toList());
 
-            PagedResult<DispatchSummaryResponseDTO> result = PagedResult.<DispatchSummaryResponseDTO>builder()
+            PagedResultDTO<DispatchSummaryResponseDTO> result = PagedResultDTO.<DispatchSummaryResponseDTO>builder()
                     .items(dtoItems)
                     .page(filter.getPage())
                     .size(filter.getSize())
@@ -231,7 +231,7 @@ public class DispatchBookingService {
     }
 
     @Transactional
-    public ServiceResponse<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
+    public ServiceResponseDTO<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
         try {
             body.setActorUserId(authUtil.requireUserId());
             DocumentHeaderEntity existing = headerRepo.findHeader(headerId);

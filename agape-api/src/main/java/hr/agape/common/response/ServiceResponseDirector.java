@@ -6,7 +6,7 @@ public class ServiceResponseDirector {
 
     private ServiceResponseDirector(){}
 
-    public static <T> ServiceResponse<T> successOk(T data, String message) {
+    public static <T> ServiceResponseDTO<T> successOk(T data, String message) {
         return new ServiceResponseBuilder<T>()
                 .success(true)
                 .statusCode(Response.Status.OK.getStatusCode())
@@ -15,7 +15,7 @@ public class ServiceResponseDirector {
                 .build();
     }
 
-    public static <T> ServiceResponse<T> successCreated(T data, String message) {
+    public static <T> ServiceResponseDTO<T> successCreated(T data, String message) {
         return new ServiceResponseBuilder<T>()
                 .success(true)
                 .statusCode(Response.Status.CREATED.getStatusCode())
@@ -24,7 +24,7 @@ public class ServiceResponseDirector {
                 .build();
     }
 
-    public static <T> ServiceResponse<T> errorBadRequest(String message) {
+    public static <T> ServiceResponseDTO<T> errorBadRequest(String message) {
         return new ServiceResponseBuilder<T>()
                 .success(false)
                 .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
@@ -32,7 +32,7 @@ public class ServiceResponseDirector {
                 .build();
     }
 
-    public static <T> ServiceResponse<T> errorNotFound(String message) {
+    public static <T> ServiceResponseDTO<T> errorNotFound(String message) {
         return new ServiceResponseBuilder<T>()
                 .success(false)
                 .statusCode(Response.Status.NOT_FOUND.getStatusCode())
@@ -40,7 +40,7 @@ public class ServiceResponseDirector {
                 .build();
     }
 
-    public static <T> ServiceResponse<T> errorForbidden(String message) {
+    public static <T> ServiceResponseDTO<T> errorForbidden(String message) {
         return new ServiceResponseBuilder<T>()
                 .success(false)
                 .statusCode(Response.Status.FORBIDDEN.getStatusCode())
@@ -48,7 +48,7 @@ public class ServiceResponseDirector {
                 .build();
     }
 
-    public static <T> ServiceResponse<T> errorInternal(String message) {
+    public static <T> ServiceResponseDTO<T> errorInternal(String message) {
         return new ServiceResponseBuilder<T>()
                 .success(false)
                 .statusCode(Response.Status.INTERNAL_SERVER_ERROR.getStatusCode())
@@ -56,7 +56,7 @@ public class ServiceResponseDirector {
                 .build();
     }
 
-    public static <T> ServiceResponse<T> errorConflict(String message) {
+    public static <T> ServiceResponseDTO<T> errorConflict(String message) {
         return new ServiceResponseBuilder<T>()
                 .success(false)
                 .statusCode(Response.Status.CONFLICT.getStatusCode())
@@ -64,7 +64,7 @@ public class ServiceResponseDirector {
                 .build();
     }
 
-    public static <T> ServiceResponse<T> errorUnauthorized(String message) {
+    public static <T> ServiceResponseDTO<T> errorUnauthorized(String message) {
         return new ServiceResponseBuilder<T>()
                 .success(false)
                 .statusCode(Response.Status.UNAUTHORIZED.getStatusCode())
