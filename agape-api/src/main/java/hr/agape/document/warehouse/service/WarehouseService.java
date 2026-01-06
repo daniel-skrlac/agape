@@ -1,8 +1,8 @@
-package hr.agape.warehouse.service;
+package hr.agape.document.warehouse.service;
 
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
-import hr.agape.warehouse.repository.WarehouseRepository;
+import hr.agape.document.warehouse.repository.WarehouseRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;

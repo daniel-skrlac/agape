@@ -1,8 +1,8 @@
-package hr.agape.warehouse.resource;
+package hr.agape.document.warehouse.resource;
 
 import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
-import hr.agape.warehouse.service.WarehouseService;
+import hr.agape.document.warehouse.service.WarehouseService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;

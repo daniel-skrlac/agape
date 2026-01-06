@@ -11,8 +11,4 @@ public class RoleRepository implements PanacheRepository<RoleEntity> {
         return find("LOWER(name) = LOWER(?1)", name)
                 .firstResult();
     }
-
-    public boolean existsByName(String name) {
-        return count("LOWER(name) = LOWER(?1)", name) > 0;
-    }
 }

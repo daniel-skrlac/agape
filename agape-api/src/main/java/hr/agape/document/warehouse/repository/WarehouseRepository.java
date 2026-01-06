@@ -82,4 +82,24 @@ public class WarehouseRepository {
         }
         return out;
     }
+
+    public List<Long> listWarehouses() throws SQLException {
+        String sql = """
+                    SELECT DISTINCT g.SKLADISTE_ID
+                    FROM SKL_ARTIKLIG g
+                    WHERE NVL(g.AKTIVANARTIKL,1) = 1
+                    ORDER BY g.SKLADISTE_ID
+                """;
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            List<Long> out = new ArrayList<>();
+            while (rs.next()) {
+                out.add(rs.getLong(1));
+            }
+            return out;
+        }
+    }
 }

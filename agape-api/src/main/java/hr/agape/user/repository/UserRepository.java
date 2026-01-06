@@ -15,4 +15,8 @@ public class UserRepository implements PanacheRepository<UserEntity> {
     public boolean existsByUsername(String username) {
         return count("LOWER(username) = LOWER(?1)", username) > 0;
     }
+
+    public boolean existsByUsernameExcludingId(String username, Long excludedUserId) {
+        return count("LOWER(username) = LOWER(?1) AND id <> ?2", username, excludedUserId) > 0;
+    }
 }
