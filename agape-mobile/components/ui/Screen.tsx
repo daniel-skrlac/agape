@@ -9,12 +9,7 @@ interface ScreenProps {
     contentStyle?: StyleProp<ViewStyle>;
 }
 
-const Screen: React.FC<ScreenProps> = ({
-    children,
-    edges = ["top", "left", "right"],
-    style,
-    contentStyle,
-}) => {
+const Screen: React.FC<ScreenProps> = ({ children, edges = ["left", "right"], style, contentStyle }) => {
     return (
         <SafeAreaView style={[styles.safeArea, style]} edges={edges}>
             <View style={[styles.inner, contentStyle]}>{children}</View>
@@ -24,11 +19,7 @@ const Screen: React.FC<ScreenProps> = ({
 
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: "transparent" },
-    inner: {
-        flex: 1,
-        paddingHorizontal: 24,
-        paddingTop: 32,
-    },
+    inner: { flex: 1 },
 });
 
 export default Screen;

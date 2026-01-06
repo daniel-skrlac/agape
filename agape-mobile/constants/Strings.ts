@@ -51,7 +51,6 @@ const Strings = {
     },
     fallbackName: "korisniče",
     warehouse: {
-      statsLoading: "Učitavam statistiku…",
       label: "Skladište",
       modalTitle: "Odaberi skladište",
       changeHint: "Promijeni",
