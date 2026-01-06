@@ -1,41 +1,33 @@
 import React from "react";
-import { StyleSheet, View, ScrollView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Colors from "../../constants/Colors";
+import { StyleSheet, View, StyleProp, ViewStyle } from "react-native";
+import { SafeAreaView, Edge } from "react-native-safe-area-context";
 
 interface ScreenProps {
     children: React.ReactNode;
+    edges?: Edge[];
+    style?: StyleProp<ViewStyle>;
+    contentStyle?: StyleProp<ViewStyle>;
 }
 
-const Screen: React.FC<ScreenProps> = ({ children }) => {
+const Screen: React.FC<ScreenProps> = ({
+    children,
+    edges = ["top", "left", "right"],
+    style,
+    contentStyle,
+}) => {
     return (
-        <SafeAreaView
-            style={styles.safeArea}
-            edges={["top", "right", "bottom", "left"]}
-        >
-            <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-            >
-                <View style={styles.inner}>{children}</View>
-            </ScrollView>
+        <SafeAreaView style={[styles.safeArea, style]} edges={edges}>
+            <View style={[styles.inner, contentStyle]}>{children}</View>
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: "transparent",
-    },
-    scrollContent: {
-        flexGrow: 1,
-    },
+    safeArea: { flex: 1, backgroundColor: "transparent" },
     inner: {
         flex: 1,
         paddingHorizontal: 24,
-        paddingVertical: 32,
-        justifyContent: "space-between",
+        paddingTop: 32,
     },
 });
 

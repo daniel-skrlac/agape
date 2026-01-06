@@ -2,52 +2,65 @@ const Strings = {
   appName: "Socijalna samoposluga",
 
   home: {
-    title: "Dobrodošli 👋",
-    subtitle:
-      "Brzi pregled skladišta i ključnih stavki. Povucite prema dolje za osvježavanje.",
-
-    status: {
-      loading: "Osvježavam podatke…",
-      ready: "Podaci su ažurni",
-      offline: "Trenutno nema veze — prikazujem zadnje podatke",
+    hero: {
+      eyebrow: "Pregled",
+      title: (name: string) => `Pozdrav, ${name}`,
+      subtitle: "Brzi pregled stanja skladišta i prioriteta.",
+      subtitleLoading: "Učitavam najnovije podatke skladišta…",
     },
-
-    totals: {
-      totalItemsTitle: "Ukupno artikala",
-      totalItemsSub: "Aktivni artikli u sustavu",
+    meta: {
+      totalQty: "Ukupna količina",
+      updatedAt: "Zadnje osvježenje",
+    },
+    metrics: {
+      totalItems: "Artikli",
+      missing: "Nedostaje",
+      needsFill: "Za dopunu",
+      reserved: "Rezervirano",
+    },
+    sections: {
       missingTitle: "Nedostaje",
-      missingSub: "Artikli bez zalihe",
+      missingSub: "Bez zalihe ili nula",
       needsFillTitle: "Za dopunu",
       needsFillSub: "Ispod minimalne zalihe",
-      reservedTitle: "Rezervirano",
-      reservedSub: "Trenutno rezervirane zalihe",
-      totalStockQty: "Ukupna količina",
-      updatedAt: "Ažurirano",
-    },
-
-    sections: {
-      needsFillTitle: "Za dopunu",
-      needsFillSub: "Artikli ispod minimalne zalihe (prioritet).",
-      missingTitle: "Nedostaje",
-      missingSub: "Artikli bez zalihe ili s nulom.",
       mostTitle: "Najviše na stanju",
-      mostSub: "Artikli s najvećom trenutnom zalihom.",
+      mostSub: "Stabilna dostupnost",
     },
-
     rowHints: {
-      needsFill: "prioritet za dopunu",
-      missing: "potrebno nabaviti / donacije",
-      most: "stabilna zaliha",
+      missing: "Preporuka: nabava / donacije",
+      needsFill: "Preporuka: dopuna",
+      most: "Stanje dovoljno",
     },
-
+    labels: {
+      code: "Šifra",
+      pcs: "kom",
+    },
+    insight: {
+      title: "Sažetak",
+      loading: "Analiziram prioritete…",
+      allGood: "Nema kritičnih stavki. Možete se fokusirati na redovne aktivnosti.",
+      priority: (n: string) => `Imate ${n} prioritetnih stavki. Preporuka: fokus na dopunu i nabavu.`,
+    },
     empty: {
-      needsFill: "Sve izgleda dobro — nema artikala ispod minimalne zalihe.",
-      missing: "Super — trenutno nema artikala koji potpuno nedostaju.",
-      most: "Nema dovoljno podataka za prikaz.",
       loading: "Učitavam stavke…",
+      bySegment: {
+        missing: "Trenutno nema artikala koji nedostaju.",
+        needsFill: "Trenutno nema artikala ispod minimalne zalihe.",
+        most: "Nema dovoljno podataka za prikaz.",
+      },
     },
+    fallbackName: "korisniče",
+    warehouse: {
+      statsLoading: "Učitavam statistiku…",
+      label: "Skladište",
+      modalTitle: "Odaberi skladište",
+      changeHint: "Promijeni",
+      loading: "Učitavanje…",
+      empty: "Nema dostupnih skladišta.",
+      none: "Nije odabrano",
+      item: (id: number) => `Skladište ${id}`,
+    }
   },
-
   auth: {
     usernameLabel: "Korisničko ime:",
     usernamePlaceholder: "Unesite korisničko ime",
@@ -79,6 +92,7 @@ const Strings = {
       generic: "Nešto je pošlo po zlu. Pokušajte ponovno.",
       invalidCredentials: "Neispravno korisničko ime ili lozinka.",
       network: "Nema internetske veze s poslužiteljem. Provjerite internet i pokušajte ponovno.",
+      usernameTaken: "Korisničko ime je zauzeto. Odaberite drugo.",
     },
   },
 };

@@ -3,7 +3,6 @@ import { View, StyleSheet } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { queryClient } from "./query/queryClient";
-import GlobalNetworkSpinner from "@/components/GlobalNetworkSpinner";
 
 export default function RootLayout() {
   return (
@@ -14,9 +13,6 @@ export default function RootLayout() {
           <Stack.Screen name="register" />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
-
-        {}
-        <GlobalNetworkSpinner />
       </View>
     </QueryClientProvider>
   );

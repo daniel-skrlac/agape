@@ -1,7 +1,12 @@
 import { createApiClient } from "../apiClient";
 import { API_BASE_URL } from "../config";
-import type { AuthResponseDTO, LoginRequestDTO, RegisterRequestDTO, RegisterResponseDTO } from "../../models/generated";
-import { clearToken, saveToken } from "../tokenStore";
+import type {
+    AuthResponseDTO,
+    LoginRequestDTO,
+    RegisterRequestDTO,
+    RegisterResponseDTO,
+} from "../../models/generated";
+import { clearSession, saveSession } from "../sessionStore";
 
 const api = createApiClient({ baseUrl: API_BASE_URL });
 
@@ -12,8 +17,13 @@ export const authService = {
             body: payload,
         });
 
-        // store token
-        await saveToken(data.token);
+        await saveSession({
+            token: data.token,
+            userId: data.userId,
+            username: data.username,
+            name: data.name,
+        });
+
         return data;
     },
 
@@ -25,6 +35,6 @@ export const authService = {
     },
 
     async logout(): Promise<void> {
-        await clearToken();
+        await clearSession();
     },
 };

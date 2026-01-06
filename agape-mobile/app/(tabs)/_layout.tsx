@@ -1,49 +1,97 @@
-import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { Tabs, useRouter } from "expo-router";
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
+import { useColorScheme } from "@/components/useColorScheme";
+import { getToken } from "../api/sessionStore";
+
+const ORANGE = "#F97316";
+const INACTIVE = "#94A3B8";
 
 function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
+  name: React.ComponentProps<typeof FontAwesome>["name"];
   color: string;
 }) {
   return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const router = useRouter();
+  useColorScheme(); // keep if you need it elsewhere
+
+  const [checking, setChecking] = useState(true);
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!mounted) return;
+        setHasToken(!!token);
+      } finally {
+        if (mounted) setChecking(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!checking && !hasToken) {
+      router.replace("/");
+    }
+  }, [checking, hasToken, router]);
+
+  if (checking) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  if (!hasToken) return null;
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-      }}>
+        tabBarActiveTintColor: ORANGE, // selected icon + label
+        tabBarInactiveTintColor: INACTIVE,
+        headerShown: false,
+      }}
+    >
       <Tabs.Screen
         name="scan"
         options={{
-          title: 'Skeniraj',
+          title: "Skeniraj",
           tabBarIcon: ({ color }) => <TabBarIcon name="camera" color={color} />,
-          headerShown: false,
         }}
       />
+
       <Tabs.Screen
         name="home"
         options={{
-          title: 'Početna',
+          title: "Početna",
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
-          headerShown: false,
         }}
       />
+
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Postavke',
+          title: "Postavke",
           tabBarIcon: ({ color }) => <TabBarIcon name="gear" color={color} />,
-          headerShown: false,
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+});

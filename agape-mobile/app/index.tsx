@@ -1,5 +1,5 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { Link, useRouter } from "expo-router";
 import Screen from "../components/ui/Screen";
 import AuthHeader from "../components/auth/AuthHeader";
@@ -10,15 +10,48 @@ import Colors from "../constants/Colors";
 import AuthBackground from "@/components/auth/AuthBackground";
 import FormCard from "@/components/ui/FormCard";
 import { useLoginForm } from "./api/hooks/useLoginForm";
+import { getToken } from "./api/sessionStore";
 
-export default function LoginScreen() {
+export default function Index() {
     const router = useRouter();
     const form = useLoginForm();
+
+    const [checkingAuth, setCheckingAuth] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+
+        (async () => {
+            try {
+                const token = await getToken();
+                if (!mounted) return;
+
+                if (token) {
+                    router.replace("/(tabs)/home");
+                    return;
+                }
+            } finally {
+                if (mounted) setCheckingAuth(false);
+            }
+        })();
+
+        return () => {
+            mounted = false;
+        };
+    }, [router]);
 
     const handleLogin = async () => {
         const res = await form.submit();
         if (res.ok) router.replace("/(tabs)/home");
     };
+
+    if (checkingAuth) {
+        return (
+            <View style={styles.center}>
+                <ActivityIndicator size="large" />
+            </View>
+        );
+    }
 
     return (
         <AuthBackground>
@@ -34,7 +67,9 @@ export default function LoginScreen() {
                         <View style={styles.form}>
                             {!!form.errors.formError && (
                                 <View style={styles.errorBanner}>
-                                    <Text style={styles.errorBannerText}>{form.errors.formError}</Text>
+                                    <Text style={styles.errorBannerText}>
+                                        {form.errors.formError}
+                                    </Text>
                                 </View>
                             )}
 
@@ -89,8 +124,9 @@ export default function LoginScreen() {
     );
 }
 
-// keep your styles as-is
 const styles = StyleSheet.create({
+    center: { flex: 1, alignItems: "center", justifyContent: "center" },
+
     top: { flex: 1, justifyContent: "flex-start" },
     header: { width: "100%", alignItems: "center", marginBottom: 16 },
     title: { fontSize: 26, fontWeight: "800", color: Colors.light.text },

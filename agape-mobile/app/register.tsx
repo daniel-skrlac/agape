@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { StyleSheet, Text, View, Alert } from "react-native";
-import { Link } from "expo-router";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { Link, useRouter } from "expo-router";
 import Screen from "../components/ui/Screen";
 import AuthHeader from "../components/auth/AuthHeader";
 import TextField from "../components/ui/TextField";
@@ -9,23 +9,17 @@ import Strings from "../constants/Strings";
 import Colors from "../constants/Colors";
 import AuthBackground from "@/components/auth/AuthBackground";
 import FormCard from "@/components/ui/FormCard";
+import { useRegisterForm } from "./api/hooks/useRegisterForm";
 
 export default function RegisterScreen() {
-  const [username, setUsername] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const form = useRegisterForm();
 
-  const handleRegister = () => {
-    setLoading(true);
-
-    setTimeout(() => {
-      setLoading(false);
-      Alert.alert(
-        "Registracija",
-        "Ovdje ide poziv na backend za registraciju"
-      );
-    }, 800);
+  const handleRegister = async () => {
+    const res = await form.submit();
+    if (res.ok) {
+      router.replace("/");
+    }
   };
 
   return (
@@ -33,44 +27,66 @@ export default function RegisterScreen() {
       <Screen>
         <View style={styles.top}>
           <AuthHeader />
+
+          <View style={styles.header}>
+            <Text style={styles.title}>{Strings.auth.registerTitle}</Text>
+          </View>
+
           <FormCard>
-            <View>
+            <View style={styles.form}>
+              {!!form.errors.formError && (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorBannerText}>{form.errors.formError}</Text>
+                </View>
+              )}
+
               <TextField
                 label={Strings.auth.fullNameLabel}
                 placeholder={Strings.auth.fullNamePlaceholder}
-                value={fullName}
-                onChangeText={setFullName}
+                value={form.values.fullName}
+                onChangeText={form.setFullName}
+                onBlur={() => form.markTouched("fullName")}
                 returnKeyType="next"
               />
+              {!!form.errors.fullNameError && (
+                <Text style={styles.fieldError}>{form.errors.fullNameError}</Text>
+              )}
 
               <TextField
                 label={Strings.auth.usernameLabel}
                 placeholder={Strings.auth.usernamePlaceholder}
                 autoCapitalize="none"
-                value={username}
-                onChangeText={setUsername}
+                value={form.values.username}
+                onChangeText={form.setUsername}
+                onBlur={() => form.markTouched("username")}
                 returnKeyType="next"
               />
+              {!!form.errors.usernameError && (
+                <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
+              )}
 
               <TextField
                 label={Strings.auth.passwordLabel}
                 placeholder={Strings.auth.passwordPlaceholder}
                 secureTextEntry
-                value={password}
-                onChangeText={setPassword}
+                value={form.values.password}
+                onChangeText={form.setPassword}
+                onBlur={() => form.markTouched("password")}
                 returnKeyType="done"
               />
+              {!!form.errors.passwordError && (
+                <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
+              )}
             </View>
           </FormCard>
         </View>
-
-
 
         <View style={styles.bottom}>
           <PrimaryButton
             label={Strings.auth.registerButton}
             onPress={handleRegister}
-            loading={loading}
+            loading={form.submitting}
+            disabled={!form.canSubmit}
           />
 
           <View style={styles.switchRow}>
@@ -88,26 +104,39 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  top: {
-    flex: 1,
-    justifyContent: "flex-start",
+  top: { flex: 1, justifyContent: "flex-start" },
+
+  header: { width: "100%", alignItems: "center", marginBottom: 16 },
+  title: { fontSize: 26, fontWeight: "800", color: Colors.light.text },
+
+  form: { gap: 6 },
+
+  errorBanner: {
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#FEF3C7",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#F59E0B",
+    marginBottom: 8,
   },
-  bottom: {
-    gap: 12,
+  errorBannerText: { fontSize: 13, fontWeight: "700", color: "#92400E" },
+
+  fieldError: {
+    marginTop: 2,
+    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#B91C1C",
   },
+
+  bottom: { gap: 12 },
   switchRow: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 8,
     flexWrap: "wrap",
   },
-  switchText: {
-    fontSize: 14,
-    color: "#4B5563",
-  },
-  switchLink: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.tintColor,
-  },
+  switchText: { fontSize: 14, color: "#4B5563" },
+  switchLink: { fontSize: 14, fontWeight: "600", color: Colors.tintColor },
 });

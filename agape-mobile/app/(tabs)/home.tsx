@@ -1,260 +1,525 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   RefreshControl,
+  Pressable,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+  useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+
 import Screen from "../../components/ui/Screen";
-import SummaryCard from "../../components/dashboard/SummaryCard";
-import Colors from "../../constants/Colors";
+import AuthBackground from "@/components/auth/AuthBackground";
 import Strings from "../../constants/Strings";
+
 import { useStockStatistics } from "../api/hooks/useStockStatistics";
+import { useWarehouses } from "../api/hooks/useWarehouses";
+import { useCurrentUser } from "../api/hooks/useCurrentUser";
+import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
 
-function formatInt(n?: number) {
-  const value = typeof n === "number" && Number.isFinite(n) ? n : 0;
-  return new Intl.NumberFormat("hr-HR", { maximumFractionDigits: 0 }).format(value);
-}
+type SectionKey = "missing" | "needsFill" | "most";
 
-function formatQty(n?: number) {
-  const value = typeof n === "number" && Number.isFinite(n) ? n : 0;
-  return new Intl.NumberFormat("hr-HR", { maximumFractionDigits: 2 }).format(value);
-}
+const T = {
+  surface: "#FFFFFF",
 
-function formatTime(ts?: number) {
-  if (!ts) return "—";
-  const d = new Date(ts);
-  return new Intl.DateTimeFormat("hr-HR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
+  text: "#0B1220",
+  subText: "#1F2A37",
+  muted: "#475569",
+
+  border: "rgba(2, 6, 23, 0.30)",
+  borderStrong: "rgba(2, 6, 23, 0.42)",
+  divider: "rgba(2, 6, 23, 0.22)",
+
+  pill: "#0B1220",
+  pillText: "#FFFFFF",
+
+  warmHeader: "#FFD6BE",
+  warmIcon: "#FFB389",
+  warmBadge: "#FFC9A8",
+  warmAccent: "#EA580C",
+
+  coolHeader: "#CFE3FF",
+  coolIcon: "#9EC5FF",
+  coolBadge: "#B6D7FF",
+  coolAccent: "#2563EB",
+
+  neutralAccent: "#0B1220",
+
+  heroBg: "#FFF4EC",
+  heroBorder: "rgba(2, 6, 23, 0.26)",
+  heroCardBg: "#FFFFFF",
+
+  shadow: "#000000",
+};
+
+const H_PADDING = 14;
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 export default function HomeScreen() {
-  const { data, isLoading, error, refetch, isRefetching, dataUpdatedAt } =
-    useStockStatistics();
+  useWindowDimensions();
 
-  const summary = useMemo(() => {
-    const t = data?.totals;
-    return [
-      {
-        id: "totalItems",
-        title: Strings.home.totals.totalItemsTitle,
-        value: formatInt(t?.totalItems),
-        subtitle: Strings.home.totals.totalItemsSub,
-        tone: "primary" as const,
-      },
-      {
-        id: "missing",
-        title: Strings.home.totals.missingTitle,
-        value: formatInt(t?.missingCount),
-        subtitle: Strings.home.totals.missingSub,
-        tone: "info" as const,
-      },
-      {
-        id: "needsFill",
-        title: Strings.home.totals.needsFillTitle,
-        value: formatInt(t?.needsFillCount),
-        subtitle: Strings.home.totals.needsFillSub,
-        tone: "success" as const,
-      },
-      {
-        id: "reserved",
-        title: Strings.home.totals.reservedTitle,
-        value: formatInt(t?.reservedCount),
-        subtitle: Strings.home.totals.reservedSub,
-        tone: "primary" as const,
-      },
-    ];
-  }, [data]);
+  const { session } = useCurrentUser();
+  const { data: warehouses, isLoading: isWarehousesLoading } = useWarehouses();
 
-  const statusText = useMemo(() => {
-    if (isLoading || isRefetching) return Strings.home.status.loading;
-    if (error) return Strings.home.status.offline;
-    return Strings.home.status.ready;
-  }, [isLoading, isRefetching, error]);
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  const [warehouseOpen, setWarehouseOpen] = useState(false);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (warehouseId == null && warehouses && warehouses.length > 0) {
+      setWarehouseId(warehouses[0]);
+    }
+  }, [warehouses, warehouseId]);
+
+  const { data, isLoading, isFetching, refetch, dataUpdatedAt } = useStockStatistics(warehouseId);
+  const totals = data?.totals;
+
+  const [open, setOpen] = useState<Record<SectionKey, boolean>>({
+    missing: false,
+    needsFill: false,
+    most: false,
+  });
+
+  const toggle = (k: SectionKey) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen((prev) => ({ ...prev, [k]: !prev[k] }));
+  };
+
+  const toggleWarehouse = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setWarehouseOpen((p) => !p);
+  };
+
+  const displayName = useMemo(() => {
+    const n = session?.name?.trim();
+    if (n) return n;
+    const u = session?.username?.trim();
+    if (u) return u;
+    return Strings.home.fallbackName;
+  }, [session]);
+
+  const headerSubtitle = useMemo(() => {
+    if (isLoading) return Strings.home.hero.subtitleLoading;
+    return Strings.home.hero.subtitle;
+  }, [isLoading]);
+
+  const insight = useMemo(() => {
+    if (isLoading) return Strings.home.insight.loading;
+
+    const needsFill = totals?.needsFillCount ?? 0;
+    const missing = totals?.missingCount ?? 0;
+    const priority = needsFill + missing;
+
+    if (priority <= 0) return Strings.home.insight.allGood;
+    return Strings.home.insight.priority(formatIntHR(priority));
+  }, [isLoading, totals]);
+
+  const updatedText = useMemo(() => formatTimeHR(dataUpdatedAt), [dataUpdatedAt]);
+
+  const missingItems = (data?.missing ?? []).slice(0, 12);
+  const needsFillItems = (data?.needsFill ?? []).slice(0, 12);
+  const mostItems = (data?.mostInStock ?? []).slice(0, 12);
+
+  const selectedWarehouseLabel = useMemo(() => {
+    if (warehouseId == null) return Strings.home.warehouse.none;
+    return Strings.home.warehouse.item(warehouseId);
+  }, [warehouseId]);
+
+  const onPullRefresh = async () => {
+    setIsPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  };
+
+  const statsRefreshingInline = isFetching && !isPullRefreshing;
 
   return (
-    <Screen>
-      <ScrollView
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* HERO (warm + professional) */}
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>{Strings.home.title}</Text>
-          <Text style={styles.heroSubtitle}>{Strings.home.subtitle}</Text>
-
-          <View style={styles.heroMetaRow}>
-            <View style={styles.statusPill}>
-              {(isLoading || isRefetching) ? (
-                <ActivityIndicator size="small" color="#111827" />
-              ) : (
-                <View style={[styles.statusDot, error ? styles.statusDotWarn : styles.statusDotOk]} />
-              )}
-              <Text style={styles.statusText}>{statusText}</Text>
-            </View>
-
-            <View style={styles.metaPill}>
-              <Text style={styles.metaLabel}>{Strings.home.totals.totalStockQty}</Text>
-              <Text style={styles.metaValue}>{formatQty(data?.totals.totalStockQty)}</Text>
-            </View>
-
-            <View style={styles.metaPill}>
-              <Text style={styles.metaLabel}>{Strings.home.totals.updatedAt}</Text>
-              <Text style={styles.metaValue}>{formatTime(dataUpdatedAt)}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Summary cards */}
-        <View style={styles.summaryRow}>
-          {summary.map((item) => (
-            <SummaryCard
-              key={item.id}
-              title={item.title}
-              value={item.value}
-              subtitle={item.subtitle}
-              tone={item.tone}
+    <AuthBackground>
+      <Screen>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          overScrollMode="always"
+          alwaysBounceVertical
+          bounces
+          refreshControl={
+            <RefreshControl
+              refreshing={isPullRefreshing}
+              onRefresh={onPullRefresh}
+              progressViewOffset={10}
+              tintColor={"#F97316"}
+              colors={["#F97316"]}
+              progressBackgroundColor="#FFFFFF"
             />
-          ))}
-        </View>
-
-        {/* Needs fill */}
-        <Section
-          title={Strings.home.sections.needsFillTitle}
-          subtitle={Strings.home.sections.needsFillSub}
-          badgeText={formatInt(data?.needsFill?.length)}
+          }
         >
-          <View style={styles.card}>
-            {(data?.needsFill ?? []).slice(0, 10).map((item, index, arr) => (
-              <Row
-                key={`${item.itemId}-${item.warehouseId}`}
-                name={item.name}
-                code={item.itemCode}
-                hint={Strings.home.rowHints.needsFill}
-                badge={`${formatQty(item.currentQty)} / ${formatQty(item.minimalQty)}`}
-                badgeStyle="low"
-                showDivider={index < arr.length - 1}
-              />
-            ))}
-            {!isLoading && (data?.needsFill?.length ?? 0) === 0 && (
-              <EmptyLine text={Strings.home.empty.needsFill} />
-            )}
-            {isLoading && <EmptyLine text={Strings.home.empty.loading} />}
-          </View>
-        </Section>
+          <Surface style={styles.hero}>
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroAccentDot} />
+              <Text style={styles.heroBadge}>{Strings.home.hero.eyebrow}</Text>
+            </View>
 
-        {/* Missing */}
-        <Section
-          title={Strings.home.sections.missingTitle}
-          subtitle={Strings.home.sections.missingSub}
-          badgeText={formatInt(data?.missing?.length)}
-        >
-          <View style={styles.card}>
-            {(data?.missing ?? []).slice(0, 10).map((item, index, arr) => (
-              <Row
-                key={`${item.itemId}-${item.warehouseId}`}
-                name={item.name}
-                code={item.itemCode}
-                hint={Strings.home.rowHints.missing}
-                badge={`${formatQty(item.currentQty)} kom`}
-                badgeStyle="warn"
-                showDivider={index < arr.length - 1}
-              />
-            ))}
-            {!isLoading && (data?.missing?.length ?? 0) === 0 && (
-              <EmptyLine text={Strings.home.empty.missing} />
-            )}
-            {isLoading && <EmptyLine text={Strings.home.empty.loading} />}
-          </View>
-        </Section>
+            <View style={styles.heroRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.heroTitle} numberOfLines={1}>
+                  {Strings.home.hero.title(displayName)}
+                </Text>
+                <Text style={styles.heroSubtitle}>{headerSubtitle}</Text>
+              </View>
 
-        {/* Most in stock */}
-        <Section
-          title={Strings.home.sections.mostTitle}
-          subtitle={Strings.home.sections.mostSub}
-          badgeText={formatInt(data?.mostInStock?.length)}
-        >
-          <View style={styles.card}>
-            {(data?.mostInStock ?? []).slice(0, 10).map((item, index, arr) => (
-              <Row
-                key={`${item.itemId}-${item.warehouseId}`}
-                name={item.name}
-                code={item.itemCode}
-                hint={Strings.home.rowHints.most}
-                badge={`${formatQty(item.currentQty)} kom`}
-                badgeStyle="high"
-                showDivider={index < arr.length - 1}
-              />
-            ))}
-            {!isLoading && (data?.mostInStock?.length ?? 0) === 0 && (
-              <EmptyLine text={Strings.home.empty.most} />
-            )}
-            {isLoading && <EmptyLine text={Strings.home.empty.loading} />}
-          </View>
-        </Section>
+              <View style={styles.avatar}>
+                <FontAwesome name="user" size={18} color={T.text} />
+              </View>
+            </View>
 
-        <View style={{ height: 16 }} />
-      </ScrollView>
-    </Screen>
+            <View style={styles.kpiWrap}>
+              <KpiCard icon="archive" label={Strings.home.meta.totalQty} value={formatQtyHR(totals?.totalStockQty)} />
+              <KpiCard icon="clock-o" label={Strings.home.meta.updatedAt} value={updatedText} />
+            </View>
+          </Surface>
+
+          <Surface style={styles.whSurface}>
+            <Pressable
+              onPress={toggleWarehouse}
+              android_ripple={{ color: "rgba(2,6,23,0.10)" }}
+              style={({ pressed }) => [styles.whRow, pressed && styles.pressed]}
+            >
+              <View style={styles.whIcon}>
+                <FontAwesome name="building" size={16} color={T.text} />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.whLabel}>{Strings.home.warehouse.label}</Text>
+                <Text style={styles.whValue} numberOfLines={1}>
+                  {isWarehousesLoading ? Strings.home.warehouse.loading : selectedWarehouseLabel}
+                </Text>
+
+                {statsRefreshingInline ? (
+                  <View style={styles.whLoadingRow}>
+                    <ActivityIndicator size="small" />
+                    <Text style={styles.whLoadingInline} numberOfLines={1}>
+                      {Strings.home.warehouse.statsLoading}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.whRight}>
+                <Text style={styles.whHint} numberOfLines={1}>
+                  {Strings.home.warehouse.changeHint}
+                </Text>
+                <FontAwesome name={warehouseOpen ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
+              </View>
+            </Pressable>
+
+            {warehouseOpen ? <View style={styles.whDivider} /> : null}
+
+            {warehouseOpen ? (
+              <View style={styles.whDropdown}>
+                {isWarehousesLoading ? (
+                  <View style={styles.whDropdownLoading}>
+                    <ActivityIndicator size="small" />
+                    <Text style={styles.whDropdownLoadingText}>{Strings.home.warehouse.loading}</Text>
+                  </View>
+                ) : (warehouses ?? []).length === 0 ? (
+                  <View style={styles.whDropdownEmpty}>
+                    <Text style={styles.whDropdownEmptyText}>{Strings.home.warehouse.empty}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.whDropdownList}>
+                    {(warehouses ?? []).map((id) => {
+                      const active = id === warehouseId;
+                      return (
+                        <Pressable
+                          key={id}
+                          onPress={() => {
+                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                            setWarehouseId(id);
+                            setWarehouseOpen(false);
+                          }}
+                          android_ripple={{ color: "rgba(2,6,23,0.10)" }}
+                          style={({ pressed }) => [
+                            styles.whItem,
+                            active ? styles.whItemActive : styles.whItemIdle,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={[styles.whItemText, active ? styles.whItemTextActive : styles.whItemTextIdle]}>
+                            {Strings.home.warehouse.item(id)}
+                          </Text>
+                          {active ? <FontAwesome name="check" size={16} color={T.text} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </Surface>
+
+          <Surface style={styles.insight}>
+            <View style={styles.insightIcon}>
+              <FontAwesome name="line-chart" size={16} color={T.text} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.insightTitle}>{Strings.home.insight.title}</Text>
+              <Text style={styles.insightText}>{insight}</Text>
+            </View>
+          </Surface>
+
+          <View style={styles.metricsGrid}>
+            <MetricTile icon="cubes" title={Strings.home.metrics.totalItems} value={formatIntHR(totals?.totalItems)} tone="neutral" />
+            <MetricTile icon="exclamation-circle" title={Strings.home.metrics.missing} value={formatIntHR(totals?.missingCount)} tone="warm" />
+            <MetricTile icon="arrow-up" title={Strings.home.metrics.needsFill} value={formatIntHR(totals?.needsFillCount)} tone="warm" />
+            <MetricTile icon="bookmark" title={Strings.home.metrics.reserved} value={formatIntHR(totals?.reservedCount)} tone="cool" />
+          </View>
+
+          <View style={{ gap: 12 }}>
+            <Accordion
+              icon="exclamation-circle"
+              tone="warm"
+              title={Strings.home.sections.missingTitle}
+              subtitle={Strings.home.sections.missingSub}
+              count={data?.missing?.length ?? 0}
+              open={open.missing}
+              onPress={() => toggle("missing")}
+            >
+              {isLoading ? (
+                <EmptyLine text={Strings.home.empty.loading} />
+              ) : missingItems.length === 0 ? (
+                <EmptyLine text={Strings.home.empty.bySegment.missing} />
+              ) : (
+                <ListCard>
+                  {missingItems.map((it, idx) => (
+                    <StockRow
+                      key={`${it.itemId}-${it.warehouseId}`}
+                      name={it.name}
+                      code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                      rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
+                      rightBottom={Strings.home.rowHints.missing}
+                      badgeTone="warm"
+                      divider={idx < missingItems.length - 1}
+                    />
+                  ))}
+                </ListCard>
+              )}
+            </Accordion>
+
+            <Accordion
+              icon="arrow-up"
+              tone="warm"
+              title={Strings.home.sections.needsFillTitle}
+              subtitle={Strings.home.sections.needsFillSub}
+              count={data?.needsFill?.length ?? 0}
+              open={open.needsFill}
+              onPress={() => toggle("needsFill")}
+            >
+              {isLoading ? (
+                <EmptyLine text={Strings.home.empty.loading} />
+              ) : needsFillItems.length === 0 ? (
+                <EmptyLine text={Strings.home.empty.bySegment.needsFill} />
+              ) : (
+                <ListCard>
+                  {needsFillItems.map((it, idx) => (
+                    <StockRow
+                      key={`${it.itemId}-${it.warehouseId}`}
+                      name={it.name}
+                      code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                      rightTop={`${formatQtyHR(it.currentQty)} / ${formatQtyHR(it.minimalQty)}`}
+                      rightBottom={Strings.home.rowHints.needsFill}
+                      badgeTone="warm"
+                      divider={idx < needsFillItems.length - 1}
+                    />
+                  ))}
+                </ListCard>
+              )}
+            </Accordion>
+
+            <Accordion
+              icon="check-circle"
+              tone="cool"
+              title={Strings.home.sections.mostTitle}
+              subtitle={Strings.home.sections.mostSub}
+              count={data?.mostInStock?.length ?? 0}
+              open={open.most}
+              onPress={() => toggle("most")}
+            >
+              {isLoading ? (
+                <EmptyLine text={Strings.home.empty.loading} />
+              ) : mostItems.length === 0 ? (
+                <EmptyLine text={Strings.home.empty.bySegment.most} />
+              ) : (
+                <ListCard>
+                  {mostItems.map((it, idx) => (
+                    <StockRow
+                      key={`${it.itemId}-${it.warehouseId}`}
+                      name={it.name}
+                      code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                      rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
+                      rightBottom={Strings.home.rowHints.most}
+                      badgeTone="cool"
+                      divider={idx < mostItems.length - 1}
+                    />
+                  ))}
+                </ListCard>
+              )}
+            </Accordion>
+          </View>
+
+          <View style={{ height: 18 }} />
+        </ScrollView>
+      </Screen>
+    </AuthBackground>
   );
 }
 
-function Section(props: {
-  title: string;
-  subtitle?: string;
-  badgeText?: string;
-  children: React.ReactNode;
-}) {
+function Surface({ children, style }: { children: React.ReactNode; style?: any }) {
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.sectionTitle}>{props.title}</Text>
-          {!!props.subtitle && <Text style={styles.sectionSubtitle}>{props.subtitle}</Text>}
-        </View>
-        {!!props.badgeText && (
-          <View style={styles.sectionBadge}>
-            <Text style={styles.sectionBadgeText}>{props.badgeText}</Text>
-          </View>
-        )}
-      </View>
-      {props.children}
+    <View style={styles.surfaceOuter}>
+      <View style={[styles.surfaceInner, style]}>{children}</View>
     </View>
   );
 }
 
-function Row(props: {
-  name: string;
-  code: string;
-  badge: string;
-  hint: string;
-  badgeStyle: "low" | "high" | "warn";
-  showDivider?: boolean;
+function KpiCard(props: { icon: React.ComponentProps<typeof FontAwesome>["name"]; label: string; value: string; fullWidth?: boolean }) {
+  return (
+    <View style={[styles.kpiCard, props.fullWidth && styles.fullWidthCard]}>
+      <View style={styles.kpiIcon}>
+        <FontAwesome name={props.icon} size={14} color={T.text} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.kpiLabel} numberOfLines={1}>
+          {props.label}
+        </Text>
+        <Text style={styles.kpiValue} numberOfLines={1}>
+          {props.value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function MetricTile(props: {
+  icon: React.ComponentProps<typeof FontAwesome>["name"];
+  title: string;
+  value: string;
+  tone: "neutral" | "warm" | "cool";
+  fullWidth?: boolean;
 }) {
-  const badgeStyle =
-    props.badgeStyle === "low"
-      ? styles.stockBadgeLow
-      : props.badgeStyle === "warn"
-        ? styles.stockBadgeWarn
-        : styles.stockBadgeHigh;
+  const bg = props.tone === "warm" ? styles.metricWarm : props.tone === "cool" ? styles.metricCool : styles.metricNeutral;
+  const iconBg =
+    props.tone === "warm" ? styles.metricIconWarm : props.tone === "cool" ? styles.metricIconCool : styles.metricIconNeut;
+
+  const accent = props.tone === "warm" ? T.warmAccent : props.tone === "cool" ? T.coolAccent : T.neutralAccent;
 
   return (
-    <View style={[styles.row, props.showDivider && styles.rowDivider]}>
-      <View style={styles.rowText}>
-        <Text style={styles.itemName} numberOfLines={1}>
+    <View style={[styles.metricTile, bg, { borderTopColor: accent }, props.fullWidth && styles.fullWidthCard]}>
+      <View style={[styles.metricIcon, iconBg]}>
+        <FontAwesome name={props.icon} size={16} color={T.text} />
+      </View>
+      <Text style={styles.metricTitle} numberOfLines={1}>
+        {props.title}
+      </Text>
+      <Text style={styles.metricValue} numberOfLines={1}>
+        {props.value}
+      </Text>
+    </View>
+  );
+}
+
+function Accordion(props: {
+  icon: React.ComponentProps<typeof FontAwesome>["name"];
+  tone: "warm" | "cool";
+  title: string;
+  subtitle: string;
+  count: number;
+  open: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}) {
+  const headerTone = props.tone === "warm" ? styles.accHeaderWarm : styles.accHeaderCool;
+  const iconTone = props.tone === "warm" ? styles.accIconWarm : styles.accIconCool;
+
+  return (
+    <Surface style={styles.accSurface}>
+      <Pressable
+        onPress={props.onPress}
+        android_ripple={{ color: "rgba(2,6,23,0.10)" }}
+        style={({ pressed }) => [styles.accHeader, headerTone, pressed && styles.pressed]}
+      >
+        <View style={[styles.accIcon, iconTone]}>
+          <FontAwesome name={props.icon} size={16} color={T.text} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.accTitle} numberOfLines={1}>
+            {props.title}
+          </Text>
+          <Text style={styles.accSub} numberOfLines={1}>
+            {props.subtitle}
+          </Text>
+        </View>
+
+        <View style={styles.accRight}>
+          <View style={styles.countPill}>
+            <Text style={styles.countPillText}>{formatIntHR(props.count)}</Text>
+          </View>
+          <FontAwesome name={props.open ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
+        </View>
+      </Pressable>
+
+      <View style={styles.accDivider} />
+
+      {props.open ? <View style={styles.accBody}>{props.children}</View> : null}
+    </Surface>
+  );
+}
+
+function ListCard({ children }: { children: React.ReactNode }) {
+  return <View style={styles.listCard}>{children}</View>;
+}
+
+function StockRow(props: {
+  name: string;
+  code: string;
+  rightTop: string;
+  rightBottom: string;
+  badgeTone: "warm" | "cool";
+  divider?: boolean;
+}) {
+  const badge = props.badgeTone === "warm" ? styles.qtyWarm : styles.qtyCool;
+
+  return (
+    <View style={[styles.row, props.divider && styles.rowDivider]}>
+      <View style={styles.rowLeft}>
+        <Text style={styles.rowName} numberOfLines={2}>
           {props.name}
         </Text>
-        <Text style={styles.itemCode}>Šifra: {props.code}</Text>
+        <Text style={styles.rowCode} numberOfLines={1}>
+          {props.code}
+        </Text>
       </View>
-      <View style={styles.stockBadgeWrapper}>
-        <View style={badgeStyle}>
-          <Text style={styles.stockBadgeText}>{props.badge}</Text>
+
+      <View style={styles.rowRight}>
+        <View style={[styles.qtyBadge, badge]}>
+          <Text style={styles.qtyText} numberOfLines={1}>
+            {props.rightTop}
+          </Text>
         </View>
-        <Text style={styles.stockHint}>{props.hint}</Text>
+        <Text style={styles.rowHint} numberOfLines={1}>
+          {props.rightBottom}
+        </Text>
       </View>
     </View>
   );
@@ -262,154 +527,298 @@ function Row(props: {
 
 function EmptyLine({ text }: { text: string }) {
   return (
-    <View style={styles.emptyLine}>
+    <View style={styles.empty}>
       <Text style={styles.emptyText}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: 24 },
+  content: {
+    paddingHorizontal: H_PADDING,
+    paddingTop: 8,
+    paddingBottom: 22,
+    flexGrow: 1,
+  },
 
-  // HERO
+  surfaceOuter: {
+    borderRadius: 22,
+    backgroundColor: "transparent",
+    shadowColor: T.shadow,
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+
+  surfaceInner: {
+    borderRadius: 22,
+    backgroundColor: T.surface,
+    borderWidth: 1.5,
+    borderColor: T.border,
+    overflow: "hidden",
+  },
+
   hero: {
-    borderRadius: 20,
     padding: 16,
-    marginBottom: 16,
-    backgroundColor: "#111827",
+    marginBottom: 12,
+    backgroundColor: T.heroBg,
+    borderColor: T.heroBorder,
   },
-  heroTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    marginBottom: 6,
-  },
-  heroSubtitle: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.78)",
-    lineHeight: 18,
-  },
-  heroMetaRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
+  heroTopRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  heroAccentDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: "#F97316" },
+  heroBadge: { fontSize: 12, fontWeight: "900", letterSpacing: 0.6, color: T.muted },
 
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.92)",
-  },
-  statusDot: { width: 8, height: 8, borderRadius: 99 },
-  statusDotOk: { backgroundColor: "#10B981" },
-  statusDotWarn: { backgroundColor: "#F59E0B" },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#111827",
-  },
+  heroRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  heroTitle: { fontSize: 22, fontWeight: "900", color: T.text },
+  heroSubtitle: { marginTop: 8, fontSize: 14, lineHeight: 20, color: T.subText, maxWidth: 340 },
 
-  metaPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  metaLabel: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.70)",
-    marginBottom: 2,
-  },
-  metaValue: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-
-  summaryRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 24,
-  },
-
-  section: { marginBottom: 20 },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: Colors.light.text,
-    marginBottom: 2,
-  },
-  sectionSubtitle: { fontSize: 13, color: "#6B7280" },
-  sectionBadge: {
-    minWidth: 34,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
     alignItems: "center",
     justifyContent: "center",
   },
-  sectionBadgeText: { fontSize: 12, fontWeight: "900", color: "#111827" },
 
-  card: {
+  kpiWrap: {
+    marginTop: 14,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  kpiCard: {
+    width: "48%",
+    marginBottom: 12,
+    borderRadius: 18,
+    padding: 12,
+    backgroundColor: T.heroCardBg,
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  fullWidthCard: { width: "100%" },
+
+  kpiIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kpiLabel: { fontSize: 12, fontWeight: "900", color: T.muted },
+  kpiValue: { marginTop: 2, fontSize: 14, fontWeight: "900", color: T.text },
+
+  whSurface: { marginBottom: 12, borderColor: T.borderStrong },
+
+  whRow: { padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
+  whIcon: {
+    width: 42,
+    height: 42,
     borderRadius: 16,
+    backgroundColor: "#FFF2E8",
+    borderWidth: 1.5,
+    borderColor: "rgba(249,115,22,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  whLabel: { fontSize: 12, fontWeight: "900", color: T.muted },
+  whValue: { marginTop: 3, fontSize: 15, fontWeight: "900", color: T.text },
+  whRight: { alignItems: "flex-end", gap: 6 },
+  whHint: { fontSize: 12, color: T.subText },
+
+  whLoadingRow: { marginTop: 6, flexDirection: "row", alignItems: "center", gap: 8 },
+  whLoadingInline: { fontSize: 12, color: T.subText },
+
+  whDivider: { height: 1, backgroundColor: T.divider },
+
+  whDropdown: { padding: 12, backgroundColor: "#FFFFFF" },
+  whDropdownList: { gap: 10 },
+  whDropdownLoading: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
     backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  whDropdownLoadingText: { fontSize: 14, color: T.subText },
+  whDropdownEmpty: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+    backgroundColor: "#FFFFFF",
+  },
+  whDropdownEmptyText: { fontSize: 14, color: T.subText, lineHeight: 20 },
+
+  whItem: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    overflow: "hidden",
+  },
+  whItemIdle: { backgroundColor: "#F8FAFF" },
+  whItemActive: { backgroundColor: "#FFF2E8", borderColor: "rgba(249,115,22,0.55)" },
+  whItemText: { fontSize: 14, fontWeight: "900" },
+  whItemTextIdle: { color: T.text },
+  whItemTextActive: { color: T.text },
+
+  pressed: { opacity: 0.97 },
+
+  insight: {
+    padding: 14,
+    marginBottom: 12,
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "center",
+    backgroundColor: "#EEF4FF",
+    borderColor: T.borderStrong,
+  },
+  insightIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: "#DCEBFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+  },
+  insightTitle: { fontSize: 14, fontWeight: "900", color: T.text },
+  insightText: { marginTop: 3, fontSize: 14, color: T.subText, lineHeight: 20 },
+
+  metricsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  metricTile: {
+    width: "48%",
+    marginBottom: 12,
+    borderRadius: 22,
+    padding: 14,
+    borderWidth: 1.5,
+    borderTopWidth: 6,
+    borderColor: T.borderStrong,
+  },
+  metricNeutral: { backgroundColor: T.surface },
+  metricWarm: { backgroundColor: "#FFF2E8" },
+  metricCool: { backgroundColor: "#EEF4FF" },
+  metricIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  metricIconNeut: { backgroundColor: "#FFFFFF" },
+  metricIconWarm: { backgroundColor: T.warmIcon },
+  metricIconCool: { backgroundColor: T.coolIcon },
+  metricTitle: { fontSize: 12, fontWeight: "900", color: T.muted },
+  metricValue: { marginTop: 6, fontSize: 22, fontWeight: "900", color: T.text },
+
+  accSurface: { borderColor: T.borderStrong },
+  accHeader: { padding: 14, flexDirection: "row", alignItems: "center", gap: 10 },
+  accHeaderWarm: { backgroundColor: T.warmHeader },
+  accHeaderCool: { backgroundColor: T.coolHeader },
+
+  accIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+  },
+  accIconWarm: { backgroundColor: T.warmIcon },
+  accIconCool: { backgroundColor: T.coolIcon },
+
+  accTitle: { fontSize: 15, fontWeight: "900", color: T.text },
+  accSub: { marginTop: 2, fontSize: 12, color: "rgba(15,23,42,0.84)" },
+
+  accRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  countPill: {
+    minWidth: 52,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: T.pill,
+    borderWidth: 1.5,
+    borderColor: "rgba(2,6,23,0.50)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countPillText: { fontSize: 12, fontWeight: "900", color: T.pillText },
+
+  accDivider: { height: 1, backgroundColor: T.divider },
+  accBody: { paddingHorizontal: 14, paddingBottom: 12, paddingTop: 12, backgroundColor: "#FFFFFF" },
+
+  listCard: {
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+    overflow: "hidden",
   },
 
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 10,
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: "#FFFFFF",
+    alignItems: "flex-start",
   },
-  rowDivider: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
-  },
-  rowText: { flex: 1, paddingRight: 12 },
-  itemName: { fontSize: 14, fontWeight: "700", color: Colors.light.text },
-  itemCode: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: T.divider },
+  rowLeft: { flex: 1 },
+  rowName: { fontSize: 13, lineHeight: 17, fontWeight: "900", color: T.text },
+  rowCode: { marginTop: 2, fontSize: 11, color: T.muted },
 
-  stockBadgeWrapper: { alignItems: "flex-end" },
-  stockBadgeLow: {
+  rowRight: { alignItems: "flex-end" },
+  qtyBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#FEE2E2",
+    borderWidth: 1.5,
+    borderColor: "rgba(2,6,23,0.30)",
   },
-  stockBadgeWarn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#FEF3C7",
-  },
-  stockBadgeHigh: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#DBEAFE",
-  },
-  stockBadgeText: { fontSize: 12, fontWeight: "900", color: "#111827" },
-  stockHint: { fontSize: 11, color: "#9CA3AF", marginTop: 3 },
+  qtyWarm: { backgroundColor: T.warmBadge },
+  qtyCool: { backgroundColor: T.coolBadge },
+  qtyText: { fontSize: 11, fontWeight: "900", color: T.text },
+  rowHint: { marginTop: 3, fontSize: 11, color: T.subText },
 
-  emptyLine: { paddingVertical: 14 },
-  emptyText: { fontSize: 13, color: "#6B7280" },
+  empty: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: T.borderStrong,
+  },
+  emptyText: { fontSize: 14, color: T.subText, lineHeight: 20 },
 });
