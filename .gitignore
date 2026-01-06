@@ -66,3 +66,4 @@ Excalidraw/
 
 infra/oracle/dumps/*.DMP
 !infra/oracle/dumps/data.DMP
+infra/oracle/dumps/*.lst
