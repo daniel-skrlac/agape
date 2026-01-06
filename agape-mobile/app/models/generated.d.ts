@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-06 13:41:26.
+// Generated using typescript-generator version 3.2.1263 on 2026-01-06 20:59:28.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -159,6 +159,18 @@ export interface RegisterRequestDTO {
 
 export interface RegisterResponseDTO {
     userId: number;
+    username: string;
+    name: string;
+}
+
+export interface UpdateUserRequestDTO {
+    username: string;
+    name: string;
+    password: string;
+}
+
+export interface UserResponseDTO {
+    id: number;
     username: string;
     name: string;
 }
