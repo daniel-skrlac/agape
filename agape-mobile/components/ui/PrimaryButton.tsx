@@ -12,29 +12,38 @@ interface PrimaryButtonProps {
   label: string;
   onPress: () => void;
   loading?: boolean;
+  disabled?: boolean;
   style?: ViewStyle;
 }
 
 const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   label,
   onPress,
-  loading,
+  loading = false,
+  disabled = false,
   style,
 }) => {
+  const isDisabled = disabled || loading;
+
   return (
     <Pressable
       style={({ pressed }) => [
         styles.button,
         style,
-        pressed && styles.buttonPressed,
+        isDisabled && styles.buttonDisabled,
+        pressed && !isDisabled && styles.buttonPressed,
       ]}
-      onPress={onPress}
-      disabled={loading}
+      onPress={isDisabled ? undefined : onPress}
+      disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
     >
       {loading ? (
         <ActivityIndicator color="#FFFFFF" />
       ) : (
-        <Text style={styles.label}>{label}</Text>
+        <Text style={[styles.label, isDisabled && styles.labelDisabled]}>
+          {label}
+        </Text>
       )}
     </Pressable>
   );
@@ -54,13 +63,19 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   buttonPressed: {
-    opacity: 0.85,
+    opacity: 0.9,
     transform: [{ translateY: 1 }],
+  },
+  buttonDisabled: {
+    opacity: 0.55,
   },
   label: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  labelDisabled: {
+    color: "#FFFFFF",
   },
 });
 

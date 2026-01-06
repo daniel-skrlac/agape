@@ -7,6 +7,8 @@ import TextField from "../components/ui/TextField";
 import PrimaryButton from "../components/ui/PrimaryButton";
 import Strings from "../constants/Strings";
 import Colors from "../constants/Colors";
+import AuthBackground from "@/components/auth/AuthBackground";
+import FormCard from "@/components/ui/FormCard";
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
@@ -27,56 +29,61 @@ export default function RegisterScreen() {
   };
 
   return (
-    <Screen>
-      <View style={styles.top}>
-        <AuthHeader />
+    <AuthBackground>
+      <Screen>
+        <View style={styles.top}>
+          <AuthHeader />
+          <FormCard>
+            <View>
+              <TextField
+                label={Strings.auth.fullNameLabel}
+                placeholder={Strings.auth.fullNamePlaceholder}
+                value={fullName}
+                onChangeText={setFullName}
+                returnKeyType="next"
+              />
 
-        <View>
-          <TextField
-            label={Strings.auth.usernameLabel}
-            placeholder={Strings.auth.usernamePlaceholder}
-            autoCapitalize="none"
-            value={username}
-            onChangeText={setUsername}
-            returnKeyType="next"
-          />
+              <TextField
+                label={Strings.auth.usernameLabel}
+                placeholder={Strings.auth.usernamePlaceholder}
+                autoCapitalize="none"
+                value={username}
+                onChangeText={setUsername}
+                returnKeyType="next"
+              />
 
-          <TextField
-            label={Strings.auth.fullNameLabel}
-            placeholder={Strings.auth.fullNamePlaceholder}
-            value={fullName}
-            onChangeText={setFullName}
-            returnKeyType="next"
-          />
-
-          <TextField
-            label={Strings.auth.passwordLabel}
-            placeholder={Strings.auth.passwordPlaceholder}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            returnKeyType="done"
-          />
+              <TextField
+                label={Strings.auth.passwordLabel}
+                placeholder={Strings.auth.passwordPlaceholder}
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                returnKeyType="done"
+              />
+            </View>
+          </FormCard>
         </View>
-      </View>
 
-      <View style={styles.bottom}>
-        <PrimaryButton
-          label={Strings.auth.registerButton}
-          onPress={handleRegister}
-          loading={loading}
-        />
 
-        <View style={styles.switchRow}>
-          <Text style={styles.switchText}>
-            {Strings.auth.registerToLoginQuestion}{" "}
-          </Text>
-          <Link href="/" style={styles.switchLink}>
-            {Strings.auth.registerToLoginLink}
-          </Link>
+
+        <View style={styles.bottom}>
+          <PrimaryButton
+            label={Strings.auth.registerButton}
+            onPress={handleRegister}
+            loading={loading}
+          />
+
+          <View style={styles.switchRow}>
+            <Text style={styles.switchText}>
+              {Strings.auth.registerToLoginQuestion}{" "}
+            </Text>
+            <Link href="/" style={styles.switchLink}>
+              {Strings.auth.registerToLoginLink}
+            </Link>
+          </View>
         </View>
-      </View>
-    </Screen>
+      </Screen>
+    </AuthBackground>
   );
 }
 

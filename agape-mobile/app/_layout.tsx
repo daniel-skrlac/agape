@@ -1,24 +1,30 @@
-import { Stack } from "expo-router";
 import React from "react";
+import { View, StyleSheet } from "react-native";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Stack } from "expo-router";
+import { queryClient } from "./query/queryClient";
+import GlobalNetworkSpinner from "@/components/GlobalNetworkSpinner";
 
 export default function RootLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      { }
-      <Stack.Screen name="index" />       { }
-      <Stack.Screen name="register" />    { }
+    <QueryClientProvider client={queryClient}>
+      <View style={styles.root}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="register" />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        </Stack>
 
-      { }
-      <Stack.Screen
-        name="(tabs)"
-        options={{
-          headerShown: false,
-        }}
-      />
-    </Stack>
+        {}
+        <GlobalNetworkSpinner />
+      </View>
+    </QueryClientProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    position: "relative",
+  },
+});

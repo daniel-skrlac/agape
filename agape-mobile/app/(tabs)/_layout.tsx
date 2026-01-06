@@ -21,18 +21,18 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
       }}>
       <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Korisnici',
-          tabBarIcon: ({ color }) => <TabBarIcon name="users" color={color} />,
-          headerShown: false,
-        }}
-      />
-      <Tabs.Screen
         name="scan"
         options={{
           title: 'Skeniraj',
           tabBarIcon: ({ color }) => <TabBarIcon name="camera" color={color} />,
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: 'Početna',
+          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
           headerShown: false,
         }}
       />

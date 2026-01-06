@@ -12,15 +12,29 @@ const AuthHeader: React.FC = () => {
         resizeMode="contain"
       />
       <Text style={styles.title}>{Strings.appName}</Text>
+
+      <View style={styles.bottomLine} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  bottomLine: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    bottom: 0,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: Colors.tintColor,
+    opacity: 0.35,
+  },
   container: {
     alignItems: "center",
     marginBottom: 24,
+    paddingBottom: 14,
   },
+
   logo: {
     width: 140,
     height: 140,
