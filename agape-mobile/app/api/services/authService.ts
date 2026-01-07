@@ -19,6 +19,7 @@ export const authService = {
             userId: data.userId,
             username: data.username,
             name: data.name,
+            defaultWarehouseId: data.defaultWarehouseId
         });
 
         return data;

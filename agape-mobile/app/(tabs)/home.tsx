@@ -1,10 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
   View,
-  ScrollView,
-  RefreshControl,
   Pressable,
   LayoutAnimation,
   Platform,
@@ -21,7 +19,7 @@ import { useStockStatistics } from "../api/hooks/useStockStatistics";
 import { useWarehouses } from "../api/hooks/useWarehouses";
 import { useCurrentUser } from "../api/hooks/useCurrentUser";
 import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { usePullToRefresh } from "../api/hooks/usePullToRefresh";
 import TabScroll from "@/components/ui/TabScroll";
 
@@ -67,24 +65,54 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 export default function HomeScreen() {
   useWindowDimensions();
 
-  const { session } = useCurrentUser();
   const { data: warehouses, isLoading: isWarehousesLoading } = useWarehouses();
 
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (warehouseId == null && warehouses && warehouses.length > 0) {
-      setWarehouseId(warehouses[0]);
-    }
-  }, [warehouses, warehouseId]);
+  const { session } = useCurrentUser();
+  const defaultWh = (session?.defaultWarehouseId ?? null) as number | null;
 
-  const { data, isLoading, isFetching, refetch, dataUpdatedAt } = useStockStatistics(warehouseId);
-  const totals = data?.totals;
+  const followsDefaultRef = useRef(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      followsDefaultRef.current = true;
+      setWarehouseOpen(false);
+      setWarehouseId(null);
+    }, [])
+  );
+
+  useEffect(() => {
+    followsDefaultRef.current = true;
+    setWarehouseId(null);
+  }, [defaultWh]);
+
+  useEffect(() => {
+    if (!warehouses?.length) return;
+
+    if (!followsDefaultRef.current && warehouseId != null) return;
+
+    const next =
+      defaultWh != null && warehouses.includes(defaultWh)
+        ? defaultWh
+        : warehouses[0];
+
+    if (warehouseId !== next) setWarehouseId(next);
+  }, [warehouses, defaultWh, warehouseId]);
+
+  const onSelectWarehouse = (id: number) => {
+    followsDefaultRef.current = false;
+    setWarehouseId(id);
+    setWarehouseOpen(false);
+  };
 
   const stats = useStockStatistics(warehouseId);
-  const wh = useWarehouses();
+  const { data, isLoading, isFetching, dataUpdatedAt } = stats;
+
+  const totals = data?.totals;
+
 
   const [open, setOpen] = useState<Record<SectionKey, boolean>>({
     missing: false,
@@ -127,7 +155,12 @@ export default function HomeScreen() {
   }, [warehouseId]);
 
   const { refreshing, onRefresh } = usePullToRefresh([
-    () => stats.refetch()
+    async () => {
+      followsDefaultRef.current = true;
+      setWarehouseId(null);
+      setWarehouseOpen(false);
+      await stats.refetch();
+    },
   ]);
 
   const statsRefreshingInline = isFetching && !isPullRefreshing;
@@ -142,202 +175,194 @@ export default function HomeScreen() {
       bounces
     >
       <Screen>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          overScrollMode="always"
-          alwaysBounceVertical
-          bounces
-        >
-          <View style={styles.sectionGap}>
-            <HeroCard
-              displayName={displayName}
-              headerSubtitle={headerSubtitle}
-              totalsQty={formatQtyHR(totals?.totalStockQty)}
-              updatedText={updatedText}
-            />
-          </View>
+        <View style={styles.sectionGap}>
+          <HeroCard
+            displayName={displayName}
+            headerSubtitle={headerSubtitle}
+            totalsQty={formatQtyHR(totals?.totalStockQty)}
+            updatedText={updatedText}
+          />
+        </View>
 
-          <View style={styles.sectionGap}>
-            <Surface style={styles.whSurface}>
-              <Pressable
-                onPress={toggleWarehouse}
-                android_ripple={{ color: "rgba(2,6,23,0.08)" }}
-                style={({ pressed }) => [styles.whRow, pressed && styles.pressed]}
-              >
-                <View style={styles.whIcon}>
-                  <FontAwesome name="building" size={16} color={T.text} />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.whLabel}>{Strings.home.warehouse.label}</Text>
-                  <Text style={styles.whValue} numberOfLines={1}>
-                    {isWarehousesLoading ? Strings.home.warehouse.loading : selectedWarehouseLabel}
-                  </Text>
-
-                  {statsRefreshingInline ? (
-                    <View style={styles.whLoadingRow}>
-                      <ActivityIndicator size="small" />
-                      <Text style={styles.whLoadingInline} numberOfLines={1}>
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.whRight}>
-                  <Text style={styles.whHint} numberOfLines={1}>
-                    {Strings.home.warehouse.changeHint}
-                  </Text>
-                  <FontAwesome name={warehouseOpen ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
-                </View>
-              </Pressable>
-
-              {warehouseOpen ? <View style={styles.whDivider} /> : null}
-
-              {warehouseOpen ? (
-                <View style={styles.whDropdown}>
-                  {isWarehousesLoading ? (
-                    <View style={styles.whDropdownLoading}>
-                      <ActivityIndicator size="small" />
-                      <Text style={styles.whDropdownLoadingText}>{Strings.home.warehouse.loading}</Text>
-                    </View>
-                  ) : (warehouses ?? []).length === 0 ? (
-                    <View style={styles.whDropdownEmpty}>
-                      <Text style={styles.whDropdownEmptyText}>{Strings.home.warehouse.empty}</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.whDropdownList}>
-                      {(warehouses ?? []).map((id) => {
-                        const active = id === warehouseId;
-                        return (
-                          <Pressable
-                            key={id}
-                            onPress={() => {
-                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                              setWarehouseId(id);
-                              setWarehouseOpen(false);
-                            }}
-                            android_ripple={{ color: "rgba(2,6,23,0.08)" }}
-                            style={({ pressed }) => [
-                              styles.whItem,
-                              active ? styles.whItemActive : styles.whItemIdle,
-                              pressed && styles.pressed,
-                            ]}
-                          >
-                            <Text style={styles.whItemText}>{Strings.home.warehouse.item(id)}</Text>
-                            {active ? <FontAwesome name="check" size={16} color={T.text} /> : null}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              ) : null}
-            </Surface>
-          </View>
-
-          <View style={styles.sectionGap}>
-            <View style={styles.metricsGrid}>
-              <MetricTile icon="cubes" title={Strings.home.metrics.totalItems} value={formatIntHR(totals?.totalItems)} tone="neutral" />
-              <MetricTile icon="exclamation-circle" title={Strings.home.metrics.missing} value={formatIntHR(totals?.missingCount)} tone="warm" />
-              <MetricTile icon="arrow-up" title={Strings.home.metrics.needsFill} value={formatIntHR(totals?.needsFillCount)} tone="warm" />
-              <MetricTile icon="bookmark" title={Strings.home.metrics.reserved} value={formatIntHR(totals?.reservedCount)} tone="cool" />
-            </View>
-          </View>
-
-          <View style={[styles.sectionGap, { gap: 14 }]}>
-            <Accordion
-              icon="exclamation-circle"
-              tone="warm"
-              title={Strings.home.sections.missingTitle}
-              subtitle={Strings.home.sections.missingSub}
-              count={data?.missing?.length ?? 0}
-              open={open.missing}
-              onPress={() => toggle("missing")}
+        <View style={styles.sectionGap}>
+          <Surface style={styles.whSurface}>
+            <Pressable
+              onPress={toggleWarehouse}
+              android_ripple={{ color: "rgba(2,6,23,0.08)" }}
+              style={({ pressed }) => [styles.whRow, pressed && styles.pressed]}
             >
-              {isLoading ? (
-                <EmptyLine text={Strings.home.empty.loading} />
-              ) : missingItems.length === 0 ? (
-                <EmptyLine text={Strings.home.empty.bySegment.missing} />
-              ) : (
-                <ListCard>
-                  {missingItems.map((it, idx) => (
-                    <StockRow
-                      key={`${it.itemId}-${it.warehouseId}`}
-                      name={it.name}
-                      code={`${Strings.home.labels.code}: ${it.itemCode}`}
-                      rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
-                      rightBottom={Strings.home.rowHints.missing}
-                      badgeTone="warm"
-                      divider={idx < missingItems.length - 1}
-                    />
-                  ))}
-                </ListCard>
-              )}
-            </Accordion>
+              <View style={styles.whIcon}>
+                <FontAwesome name="building" size={16} color={T.text} />
+              </View>
 
-            <Accordion
-              icon="arrow-up"
-              tone="warm"
-              title={Strings.home.sections.needsFillTitle}
-              subtitle={Strings.home.sections.needsFillSub}
-              count={data?.needsFill?.length ?? 0}
-              open={open.needsFill}
-              onPress={() => toggle("needsFill")}
-            >
-              {isLoading ? (
-                <EmptyLine text={Strings.home.empty.loading} />
-              ) : needsFillItems.length === 0 ? (
-                <EmptyLine text={Strings.home.empty.bySegment.needsFill} />
-              ) : (
-                <ListCard>
-                  {needsFillItems.map((it, idx) => (
-                    <StockRow
-                      key={`${it.itemId}-${it.warehouseId}`}
-                      name={it.name}
-                      code={`${Strings.home.labels.code}: ${it.itemCode}`}
-                      rightTop={`${formatQtyHR(it.currentQty)} / ${formatQtyHR(it.minimalQty)}`}
-                      rightBottom={Strings.home.rowHints.needsFill}
-                      badgeTone="warm"
-                      divider={idx < needsFillItems.length - 1}
-                    />
-                  ))}
-                </ListCard>
-              )}
-            </Accordion>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.whLabel}>{Strings.home.warehouse.label}</Text>
+                <Text style={styles.whValue} numberOfLines={1}>
+                  {isWarehousesLoading ? Strings.home.warehouse.loading : selectedWarehouseLabel}
+                </Text>
 
-            <Accordion
-              icon="check-circle"
-              tone="cool"
-              title={Strings.home.sections.mostTitle}
-              subtitle={Strings.home.sections.mostSub}
-              count={data?.mostInStock?.length ?? 0}
-              open={open.most}
-              onPress={() => toggle("most")}
-            >
-              {isLoading ? (
-                <EmptyLine text={Strings.home.empty.loading} />
-              ) : mostItems.length === 0 ? (
-                <EmptyLine text={Strings.home.empty.bySegment.most} />
-              ) : (
-                <ListCard>
-                  {mostItems.map((it, idx) => (
-                    <StockRow
-                      key={`${it.itemId}-${it.warehouseId}`}
-                      name={it.name}
-                      code={`${Strings.home.labels.code}: ${it.itemCode}`}
-                      rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
-                      rightBottom={Strings.home.rowHints.most}
-                      badgeTone="cool"
-                      divider={idx < mostItems.length - 1}
-                    />
-                  ))}
-                </ListCard>
-              )}
-            </Accordion>
+                {statsRefreshingInline ? (
+                  <View style={styles.whLoadingRow}>
+                    <ActivityIndicator size="small" />
+                    <Text style={styles.whLoadingInline} numberOfLines={1}>
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.whRight}>
+                <Text style={styles.whHint} numberOfLines={1}>
+                  {Strings.home.warehouse.changeHint}
+                </Text>
+                <FontAwesome name={warehouseOpen ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
+              </View>
+            </Pressable>
+
+            {warehouseOpen ? <View style={styles.whDivider} /> : null}
+
+            {warehouseOpen ? (
+              <View style={styles.whDropdown}>
+                {isWarehousesLoading ? (
+                  <View style={styles.whDropdownLoading}>
+                    <ActivityIndicator size="small" />
+                    <Text style={styles.whDropdownLoadingText}>{Strings.home.warehouse.loading}</Text>
+                  </View>
+                ) : (warehouses ?? []).length === 0 ? (
+                  <View style={styles.whDropdownEmpty}>
+                    <Text style={styles.whDropdownEmptyText}>{Strings.home.warehouse.empty}</Text>
+                  </View>
+                ) : (
+                  <View style={styles.whDropdownList}>
+                    {(warehouses ?? []).map((id) => {
+                      const active = id === warehouseId;
+                      return (
+                        <Pressable
+                          key={id}
+                          onPress={() => {
+                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                            onSelectWarehouse(id);
+                          }}
+                          android_ripple={{ color: "rgba(2,6,23,0.08)" }}
+                          style={({ pressed }) => [
+                            styles.whItem,
+                            active ? styles.whItemActive : styles.whItemIdle,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={styles.whItemText}>{Strings.home.warehouse.item(id)}</Text>
+                          {active ? <FontAwesome name="check" size={16} color={T.text} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </Surface>
+        </View>
+
+        <View style={styles.sectionGap}>
+          <View style={styles.metricsGrid}>
+            <MetricTile icon="cubes" title={Strings.home.metrics.totalItems} value={formatIntHR(totals?.totalItems)} tone="neutral" />
+            <MetricTile icon="exclamation-circle" title={Strings.home.metrics.missing} value={formatIntHR(totals?.missingCount)} tone="warm" />
+            <MetricTile icon="arrow-up" title={Strings.home.metrics.needsFill} value={formatIntHR(totals?.needsFillCount)} tone="warm" />
+            <MetricTile icon="bookmark" title={Strings.home.metrics.reserved} value={formatIntHR(totals?.reservedCount)} tone="cool" />
           </View>
+        </View>
 
-          <View style={{ height: 26 }} />
-        </ScrollView>
+        <View style={[styles.sectionGap, { gap: 14 }]}>
+          <Accordion
+            icon="exclamation-circle"
+            tone="warm"
+            title={Strings.home.sections.missingTitle}
+            subtitle={Strings.home.sections.missingSub}
+            count={data?.missing?.length ?? 0}
+            open={open.missing}
+            onPress={() => toggle("missing")}
+          >
+            {isLoading ? (
+              <EmptyLine text={Strings.home.empty.loading} />
+            ) : missingItems.length === 0 ? (
+              <EmptyLine text={Strings.home.empty.bySegment.missing} />
+            ) : (
+              <ListCard>
+                {missingItems.map((it, idx) => (
+                  <StockRow
+                    key={`${it.itemId}-${it.warehouseId}`}
+                    name={it.name}
+                    code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                    rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
+                    rightBottom={Strings.home.rowHints.missing}
+                    badgeTone="warm"
+                    divider={idx < missingItems.length - 1}
+                  />
+                ))}
+              </ListCard>
+            )}
+          </Accordion>
+
+          <Accordion
+            icon="arrow-up"
+            tone="warm"
+            title={Strings.home.sections.needsFillTitle}
+            subtitle={Strings.home.sections.needsFillSub}
+            count={data?.needsFill?.length ?? 0}
+            open={open.needsFill}
+            onPress={() => toggle("needsFill")}
+          >
+            {isLoading ? (
+              <EmptyLine text={Strings.home.empty.loading} />
+            ) : needsFillItems.length === 0 ? (
+              <EmptyLine text={Strings.home.empty.bySegment.needsFill} />
+            ) : (
+              <ListCard>
+                {needsFillItems.map((it, idx) => (
+                  <StockRow
+                    key={`${it.itemId}-${it.warehouseId}`}
+                    name={it.name}
+                    code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                    rightTop={`${formatQtyHR(it.currentQty)} / ${formatQtyHR(it.minimalQty)}`}
+                    rightBottom={Strings.home.rowHints.needsFill}
+                    badgeTone="warm"
+                    divider={idx < needsFillItems.length - 1}
+                  />
+                ))}
+              </ListCard>
+            )}
+          </Accordion>
+
+          <Accordion
+            icon="check-circle"
+            tone="cool"
+            title={Strings.home.sections.mostTitle}
+            subtitle={Strings.home.sections.mostSub}
+            count={data?.mostInStock?.length ?? 0}
+            open={open.most}
+            onPress={() => toggle("most")}
+          >
+            {isLoading ? (
+              <EmptyLine text={Strings.home.empty.loading} />
+            ) : mostItems.length === 0 ? (
+              <EmptyLine text={Strings.home.empty.bySegment.most} />
+            ) : (
+              <ListCard>
+                {mostItems.map((it, idx) => (
+                  <StockRow
+                    key={`${it.itemId}-${it.warehouseId}`}
+                    name={it.name}
+                    code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                    rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
+                    rightBottom={Strings.home.rowHints.most}
+                    badgeTone="cool"
+                    divider={idx < mostItems.length - 1}
+                  />
+                ))}
+              </ListCard>
+            )}
+          </Accordion>
+        </View>
+
+        <View style={{ height: 26 }} />
       </Screen>
     </TabScroll>
   );

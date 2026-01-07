@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getSession, type AuthSession } from "../sessionStore";
+import { getSession, subscribeSession, type AuthSession } from "../sessionStore";
 
 export function useCurrentUser() {
     const [session, setSession] = useState<AuthSession | null>(null);
@@ -18,8 +18,11 @@ export function useCurrentUser() {
             }
         })();
 
+        const unsub = subscribeSession((s) => setSession(s));
+
         return () => {
             mounted = false;
+            unsub();
         };
     }, []);
 

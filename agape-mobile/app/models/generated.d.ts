@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-07 17:37:15.
+// Generated using typescript-generator version 3.2.1263 on 2026-01-07 19:59:06.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -143,6 +143,7 @@ export interface AuthResponseDTO {
     userId: number;
     username: string;
     name: string;
+    defaultWarehouseId: number;
     token: string;
 }
 
@@ -163,16 +164,22 @@ export interface RegisterResponseDTO {
     name: string;
 }
 
+export interface UpdateDefaultWarehouseRequestDTO {
+    warehouseId: number;
+}
+
 export interface UpdateUserRequestDTO {
     username: string;
     name: string;
     password: string;
+    defaultWarehouseId: number;
 }
 
 export interface UserResponseDTO {
     id: number;
     username: string;
     name: string;
+    defaultWarehouseId: number;
 }
 
 export interface DispatchItemRequest {

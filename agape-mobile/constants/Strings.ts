@@ -1,6 +1,29 @@
 const Strings = {
   appName: "Socijalna samoposluga",
 
+  settings: {
+    title: "Postavke",
+    mainWarehouse: {
+      title: "Glavno skladište",
+      subtitle: "Odabrano skladište koristi se defaultno u aplikaciji.",
+      label: "Odabir skladišta",
+      save: "Spremi",
+      saved: "Glavno skladište je spremljeno.",
+      none: "Nije odabrano",
+      changeHint: "Promijeni",
+      loading: "Učitavanje…",
+      empty: "Nema dostupnih skladišta.",
+      validationRequired: "Odaberite skladište.",
+      errorGeneric: "Nešto je pošlo po zlu. Pokušajte ponovno.",
+    },
+    validation: {
+      warehouseRequired: "Odaberite skladište.",
+    },
+    errors: {
+      generic: "Nešto je pošlo po zlu. Pokušajte ponovno.",
+      network: "Nema internetske veze s poslužiteljem. Provjerite internet i pokušajte ponovno.",
+    },
+  },
   profile: {
     screenTitle: "Profil",
     editSubtitle: "Uredi podatke računa",
