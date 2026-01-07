@@ -3,6 +3,7 @@ package hr.agape.user.service;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.user.domain.UserEntity;
+import hr.agape.user.dto.UpdateDefaultWarehouseRequestDTO;
 import hr.agape.user.dto.UpdateUserRequestDTO;
 import hr.agape.user.dto.UserResponseDTO;
 import hr.agape.user.mapper.UserMapper;
@@ -46,10 +47,6 @@ public class UserService {
     @Transactional
     public ServiceResponseDTO<UserResponseDTO> update(Long userId, UpdateUserRequestDTO req) {
         try {
-            if (req == null) {
-                return ServiceResponseDirector.errorBadRequest("Request body is required.");
-            }
-
             UserEntity user = userRepo.findById(userId);
             if (user == null) {
                 return ServiceResponseDirector.errorNotFound("User not found.");
@@ -88,6 +85,11 @@ public class UserService {
                     return ServiceResponseDirector.errorBadRequest("Password cannot be empty.");
                 }
                 user.setPasswordHash(BcryptUtil.bcryptHash(pw));
+                changed = true;
+            }
+
+            if (req.getDefaultWarehouseId() != null) {
+                user.setDefaultWarehouseId(req.getDefaultWarehouseId());
                 changed = true;
             }
 

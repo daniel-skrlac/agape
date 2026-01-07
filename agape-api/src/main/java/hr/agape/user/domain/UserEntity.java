@@ -33,6 +33,9 @@ public class UserEntity extends PanacheEntityBase {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Column(name = "default_warehouse_id")
+    private Long defaultWarehouseId;
+
     @ManyToMany
     @JoinTable(
             name = "user_role",

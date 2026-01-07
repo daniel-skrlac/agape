@@ -5,6 +5,7 @@ import hr.agape.user.dto.UpdateUserRequestDTO;
 import hr.agape.user.dto.UserResponseDTO;
 import hr.agape.user.service.UserService;
 import jakarta.inject.Inject;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
@@ -38,7 +39,7 @@ public class UserResource {
     @Path("/{id}")
     public ServiceResponseDTO<UserResponseDTO> update(@PathParam("id")
                                                       @Positive(message = "Id must be a positive number.")
-                                                      Long id, UpdateUserRequestDTO req) {
+                                                      Long id, @Valid UpdateUserRequestDTO req) {
         return userService.update(id, req);
     }
 }
