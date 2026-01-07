@@ -12,6 +12,13 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="register" />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="profile"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+            }}
+          />
         </Stack>
       </View>
     </QueryClientProvider>

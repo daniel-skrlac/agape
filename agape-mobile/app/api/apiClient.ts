@@ -26,8 +26,14 @@ type RequestOptions = {
     parseDates?: boolean;
 };
 
-export function createApiClient(config: { baseUrl: string; getToken?: TokenProvider }) {
-    const { baseUrl, getToken } = config;
+type ApiClientConfig = {
+    baseUrl: string;
+    getToken?: TokenProvider;
+    onUnauthorized?: () => Promise<void> | void;
+};
+
+export function createApiClient(config: ApiClientConfig) {
+    const { baseUrl, getToken, onUnauthorized } = config;
 
     async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
         const {
@@ -68,6 +74,10 @@ export function createApiClient(config: { baseUrl: string; getToken?: TokenProvi
             const text = await res.text();
             const json = text ? safeJsonParse(text, parseDates) : null;
 
+            if (res.status === 401 || res.status === 403) {
+                await onUnauthorized?.();
+            }
+
             if (!res.ok) {
                 throw new ApiError(`HTTP ${res.status}`, res.status, json);
             }
@@ -80,7 +90,12 @@ export function createApiClient(config: { baseUrl: string; getToken?: TokenProvi
 
             if (envelope && typeof envelope === "object" && "success" in envelope) {
                 if (!envelope.success) {
-                    throw new ApiError(envelope.message || "Request failed", envelope.statusCode ?? res.status, envelope);
+                    const sc = envelope.statusCode ?? res.status;
+                    if (sc === 401 || sc === 403) {
+                        await onUnauthorized?.();
+                    }
+
+                    throw new ApiError(envelope.message || "Request failed", sc, envelope);
                 }
                 return envelope.data;
             }
@@ -114,11 +129,7 @@ function safeJsonParse(text: string, parseDates: boolean) {
     if (!parseDates) return JSON.parse(text);
 
     return JSON.parse(text, (key, value) => {
-        if (
-            typeof value === "string" &&
-            isIsoDateString(value) &&
-            isLikelyDateKey(key)
-        ) {
+        if (typeof value === "string" && isIsoDateString(value) && isLikelyDateKey(key)) {
             const d = new Date(value);
             if (!Number.isNaN(d.getTime())) return d;
         }

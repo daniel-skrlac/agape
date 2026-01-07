@@ -24,78 +24,80 @@ export default function RegisterScreen() {
 
   return (
     <AuthBackground>
-      <Screen>
-        <View style={styles.top}>
-          <AuthHeader />
+      <Screen edges={["top", "bottom", "left", "right"]}>
+        <View style={styles.container}>
+          <View style={styles.top}>
+            <AuthHeader />
 
-          <View style={styles.header}>
-            <Text style={styles.title}>{Strings.auth.registerTitle}</Text>
+            <View style={styles.header}>
+              <Text style={styles.title}>{Strings.auth.registerTitle}</Text>
+            </View>
+
+            <FormCard>
+              <View style={styles.form}>
+                {!!form.errors.formError && (
+                  <View style={styles.errorBanner}>
+                    <Text style={styles.errorBannerText}>{form.errors.formError}</Text>
+                  </View>
+                )}
+
+                <TextField
+                  label={Strings.auth.fullNameLabel}
+                  placeholder={Strings.auth.fullNamePlaceholder}
+                  value={form.values.fullName}
+                  onChangeText={form.setFullName}
+                  onBlur={() => form.markTouched("fullName")}
+                  returnKeyType="next"
+                />
+                {!!form.errors.fullNameError && (
+                  <Text style={styles.fieldError}>{form.errors.fullNameError}</Text>
+                )}
+
+                <TextField
+                  label={Strings.auth.usernameLabel}
+                  placeholder={Strings.auth.usernamePlaceholder}
+                  autoCapitalize="none"
+                  value={form.values.username}
+                  onChangeText={form.setUsername}
+                  onBlur={() => form.markTouched("username")}
+                  returnKeyType="next"
+                />
+                {!!form.errors.usernameError && (
+                  <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
+                )}
+
+                <TextField
+                  label={Strings.auth.passwordLabel}
+                  placeholder={Strings.auth.passwordPlaceholder}
+                  secureTextEntry
+                  value={form.values.password}
+                  onChangeText={form.setPassword}
+                  onBlur={() => form.markTouched("password")}
+                  returnKeyType="done"
+                />
+                {!!form.errors.passwordError && (
+                  <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
+                )}
+              </View>
+            </FormCard>
           </View>
 
-          <FormCard>
-            <View style={styles.form}>
-              {!!form.errors.formError && (
-                <View style={styles.errorBanner}>
-                  <Text style={styles.errorBannerText}>{form.errors.formError}</Text>
-                </View>
-              )}
+          <View style={styles.bottom}>
+            <PrimaryButton
+              label={Strings.auth.registerButton}
+              onPress={handleRegister}
+              loading={form.submitting}
+              disabled={!form.canSubmit}
+            />
 
-              <TextField
-                label={Strings.auth.fullNameLabel}
-                placeholder={Strings.auth.fullNamePlaceholder}
-                value={form.values.fullName}
-                onChangeText={form.setFullName}
-                onBlur={() => form.markTouched("fullName")}
-                returnKeyType="next"
-              />
-              {!!form.errors.fullNameError && (
-                <Text style={styles.fieldError}>{form.errors.fullNameError}</Text>
-              )}
-
-              <TextField
-                label={Strings.auth.usernameLabel}
-                placeholder={Strings.auth.usernamePlaceholder}
-                autoCapitalize="none"
-                value={form.values.username}
-                onChangeText={form.setUsername}
-                onBlur={() => form.markTouched("username")}
-                returnKeyType="next"
-              />
-              {!!form.errors.usernameError && (
-                <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
-              )}
-
-              <TextField
-                label={Strings.auth.passwordLabel}
-                placeholder={Strings.auth.passwordPlaceholder}
-                secureTextEntry
-                value={form.values.password}
-                onChangeText={form.setPassword}
-                onBlur={() => form.markTouched("password")}
-                returnKeyType="done"
-              />
-              {!!form.errors.passwordError && (
-                <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
-              )}
+            <View style={styles.switchRow}>
+              <Text style={styles.switchText}>
+                {Strings.auth.registerToLoginQuestion}{" "}
+              </Text>
+              <Link href="/" style={styles.switchLink}>
+                {Strings.auth.registerToLoginLink}
+              </Link>
             </View>
-          </FormCard>
-        </View>
-
-        <View style={styles.bottom}>
-          <PrimaryButton
-            label={Strings.auth.registerButton}
-            onPress={handleRegister}
-            loading={form.submitting}
-            disabled={!form.canSubmit}
-          />
-
-          <View style={styles.switchRow}>
-            <Text style={styles.switchText}>
-              {Strings.auth.registerToLoginQuestion}{" "}
-            </Text>
-            <Link href="/" style={styles.switchLink}>
-              {Strings.auth.registerToLoginLink}
-            </Link>
           </View>
         </View>
       </Screen>
@@ -105,7 +107,16 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   top: { flex: 1, justifyContent: "flex-start" },
-
+  container: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+    width: "100%",
+    maxWidth: 520,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+  },
   header: { width: "100%", alignItems: "center", marginBottom: 16 },
   title: { fontSize: 26, fontWeight: "800", color: Colors.light.text },
 

@@ -1,5 +1,3 @@
-import { createApiClient } from "../apiClient";
-import { API_BASE_URL } from "../config";
 import type {
     AuthResponseDTO,
     LoginRequestDTO,
@@ -7,8 +5,7 @@ import type {
     RegisterResponseDTO,
 } from "../../models/generated";
 import { clearSession, saveSession } from "../sessionStore";
-
-const api = createApiClient({ baseUrl: API_BASE_URL });
+import { api } from "../api";
 
 export const authService = {
     async login(payload: LoginRequestDTO): Promise<AuthResponseDTO> {

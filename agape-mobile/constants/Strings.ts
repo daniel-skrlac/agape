@@ -1,6 +1,39 @@
 const Strings = {
   appName: "Socijalna samoposluga",
 
+  profile: {
+    screenTitle: "Profil",
+    editSubtitle: "Uredi podatke računa",
+
+    labels: {
+      fullName: "Puno ime",
+      username: "Korisničko ime",
+      password: "Lozinka",
+    },
+
+    placeholders: {
+      fullName: "Unesite ime",
+      username: "Unesite korisničko ime",
+      passwordReadonly: "••••••••",
+      passwordEdit: "Nova lozinka (opcionalno)",
+    },
+
+    buttons: {
+      edit: "Uredi",
+      close: "Zatvori",
+      cancel: "Odustani",
+      save: "Spremi",
+      logout: "Odjava",
+    },
+
+    banners: {
+      updated: "Profil je ažuriran.",
+    },
+
+    errors: {
+      title: "Greška",
+    },
+  },
   home: {
     hero: {
       eyebrow: "Pregled",

@@ -1,8 +1,4 @@
-import { createApiClient } from "../apiClient";
-import { API_BASE_URL } from "../config";
-import { getToken } from "../sessionStore";
-
-const api = createApiClient({ baseUrl: API_BASE_URL, getToken });
+import { api } from "../api";
 
 export const warehouseService = {
     getAll(signal?: AbortSignal) {

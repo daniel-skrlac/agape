@@ -76,7 +76,7 @@ export default function TabLayout() {
           options={{
             title: "Skeniraj",
             sceneStyle: { backgroundColor: "transparent" },
-            tabBarIcon: ({ color }) => <TabBarIcon name="camera" color={color} />,
+            tabBarIcon: ({ color }) => <TabBarIcon name="camera" color={color} />
           }}
         />
 
@@ -95,6 +95,15 @@ export default function TabLayout() {
             title: "Postavke",
             sceneStyle: { backgroundColor: "transparent" },
             tabBarIcon: ({ color }) => <TabBarIcon name="gear" color={color} />,
+          }}
+        />
+
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profil",
+            href: null,
+            sceneStyle: { backgroundColor: "transparent" },
           }}
         />
       </Tabs>

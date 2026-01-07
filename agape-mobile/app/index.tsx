@@ -55,68 +55,69 @@ export default function Index() {
 
     return (
         <AuthBackground>
-            <Screen>
-                <View style={styles.top}>
-                    <AuthHeader />
+            <Screen edges={["top", "bottom", "left", "right"]}>
+                <View style={styles.container}>
+                    <View style={styles.top}>
+                        <AuthHeader />
 
-                    <View style={styles.header}>
-                        <Text style={styles.title}>{Strings.auth.loginTitle}</Text>
-                    </View>
-
-                    <FormCard>
-                        <View style={styles.form}>
-                            {!!form.errors.formError && (
-                                <View style={styles.errorBanner}>
-                                    <Text style={styles.errorBannerText}>
-                                        {form.errors.formError}
-                                    </Text>
-                                </View>
-                            )}
-
-                            <TextField
-                                label={Strings.auth.usernameLabel}
-                                placeholder={Strings.auth.usernamePlaceholder}
-                                autoCapitalize="none"
-                                value={form.values.username}
-                                onChangeText={form.setUsername}
-                                onBlur={() => form.markTouched("username")}
-                                returnKeyType="next"
-                            />
-                            {!!form.errors.usernameError && (
-                                <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
-                            )}
-
-                            <TextField
-                                label={Strings.auth.passwordLabel}
-                                placeholder={Strings.auth.passwordPlaceholder}
-                                secureTextEntry
-                                value={form.values.password}
-                                onChangeText={form.setPassword}
-                                onBlur={() => form.markTouched("password")}
-                                returnKeyType="done"
-                            />
-                            {!!form.errors.passwordError && (
-                                <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
-                            )}
+                        <View style={styles.header}>
+                            <Text style={styles.title}>{Strings.auth.loginTitle}</Text>
                         </View>
-                    </FormCard>
-                </View>
 
-                <View style={styles.bottom}>
-                    <PrimaryButton
-                        label={Strings.auth.loginButton}
-                        onPress={handleLogin}
-                        loading={form.submitting}
-                        disabled={!form.canSubmit}
-                    />
+                        <FormCard>
+                            <View style={styles.form}>
+                                {!!form.errors.formError && (
+                                    <View style={styles.errorBanner}>
+                                        <Text style={styles.errorBannerText}>
+                                            {form.errors.formError}
+                                        </Text>
+                                    </View>
+                                )}
 
-                    <View style={styles.switchRow}>
-                        <Text style={styles.switchText}>
-                            {Strings.auth.loginToRegisterQuestion}{" "}
-                        </Text>
-                        <Link href="/register" style={styles.switchLink}>
-                            {Strings.auth.loginToRegisterLink}
-                        </Link>
+                                <TextField
+                                    label={Strings.auth.usernameLabel}
+                                    placeholder={Strings.auth.usernamePlaceholder}
+                                    autoCapitalize="none"
+                                    value={form.values.username}
+                                    onChangeText={form.setUsername}
+                                    onBlur={() => form.markTouched("username")}
+                                    returnKeyType="next"
+                                />
+                                {!!form.errors.usernameError && (
+                                    <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
+                                )}
+
+                                <TextField
+                                    label={Strings.auth.passwordLabel}
+                                    placeholder={Strings.auth.passwordPlaceholder}
+                                    secureTextEntry
+                                    value={form.values.password}
+                                    onChangeText={form.setPassword}
+                                    onBlur={() => form.markTouched("password")}
+                                    returnKeyType="done"
+                                />
+                                {!!form.errors.passwordError && (
+                                    <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
+                                )}
+                            </View>
+                        </FormCard>
+                    </View>
+                    <View style={styles.bottom}>
+                        <PrimaryButton
+                            label={Strings.auth.loginButton}
+                            onPress={handleLogin}
+                            loading={form.submitting}
+                            disabled={!form.canSubmit}
+                        />
+
+                        <View style={styles.switchRow}>
+                            <Text style={styles.switchText}>
+                                {Strings.auth.loginToRegisterQuestion}{" "}
+                            </Text>
+                            <Link href="/register" style={styles.switchLink}>
+                                {Strings.auth.loginToRegisterLink}
+                            </Link>
+                        </View>
                     </View>
                 </View>
             </Screen>
@@ -126,7 +127,16 @@ export default function Index() {
 
 const styles = StyleSheet.create({
     center: { flex: 1, alignItems: "center", justifyContent: "center" },
-
+    container: {
+        flexGrow: 1,
+        justifyContent: "space-between",
+        width: "100%",
+        maxWidth: 520,
+        alignSelf: "center",
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 16,
+    },
     top: { flex: 1, justifyContent: "flex-start" },
     header: { width: "100%", alignItems: "center", marginBottom: 16 },
     title: { fontSize: 26, fontWeight: "800", color: Colors.light.text },
