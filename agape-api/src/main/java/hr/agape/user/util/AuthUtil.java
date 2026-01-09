@@ -18,6 +18,37 @@ public class AuthUtil {
         this.jwt = jwt;
     }
 
+    public String requireOibDigits() {
+        String oib = getOibDigits();
+        if (oib == null) {
+            throw new IllegalStateException("Cannot resolve OIB from security context (JWT claim 'oib').");
+        }
+        return oib;
+    }
+
+    public Long requireOibAsLong() {
+        String digits = requireOibDigits();
+        return Long.valueOf(digits);
+    }
+
+    public String getOibDigits() {
+        if (jwt == null) return null;
+
+        Object claim = jwt.getClaim("oib");
+        String raw = null;
+
+        if (claim instanceof Number n) raw = String.valueOf(n.longValue());
+        else if (claim instanceof String s) raw = s;
+
+        if (raw == null) return null;
+
+        String digits = raw.replaceAll("[^0-9]", "");
+        if (digits.length() != 11) {
+            throw new IllegalStateException("Invalid OIB in JWT. Expected 11 digits, got: '" + raw + "'");
+        }
+        return digits;
+    }
+
     public Long requireUserId() {
         Long id = getUserId();
         if (id == null) {
@@ -27,39 +58,34 @@ public class AuthUtil {
     }
 
     public Long getUserId() {
-        if (jwt == null) {
-            return null;
-        }
+        if (jwt == null) return null;
+
         Object claim = jwt.getClaim("userId");
-        if (claim instanceof Number) {
-            return ((Number) claim).longValue();
-        }
+        if (claim instanceof Number) return ((Number) claim).longValue();
         if (claim instanceof String) {
             try {
                 return Long.valueOf((String) claim);
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
+
         String sub = jwt.getSubject();
         if (sub != null) {
             try {
                 return Long.valueOf(sub);
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
         return null;
     }
 
     public String getUsername() {
-        if (jwt == null) {
-            return null;
-        }
-        return jwt.getName();
+        return jwt == null ? null : jwt.getName();
     }
 
     public Set<String> getRoles() {
         if (jwt == null) return Set.of();
-        return jwt.getGroups() == null
-                ? Set.of()
-                : jwt.getGroups().stream().collect(Collectors.toUnmodifiableSet());
+        return jwt.getGroups() == null ? Set.of() : jwt.getGroups().stream().collect(Collectors.toUnmodifiableSet());
     }
 
     public boolean hasRole(String role) {

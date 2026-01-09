@@ -30,6 +30,9 @@ public class UserEntity extends PanacheEntityBase {
     @Column(nullable = false, unique = true)
     private String username;
 
+    @Column(name = "oib", nullable = false)
+    private String oib;
+
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 

@@ -3,11 +3,13 @@ CREATE TABLE app_user
     id                   BIGSERIAL PRIMARY KEY,
     name                 VARCHAR(100) NOT NULL,
     username             VARCHAR(50)  NOT NULL UNIQUE,
+    oib                 VARCHAR(11) NOT NULL,
     password_hash        VARCHAR(255) NOT NULL,
     default_warehouse_id BIGINT,
     created_at           TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_user_oib ON app_user (oib);
 CREATE INDEX idx_user_username ON app_user (username);
 
 CREATE TABLE role

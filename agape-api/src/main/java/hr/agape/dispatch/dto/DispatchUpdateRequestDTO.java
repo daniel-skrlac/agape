@@ -32,6 +32,8 @@ public class DispatchUpdateRequestDTO {
 
     private String overrideNote;
 
+    private boolean postNow;
+
     @Valid
     @Size(min = 1, message = "items must contain at least one line when provided")
     private List<DispatchItemPatch> items;

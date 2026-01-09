@@ -18,4 +18,8 @@ public class RegisterRequestDTO {
     @NotBlank
     @Size(min = 8, max = 64)
     private String password;
+
+    @NotBlank
+    @Size(min = 11, max = 11)
+    private String oib;
 }

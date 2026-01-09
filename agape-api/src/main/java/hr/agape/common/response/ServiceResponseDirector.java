@@ -1,5 +1,6 @@
 package hr.agape.common.response;
 
+import jakarta.transaction.TransactionSynchronizationRegistry;
 import jakarta.ws.rs.core.Response;
 
 public class ServiceResponseDirector {
@@ -30,6 +31,11 @@ public class ServiceResponseDirector {
                 .statusCode(Response.Status.BAD_REQUEST.getStatusCode())
                 .message(message)
                 .build();
+    }
+
+    public static <T> ServiceResponseDTO<T> badRequestRollback(TransactionSynchronizationRegistry tsr, String msg) {
+        tsr.setRollbackOnly();
+        return ServiceResponseDirector.errorBadRequest(msg);
     }
 
     public static <T> ServiceResponseDTO<T> errorNotFound(String message) {

@@ -119,6 +119,7 @@ public class AuthService {
                 .issuedAt(now)
                 .expiresAt(exp)
                 .claim("userId", user.getId())
+                .claim("oib", user.getOib())
                 .claim("name", user.getName())
                 .claim("roles", roleNames)
                 .sign();
