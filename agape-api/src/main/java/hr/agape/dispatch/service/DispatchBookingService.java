@@ -3,12 +3,14 @@ package hr.agape.dispatch.service;
 import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
-import hr.agape.dispatch.config.DispatchMkConfig;
+import hr.agape.dispatch.dto.DispatchBulkItemResultDTO;
+import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.dto.DispatchResponseDTO;
 import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.dispatch.dto.DispatchSummaryResponseDTO;
 import hr.agape.dispatch.dto.DispatchUpdateRequestDTO;
+import hr.agape.dispatch.enumeration.DispatchStatusEnum;
 import hr.agape.dispatch.mapper.DispatchApiMapper;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import hr.agape.document.dto.DocumentItemLineDTO;
@@ -16,21 +18,19 @@ import hr.agape.document.lookup.repository.DocumentItemLookupRepository;
 import hr.agape.document.lookup.repository.DocumentVatLookupRepository;
 import hr.agape.document.lookup.view.DocumentItemAttributesView;
 import hr.agape.document.repository.DocumentHeaderRepository;
-import hr.agape.document.repository.DocumentLineRepository;
 import hr.agape.document.repository.DocumentSlotRepository;
-import hr.agape.document.repository.MkBookingRepository;
 import hr.agape.partner.repository.PartnerRepository;
 import hr.agape.user.util.AuthUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.transaction.TransactionSynchronizationRegistry;
-import jakarta.transaction.Transactional;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -40,66 +40,58 @@ public class DispatchBookingService {
     private static final String REQ_PREFIX = "Request[";
     private static final String PDV_MISSING_FOR_DOC = "No PDV_ID found for documentId=";
 
-    private final DispatchMkConfig mkCfg;
     private final DocumentSlotRepository slotRepo;
     private final DocumentVatLookupRepository vatLookupRepo;
     private final DocumentHeaderRepository headerRepo;
-    private final DocumentLineRepository lineRepo;
     private final DispatchApiMapper mapper;
     private final PartnerRepository partnerRepo;
     private final hr.agape.document.repository.DocumentItemRepository itemRepo;
-    private final TransactionSynchronizationRegistry tsr;
     private final DocumentItemLookupRepository itemAttrsRepo;
     private final AuthUtil authUtil;
-    private final MkBookingRepository mkRepo;
+    private final DispatchBookingTransactionService tx;
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
     public DispatchBookingService(
-            DispatchMkConfig mkCfg, DocumentSlotRepository slotRepo,
+            DocumentSlotRepository slotRepo,
             DocumentVatLookupRepository vatLookupRepo,
             DocumentHeaderRepository headerRepo,
-            DocumentLineRepository lineRepo,
             DispatchApiMapper mapper,
             PartnerRepository partnerRepo,
             hr.agape.document.repository.DocumentItemRepository itemRepo,
-            TransactionSynchronizationRegistry tsr,
             DocumentItemLookupRepository itemAttrsRepo,
             AuthUtil authUtil,
-            MkBookingRepository mkRepo
+            DispatchBookingTransactionService tx
     ) {
-        this.mkCfg = mkCfg;
         this.slotRepo = slotRepo;
         this.vatLookupRepo = vatLookupRepo;
         this.headerRepo = headerRepo;
-        this.lineRepo = lineRepo;
         this.mapper = mapper;
         this.partnerRepo = partnerRepo;
         this.itemRepo = itemRepo;
-        this.tsr = tsr;
         this.itemAttrsRepo = itemAttrsRepo;
         this.authUtil = authUtil;
-        this.mkRepo = mkRepo;
+        this.tx = tx;
     }
 
-    @Transactional
+    /**
+     * BOOK ONE:
+     * - TX#1 REQUIRED: create draft header+lines
+     * - TX#2 REQUIRES_NEW: call PL/SQL posting (commits internally)
+     */
     public ServiceResponseDTO<DispatchResponseDTO> bookOne(DispatchRequestDTO req) {
         try {
             Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
-
             req.setCreatedBy(actorOibNum);
 
             Long whId = slotRepo.warehouseForDocument(req.getDocumentId());
             String err = validateReferences(req, whId, 0);
             if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
-            Long docId = req.getDocumentId();
-            Long pdvId = resolveVat(docId, whId);
+            Long pdvId = resolveVat(req.getDocumentId(), whId);
             if (pdvId == null) {
-                return ServiceResponseDirector.errorBadRequest(
-                        PDV_MISSING_FOR_DOC + docId + " in warehouse " + whId + "."
-                );
+                return ServiceResponseDirector.errorBadRequest(PDV_MISSING_FOR_DOC + req.getDocumentId() + " in warehouse " + whId + ".");
             }
 
             Set<Long> itemIds = req.getItems().stream()
@@ -107,134 +99,227 @@ public class DispatchBookingService {
                     .collect(Collectors.toSet());
 
             Map<Long, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(itemIds);
-
             err = validateItemAttrsPresent(req, attrsByItem, 0);
             if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
             DocumentHeaderEntity headerInput = mapper.toHeader(req);
-            DocumentHeaderEntity header = headerRepo.insert(headerInput, false);
-
             List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
-            lineRepo.insert(header.getId(), prepared);
 
-            if (!req.isDraft()) {
-                mkRepo.knjiziMkDokument(
-                        header.getId(),
-                        actorOibDigits,
-                        mkCfg.knjizitiNaSkladiste(),
-                        mkCfg.knjizitiUkPopisa(),
-                        mkCfg.knjizitiNormative(),
-                        mkCfg.generirajZapisnik(),
-                        mkCfg.azurirajProdajne(),
-                        mkCfg.azurirajNabavne()
-                );
+            DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
 
-                header = headerRepo.findHeader(header.getId());
+            if (req.isDraft()) {
+                DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
+                DispatchResponseDTO out = mapper.toResponse(fresh);
+                out.setStatus(DispatchStatusEnum.DRAFT.name());
+                return ServiceResponseDirector.successOk(out, "Dispatch note saved as DRAFT.");
             }
 
-            DispatchResponseDTO out = mapper.toResponse(header);
-            out.setStatus(Boolean.TRUE.equals(header.getPosted()) ? "POSTED" : "DRAFT");
+            tx.postViaMkProcedure(created.getId(), actorOibDigits);
 
-            return ServiceResponseDirector.successOk(
-                    out,
-                    Boolean.TRUE.equals(header.getPosted())
-                            ? "Dispatch note booked (POSTED)."
-                            : "Dispatch note saved as DRAFT."
-            );
+            DocumentHeaderEntity posted = headerRepo.findHeader(created.getId());
+            if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
+                DispatchResponseDTO out = mapper.toResponse(posted != null ? posted : created);
+                out.setStatus(DispatchStatusEnum.DRAFT.name());
+                return ServiceResponseDirector.errorBadRequest(
+                        "Posting failed: KNJIZENO was not set to 1. HeaderId=" + created.getId()
+                );
+            }
+
+            DispatchResponseDTO out = mapper.toResponse(posted);
+            out.setStatus(DispatchStatusEnum.POSTED.name());
+            return ServiceResponseDirector.successOk(out, "Dispatch note booked (POSTED).");
+
         } catch (Exception e) {
-            tsr.setRollbackOnly();
-            return ServiceResponseDirector.errorInternal("Failed to book dispatch note: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to book dispatch note: " + safeMsg(e));
         }
     }
 
-    @Transactional
-    public ServiceResponseDTO<List<DispatchResponseDTO>> bookBulk(List<DispatchRequestDTO> requests) {
+    /**
+     * BOOK BULK (partial success):
+     * We DO NOT fail-fast.
+     * For each request:
+     * - validate
+     * - create draft (REQUIRED)
+     * - if not draft -> post (REQUIRES_NEW)
+     * - collect success/failure per request
+     * Because PL/SQL commits, you cannot do true "all-or-nothing".
+     */
+    public ServiceResponseDTO<DispatchBulkResponseDTO> bookBulk(List<DispatchRequestDTO> requests) {
         try {
             Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
 
-            requests.forEach(r -> r.setCreatedBy(actorOibNum));
+            List<DispatchBulkItemResultDTO> results = new ArrayList<>(requests.size());
 
-            List<Long> derivedWhIds = new ArrayList<>(requests.size());
+            List<Long> whByIdx = new ArrayList<>(requests.size());
+            for (DispatchRequestDTO r : requests) {
+                r.setCreatedBy(actorOibNum);
+
+                Long whId = slotRepo.warehouseForDocument(r.getDocumentId());
+                whByIdx.add(whId);
+            }
+
+            Map<String, Long> vatByKey = new HashMap<>();
             for (int i = 0; i < requests.size(); i++) {
                 DispatchRequestDTO r = requests.get(i);
-                Long whId = slotRepo.warehouseForDocument(r.getDocumentId());
-                derivedWhIds.add(whId);
+                Long whId = whByIdx.get(i);
+                if (whId == null || r.getDocumentId() == null) continue;
 
-                String err = validateReferences(r, whId, i);
-                if (err != null) return ServiceResponseDirector.errorBadRequest(err);
+                String key = r.getDocumentId() + "#" + whId;
+                if (!vatByKey.containsKey(key)) {
+                    Long vat = resolveVat(r.getDocumentId(), whId);
+                    if (vat != null) vatByKey.put(key, vat);
+                }
             }
-
-            Map<String, Long> vatByKey = resolveVatForRequests(requests, derivedWhIds);
 
             Set<Long> allItemIds = requests.stream()
-                    .flatMap(r -> r.getItems().stream())
+                    .filter(Objects::nonNull)
+                    .map(DispatchRequestDTO::getItems)
+                    .filter(Objects::nonNull)
+                    .flatMap(List::stream)
                     .map(DispatchRequestDTO.DispatchItemRequest::getItemId)
+                    .filter(Objects::nonNull)
                     .collect(Collectors.toSet());
 
-            Map<Long, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(allItemIds);
+            Map<Long, DocumentItemAttributesView> attrsByItem = allItemIds.isEmpty()
+                    ? Map.of()
+                    : itemAttrsRepo.findAttributes(allItemIds);
 
-            List<DocumentHeaderEntity> persistedHeaders = new ArrayList<>(requests.size());
+            int postedCount = 0;
+            int draftCount = 0;
+            int successCount = 0;
+            int failCount = 0;
 
             for (int i = 0; i < requests.size(); i++) {
                 DispatchRequestDTO req = requests.get(i);
-                Long docId = req.getDocumentId();
-                Long whId = derivedWhIds.get(i);
+                Long whId = whByIdx.get(i);
 
-                Long pdvId = vatByKey.get(docId + "#" + whId);
-                if (pdvId == null) {
-                    return ServiceResponseDirector.badRequestRollback(
-                            tsr, PDV_MISSING_FOR_DOC + docId + " in warehouse " + whId + "."
-                    );
+                DispatchBulkItemResultDTO.DispatchBulkItemResultDTOBuilder rb = DispatchBulkItemResultDTO.builder()
+                        .index(i)
+                        .documentId(req.getDocumentId())
+                        .partnerId(req.getPartnerId())
+                        .requestedDraft(req.isDraft());
+
+                try {
+                    String refErr = validateReferences(req, whId, i);
+                    if (refErr != null) {
+                        failCount++;
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(refErr).build());
+                        continue;
+                    }
+
+                    // VAT
+                    String vatKey = req.getDocumentId() + "#" + whId;
+                    Long pdvId = vatByKey.get(vatKey);
+                    if (pdvId == null) {
+                        String msg = PDV_MISSING_FOR_DOC + req.getDocumentId() + " in warehouse " + whId + ".";
+                        failCount++;
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(msg).build());
+                        continue;
+                    }
+
+                    // Item attributes (NAZIV_ID/JMJ_ID)
+                    String attrErr = validateItemAttrsPresent(req, attrsByItem, i);
+                    if (attrErr != null) {
+                        failCount++;
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(attrErr).build());
+                        continue;
+                    }
+
+                    DocumentHeaderEntity headerInput = mapper.toHeader(req);
+                    List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
+
+                    // Create draft (TX REQUIRED)
+                    DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
+
+                    // If requested draft -> success
+                    if (req.isDraft()) {
+                        DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
+                        DispatchResponseDTO dto = mapper.toResponse(fresh);
+                        dto.setStatus(DispatchStatusEnum.DRAFT.name());
+
+                        draftCount++;
+                        successCount++;
+                        results.add(rb.success(true)
+                                .headerId(created.getId())
+                                .status(DispatchStatusEnum.DRAFT.name())
+                                .response(dto)
+                                .build());
+                        continue;
+                    }
+
+                    // Post (TX REQUIRES_NEW, PL/SQL commits)
+                    try {
+                        tx.postViaMkProcedure(created.getId(), actorOibDigits);
+                    } catch (Exception postEx) {
+                        // Draft exists, posting failed. Mark as FAILED but include headerId for troubleshooting/UI.
+                        DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
+                        DispatchResponseDTO dto = mapper.toResponse(fresh != null ? fresh : created);
+                        dto.setStatus(fresh != null ? DispatchApiMapper.statusFromEntity(fresh) :
+                                DispatchStatusEnum.DRAFT.name());
+
+                        failCount++;
+                        results.add(rb.success(false)
+                                .headerId(created.getId())
+                                .status(DispatchStatusEnum.FAILED.name())
+                                .error("Posting failed: " + safeMsg(postEx))
+                                .response(dto)
+                                .build());
+                        continue;
+                    }
+
+                    // Check posted flag
+                    DocumentHeaderEntity posted = headerRepo.findHeader(created.getId());
+                    if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
+                        DocumentHeaderEntity fresh = posted != null ? posted : created;
+                        DispatchResponseDTO dto = mapper.toResponse(fresh);
+                        dto.setStatus(DispatchApiMapper.statusFromEntity(fresh));
+
+                        failCount++;
+                        results.add(rb.success(false)
+                                .headerId(created.getId())
+                                .status(DispatchStatusEnum.FAILED.name())
+                                .error("Posting did not set KNJIZENO=1 (check PL/SQL / logs).")
+                                .response(dto)
+                                .build());
+                        continue;
+                    }
+
+                    // Success posted
+                    DispatchResponseDTO dto = mapper.toResponse(posted);
+                    dto.setStatus(DispatchStatusEnum.POSTED.name());
+
+                    postedCount++;
+                    successCount++;
+                    results.add(rb.success(true)
+                            .headerId(created.getId())
+                            .status(DispatchStatusEnum.POSTED.name())
+                            .response(dto)
+                            .build());
+
+                } catch (Exception ex) {
+                    failCount++;
+                    results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(safeMsg(ex)).build());
                 }
-
-                String attrError = validateItemAttrsPresent(req, attrsByItem, i);
-                if (attrError != null) return ServiceResponseDirector.badRequestRollback(tsr, attrError);
-
-                DocumentHeaderEntity hdrIn = mapper.toHeader(req);
-                DocumentHeaderEntity hdr = headerRepo.insert(hdrIn, false);
-                persistedHeaders.add(hdr);
-
-                List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
-                lineRepo.insert(hdr.getId(), prepared);
             }
 
-            for (int i = 0; i < requests.size(); i++) {
-                DispatchRequestDTO req = requests.get(i);
-                if (req.isDraft()) continue;
+            DispatchBulkResponseDTO out = DispatchBulkResponseDTO.builder()
+                    .total(requests.size())
+                    .succeeded(successCount)
+                    .failed(failCount)
+                    .posted(postedCount)
+                    .drafts(draftCount)
+                    .items(results)
+                    .build();
 
-                DocumentHeaderEntity hdr = persistedHeaders.get(i);
+            // You can return 200 OK even with partial failures (frontend reads items[])
+            return ServiceResponseDirector.successOk(out, "Bulk dispatch processed (partial success supported).");
 
-                mkRepo.knjiziMkDokument(
-                        hdr.getId(),
-                        actorOibDigits,
-                        mkCfg.knjizitiNaSkladiste(),
-                        mkCfg.knjizitiUkPopisa(),
-                        mkCfg.knjizitiNormative(),
-                        mkCfg.generirajZapisnik(),
-                        mkCfg.azurirajProdajne(),
-                        mkCfg.azurirajNabavne()
-                );
-
-                persistedHeaders.set(i, headerRepo.findHeader(hdr.getId()));
-            }
-
-            List<DispatchResponseDTO> out = persistedHeaders.stream()
-                    .map(h -> {
-                        DispatchResponseDTO dto = mapper.toResponse(h);
-                        dto.setStatus(Boolean.TRUE.equals(h.getPosted()) ? "POSTED" : "DRAFT");
-                        return dto;
-                    })
-                    .collect(Collectors.toList());
-
-            return ServiceResponseDirector.successOk(out, "Bulk dispatch processed.");
         } catch (Exception e) {
-            tsr.setRollbackOnly();
-            return ServiceResponseDirector.errorInternal("Bulk booking failed: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Bulk booking failed: " + safeMsg(e));
         }
     }
 
-    @Transactional
     public ServiceResponseDTO<PagedResultDTO<DispatchSummaryResponseDTO>> searchDispatches(DispatchSearchFilter filter) {
         try {
             long total = headerRepo.countFiltered(filter);
@@ -253,12 +338,16 @@ public class DispatchBookingService {
 
             return ServiceResponseDirector.successOk(result, "OK");
         } catch (Exception e) {
-            tsr.setRollbackOnly();
-            return ServiceResponseDirector.errorInternal("Failed to search dispatch notes: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to search dispatch notes: " + safeMsg(e));
         }
     }
 
-    @Transactional
+    /**
+     * UPDATE DISPATCH:
+     * - cancel posted -> REQUIRED tx
+     * - post now -> REQUIRES_NEW (procedure commits)
+     * - edit draft -> REQUIRED (replace lines + update header)
+     */
     public ServiceResponseDTO<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
         try {
             Long actorOibNum = authUtil.requireOibAsLong();
@@ -269,6 +358,7 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.errorNotFound("Dispatch " + headerId + " not found.");
             }
 
+            // CANCEL
             if (body.isCancel()) {
                 if (!Boolean.TRUE.equals(existing.getPosted())) {
                     return ServiceResponseDirector.errorBadRequest("Cannot cancel: dispatch is not POSTED.");
@@ -277,16 +367,17 @@ public class DispatchBookingService {
                     return ServiceResponseDirector.errorBadRequest("Cannot cancel: already CANCELLED.");
                 }
 
-                DocumentHeaderEntity cancelled = headerRepo.cancelDispatch(headerId, actorOibNum, body.getCancelReason());
+                DocumentHeaderEntity cancelled = tx.cancelPosted(headerId, actorOibNum, body.getCancelReason());
                 if (cancelled == null) {
                     return ServiceResponseDirector.errorBadRequest("Unable to cancel (already cancelled or not posted).");
                 }
 
                 DispatchResponseDTO dto = mapper.toResponse(cancelled);
-                dto.setStatus("CANCELLED");
+                dto.setStatus(DispatchStatusEnum.CANCELLED.name());
                 return ServiceResponseDirector.successOk(dto, "Dispatch cancelled.");
             }
 
+            // POST NOW
             if (body.isPostNow()) {
                 if (Boolean.TRUE.equals(existing.getPosted())) {
                     return ServiceResponseDirector.errorBadRequest("Already POSTED.");
@@ -295,27 +386,19 @@ public class DispatchBookingService {
                     return ServiceResponseDirector.errorBadRequest("Cannot post: dispatch CANCELLED.");
                 }
 
-                mkRepo.knjiziMkDokument(
-                        existing.getId(),
-                        actorOibDigits,
-                        mkCfg.knjizitiNaSkladiste(),
-                        mkCfg.knjizitiUkPopisa(),
-                        mkCfg.knjizitiNormative(),
-                        mkCfg.generirajZapisnik(),
-                        mkCfg.azurirajProdajne(),
-                        mkCfg.azurirajNabavne()
-                );
+                tx.postViaMkProcedure(existing.getId(), actorOibDigits);
 
                 DocumentHeaderEntity posted = headerRepo.findHeader(existing.getId());
                 if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
-                    return ServiceResponseDirector.badRequestRollback(tsr, "Posting failed.");
+                    return ServiceResponseDirector.errorBadRequest("Posting failed (KNJIZENO not set). Check PL/SQL logs.");
                 }
 
                 DispatchResponseDTO dto = mapper.toResponse(posted);
-                dto.setStatus("POSTED");
+                dto.setStatus(DispatchStatusEnum.POSTED.name());
                 return ServiceResponseDirector.successOk(dto, "Dispatch posted.");
             }
 
+            // EDIT DRAFT
             if (Boolean.TRUE.equals(existing.getPosted())) {
                 return ServiceResponseDirector.errorBadRequest("Cannot edit: dispatch already POSTED.");
             }
@@ -323,11 +406,12 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.errorBadRequest("Cannot edit: dispatch CANCELLED.");
             }
 
-            Long derivedWarehouseId = slotRepo.warehouseForDocument(existing.getDocumentId());
-            if (derivedWarehouseId == null) {
+            Long whId = slotRepo.warehouseForDocument(existing.getDocumentId());
+            if (whId == null) {
                 return ServiceResponseDirector.errorInternal("Cannot resolve warehouse for documentId=" + existing.getDocumentId());
             }
 
+            // Validate items exist
             Set<Long> itemIds = body.getItems().stream()
                     .map(DispatchUpdateRequestDTO.DispatchItemPatch::getItemId)
                     .collect(Collectors.toSet());
@@ -340,10 +424,10 @@ public class DispatchBookingService {
 
             Map<Long, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(itemIds);
 
-            Long pdvId = resolveVat(existing.getDocumentId(), derivedWarehouseId);
+            Long pdvId = resolveVat(existing.getDocumentId(), whId);
             if (pdvId == null) {
                 return ServiceResponseDirector.errorBadRequest(
-                        "No PDV_ID for documentId=" + existing.getDocumentId() + " and warehouseId=" + derivedWarehouseId
+                        "No PDV_ID for documentId=" + existing.getDocumentId() + " and warehouseId=" + whId
                 );
             }
 
@@ -365,44 +449,25 @@ public class DispatchBookingService {
                         .build());
             }
 
-            lineRepo.deleteByHeader(existing.getId());
-            lineRepo.insert(existing.getId(), newLines);
-
-            DocumentHeaderEntity updatedHeader = headerRepo.updateDraftHeader(headerId, body.getPartnerId(), body.getOverrideNote());
-            if (updatedHeader == null) {
-                return ServiceResponseDirector.badRequestRollback(tsr, "Draft update failed (maybe already posted or cancelled)");
+            DocumentHeaderEntity updated = tx.updateDraft(headerId, body.getPartnerId(), body.getOverrideNote(), newLines);
+            if (updated == null) {
+                return ServiceResponseDirector.errorBadRequest("Draft update failed (maybe already posted or cancelled).");
             }
 
-            DispatchResponseDTO dto = mapper.toResponse(updatedHeader);
-            dto.setStatus("DRAFT");
+            DispatchResponseDTO dto = mapper.toResponse(updated);
+            dto.setStatus(DispatchStatusEnum.DRAFT.name());
             return ServiceResponseDirector.successOk(dto, "Draft dispatch updated.");
 
         } catch (Exception e) {
-            tsr.setRollbackOnly();
-            return ServiceResponseDirector.errorInternal("Failed to update dispatch note: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to update dispatch note: " + safeMsg(e));
         }
     }
 
-    private Map<String, Long> resolveVatForRequests(List<DispatchRequestDTO> requests, List<Long> derivedWhIds) throws Exception {
-        Map<String, Long> vatByKey = new HashMap<>();
-        for (int i = 0; i < requests.size(); i++) {
-            DispatchRequestDTO r = requests.get(i);
-            Long docId = r.getDocumentId();
-            Long whId = derivedWhIds.get(i);
+    // ------------------------
+    // Helpers
+    // ------------------------
 
-            String key = docId + "#" + whId;
-            if (!vatByKey.containsKey(key)) {
-                Long vat = resolveVat(docId, whId);
-                if (vat == null) {
-                    throw new IllegalStateException("No PDV_ID for documentId=" + docId + " and warehouseId=" + whId);
-                }
-                vatByKey.put(key, vat);
-            }
-        }
-        return vatByKey;
-    }
-
-    private String validateReferences(DispatchRequestDTO r, Long warehouseId, int idx) throws Exception {
+    private String validateReferences(DispatchRequestDTO r, Long warehouseId, int idx) throws SQLException {
         if (warehouseId == null) {
             return REQ_PREFIX + idx + "]: cannot resolve warehouse for documentId=" + r.getDocumentId();
         }
@@ -412,7 +477,13 @@ public class DispatchBookingService {
         if (partnerRepo.isMissingOrInactive(r.getPartnerId())) {
             return REQ_PREFIX + idx + "]: partner not found or inactive: " + r.getPartnerId();
         }
+        if (r.getItems() == null || r.getItems().isEmpty()) {
+            return REQ_PREFIX + idx + "]: items missing.";
+        }
         for (DispatchRequestDTO.DispatchItemRequest it : r.getItems()) {
+            if (it.getItemId() == null) {
+                return REQ_PREFIX + idx + "]: itemId missing.";
+            }
             if (itemRepo.isMissingOrInactive(it.getItemId())) {
                 return REQ_PREFIX + idx + "]: item not found or inactive: " + it.getItemId();
             }
@@ -420,9 +491,8 @@ public class DispatchBookingService {
         return null;
     }
 
-    private Long resolveVat(Long documentId, Long warehouseId) throws Exception {
-        var opt = vatLookupRepo.valueAddedTaxIdForDocumentAndWarehouse(documentId, warehouseId);
-        return opt.orElse(null);
+    private Long resolveVat(Long documentId, Long warehouseId) throws SQLException {
+        return vatLookupRepo.valueAddedTaxIdForDocumentAndWarehouse(documentId, warehouseId).orElse(null);
     }
 
     private static String validateItemAttrsPresent(DispatchRequestDTO req, Map<Long, DocumentItemAttributesView> attrsByItem, int idx) {
@@ -435,7 +505,11 @@ public class DispatchBookingService {
         return null;
     }
 
-    private static List<DocumentItemLineDTO> prepareLines(DispatchRequestDTO req, Map<Long, DocumentItemAttributesView> attrsByItem, Long pdvId) {
+    private static List<DocumentItemLineDTO> prepareLines(
+            DispatchRequestDTO req,
+            Map<Long, DocumentItemAttributesView> attrsByItem,
+            Long pdvId
+    ) {
         List<DocumentItemLineDTO> out = new ArrayList<>(req.getItems().size());
         for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
             DocumentItemAttributesView a = attrsByItem.get(it.getItemId());
@@ -448,5 +522,10 @@ public class DispatchBookingService {
                     .build());
         }
         return out;
+    }
+
+    private static String safeMsg(Exception e) {
+        String m = e.getMessage();
+        return (m == null || m.isBlank()) ? e.getClass().getSimpleName() : m;
     }
 }

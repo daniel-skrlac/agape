@@ -23,7 +23,7 @@ import java.util.List;
 public class DispatchResponseDTO {
 
     /**
-     * Technical primary key of the document in {@code SD_GLAVA}.
+     * Technical primary key of the document in {@code SD_GLAVA}.c
      * <p>Assigned by the database via {@code SD_GLAVA_SEQ} in the trigger
      * {@code SD_GLAVA_BIU}.</p>
      */
@@ -57,12 +57,6 @@ public class DispatchResponseDTO {
      */
     private Long partnerId;
 
-    /**
-     * Processing outcome for client UX/logging (not stored in legacy tables).
-     * <p>Typical values: {@code "BOOKED"} (success), {@code "PARTIAL"} (if you
-     * later support mixed outcomes), or {@code "FAILED"} (for error handling).
-     * In this simple flow it will be {@code "BOOKED"} on success.</p>
-     */
     private String status;
 
     private Boolean posted;

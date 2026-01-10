@@ -3,7 +3,7 @@ CREATE TABLE app_user
     id                   BIGSERIAL PRIMARY KEY,
     name                 VARCHAR(100) NOT NULL,
     username             VARCHAR(50)  NOT NULL UNIQUE,
-    oib                 VARCHAR(11) NOT NULL,
+    oib                  VARCHAR(11)  NOT NULL,
     password_hash        VARCHAR(255) NOT NULL,
     default_warehouse_id BIGINT,
     created_at           TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -101,3 +101,21 @@ CREATE UNIQUE INDEX ux_dt_template_doc_item_unique
     ON dispatch_template_doc_item (template_doc_id, item_id);
 
 CREATE INDEX idx_dt_template_doc_item_doc ON dispatch_template_doc_item (template_doc_id);
+
+CREATE TABLE dispatch_template_share
+(
+    id                  BIGSERIAL PRIMARY KEY,
+    template_id         BIGINT      NOT NULL REFERENCES dispatch_template (id) ON DELETE CASCADE,
+    shared_with_user_id BIGINT      NOT NULL REFERENCES app_user (id) ON DELETE CASCADE,
+    permission          VARCHAR(20) NOT NULL DEFAULT 'BOOK',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX ux_dt_share_template_user
+    ON dispatch_template_share (template_id, shared_with_user_id);
+
+CREATE INDEX idx_dt_share_template
+    ON dispatch_template_share (template_id);
+
+CREATE INDEX idx_dt_share_shared_with
+    ON dispatch_template_share (shared_with_user_id);

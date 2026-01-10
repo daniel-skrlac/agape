@@ -31,13 +31,13 @@ public class DispatchTemplateBookingResource {
     }
 
     @POST
-    @Path("/one")
+    @Path("/")
     public Response bookOne(@Valid TemplateBookOneRequestDTO req) {
         return Responses.from(service.bookFromTemplateForOnePartner(req));
     }
 
     @POST
-    @Path("/many")
+    @Path("/bulk")
     public Response bookMany(@Valid TemplateBookManyRequestDTO req) {
         return Responses.from(service.bookFromTemplateForManyPartners(req));
     }

@@ -42,11 +42,13 @@ public class DispatchNoteResource {
         return Responses.from(service.searchDispatches(filter));
     }
 
+    @Deprecated
     @POST
     public Response bookOne(@Valid DispatchRequestDTO request) {
         return Responses.from(service.bookOne(request));
     }
 
+    @Deprecated
     @POST
     @Path("/bulk")
     public Response bookBulk(@Valid List<DispatchRequestDTO> requests) {

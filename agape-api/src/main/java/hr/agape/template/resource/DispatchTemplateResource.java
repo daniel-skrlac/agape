@@ -13,6 +13,7 @@ import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
@@ -42,9 +43,10 @@ public class DispatchTemplateResource {
     @GET
     public Response listTemplates(
             @QueryParam("folderId") Long folderId,
-            @QueryParam("q") String q
+            @QueryParam("q") String q,
+            @QueryParam("includeShared") @DefaultValue("true") boolean includeShared
     ) {
-        return Responses.from(service.listTemplateHeaders(folderId, q));
+        return Responses.from(service.listTemplateHeaders(folderId, q, includeShared));
     }
 
     @POST
