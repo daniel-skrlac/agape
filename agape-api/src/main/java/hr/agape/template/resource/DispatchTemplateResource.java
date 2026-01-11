@@ -43,7 +43,7 @@ public class DispatchTemplateResource {
     @GET
     public Response listTemplates(
             @QueryParam("folderId") Long folderId,
-            @QueryParam("q") String q,
+            @QueryParam("name") String q,
             @QueryParam("includeShared") @DefaultValue("true") boolean includeShared
     ) {
         return Responses.from(service.listTemplateHeaders(folderId, q, includeShared));

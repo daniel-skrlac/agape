@@ -65,6 +65,7 @@ public class AuthService {
             UserEntity user = new UserEntity();
             user.setName(req.getName());
             user.setUsername(req.getUsername());
+            user.setOib(req.getOib());
             user.setPasswordHash(BcryptUtil.bcryptHash(req.getPassword()));
             user.setRoles(Set.of(defaultRole));
 
