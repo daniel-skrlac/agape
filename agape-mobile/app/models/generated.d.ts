@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-07 19:59:06.
+// Generated using typescript-generator version 3.2.1263 on 2026-01-11 21:15:30.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -14,6 +14,27 @@ export interface ServiceResponseDTO<T> {
     message: string;
     statusCode: number;
     data: T;
+}
+
+export interface DispatchBulkItemResultDTO {
+    index: number;
+    documentId: number;
+    partnerId: number;
+    requestedDraft: boolean;
+    headerId: number;
+    status: string;
+    success: boolean;
+    error: string;
+    response: DispatchResponseDTO;
+}
+
+export interface DispatchBulkResponseDTO {
+    total: number;
+    succeeded: number;
+    failed: number;
+    posted: number;
+    drafts: number;
+    items: DispatchBulkItemResultDTO[];
 }
 
 export interface DispatchLineResponseDTO {
@@ -72,6 +93,7 @@ export interface DispatchUpdateRequestDTO {
     cancelReason: string;
     partnerId: number;
     overrideNote: string;
+    postNow: boolean;
     items: DispatchItemPatch[];
 }
 
@@ -139,6 +161,110 @@ export interface StockStatisticsTotalsDTO {
     totalStockQty: number;
 }
 
+export interface FolderCreateRequestDTO {
+    parentId: number;
+    name: string;
+}
+
+export interface FolderRenameRequestDTO {
+    name: string;
+}
+
+export interface FolderResponseDTO {
+    id: number;
+    parentId: number;
+    name: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface TemplateBookManyRequestDTO {
+    templateId: number;
+    partnerIds: number[];
+    documentDate: Date;
+    draftOverride: boolean;
+}
+
+export interface TemplateBookOneRequestDTO {
+    templateId: number;
+    partnerId: number;
+    documentDate: Date;
+    draftOverride: boolean;
+}
+
+export interface TemplateCopyRequestDTO {
+    newName: string;
+    folderId: number;
+}
+
+export interface TemplateCreateRequestDTO {
+    folderId: number;
+    householdSize: number;
+    name: string;
+    description: string;
+}
+
+export interface TemplateDocResponseDTO {
+    id: number;
+    documentId: number;
+    sortOrder: number;
+    draft: boolean;
+    defaultNote: string;
+    items: TemplateItemResponseDTO[];
+}
+
+export interface TemplateDocUpsertRequestDTO {
+    documentId: number;
+    sortOrder: number;
+    draft: boolean;
+    defaultNote: string;
+}
+
+export interface TemplateItemResponseDTO {
+    itemId: number;
+    quantity: number;
+    sortOrder: number;
+}
+
+export interface TemplateItemUpsertRequestDTO {
+    itemId: number;
+    quantity: number;
+    sortOrder: number;
+}
+
+export interface TemplateResponseDTO {
+    id: number;
+    folderId: number;
+    householdSize: number;
+    name: string;
+    description: string;
+    createdAt: Date;
+    updatedAt: Date;
+    documents: TemplateDocResponseDTO[];
+    shared: boolean;
+}
+
+export interface TemplateShareCreateRequestDTO {
+    username: string;
+    permission: DispatchTemplateSharePermission;
+}
+
+export interface TemplateShareResponseDTO {
+    id: number;
+    templateId: number;
+    sharedWithUserId: number;
+    sharedWithUsername: string;
+    permission: DispatchTemplateSharePermission;
+    createdAt: Date;
+}
+
+export interface TemplateUpdateRequestDTO {
+    folderId: number;
+    householdSize: number;
+    name: string;
+    description: string;
+}
+
 export interface AuthResponseDTO {
     userId: number;
     username: string;
@@ -156,6 +282,7 @@ export interface RegisterRequestDTO {
     name: string;
     username: string;
     password: string;
+    oib: string;
 }
 
 export interface RegisterResponseDTO {
@@ -191,3 +318,5 @@ export interface DispatchItemPatch {
     itemId: number;
     quantity: number;
 }
+
+export type DispatchTemplateSharePermission = "VIEW" | "BOOK";
