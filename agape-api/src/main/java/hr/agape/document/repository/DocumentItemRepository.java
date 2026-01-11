@@ -1,24 +1,20 @@
 package hr.agape.document.repository;
 
+import hr.agape.common.database.Jdbc;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 //SKL_ARTIKLIG
 @ApplicationScoped
 public class DocumentItemRepository {
 
-    private final DataSource dataSource;
+    private final Jdbc jdbc;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
-    public DocumentItemRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
-        this.dataSource = dataSource;
+    public DocumentItemRepository(Jdbc jdbc) {
+        this.jdbc = jdbc;
     }
 
     public boolean isMissingOrInactive(Long itemId) throws SQLException {
@@ -29,14 +25,12 @@ public class DocumentItemRepository {
                    AND NVL(AKTIVANARTIKL, 1) = 1
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        Integer one = jdbc.queryOne(
+                sql,
+                ps -> ps.setLong(1, itemId),
+                rs -> rs.getInt(1)
+        );
 
-            ps.setLong(1, itemId);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                return !rs.next();
-            }
-        }
+        return one == null;
     }
 }

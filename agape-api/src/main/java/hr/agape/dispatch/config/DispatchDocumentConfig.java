@@ -4,7 +4,7 @@ package hr.agape.dispatch.config;
 import io.smallrye.config.ConfigMapping;
 
 @ConfigMapping(prefix = "dispatch.mk")
-public interface DispatchMkConfig {
+public interface DispatchDocumentConfig {
     int knjizitiNaSkladiste();
 
     int knjizitiUkPopisa();

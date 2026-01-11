@@ -1,28 +1,24 @@
 package hr.agape.stock.repository;
 
+import hr.agape.common.database.Jdbc;
 import hr.agape.stock.domain.StockItemStatus;
 import hr.agape.stock.dto.StockStatisticsTotalsDTO;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import javax.sql.DataSource;
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 
 @ApplicationScoped
 public class StockStatisticsRepository {
 
-    private final DataSource dataSource;
+    private final Jdbc jdbc;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
-    public StockStatisticsRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
-        this.dataSource = dataSource;
+    public StockStatisticsRepository(Jdbc jdbc) {
+        this.jdbc = jdbc;
     }
 
     /**
@@ -42,13 +38,14 @@ public class StockStatisticsRepository {
 
         String sql = "SELECT * FROM (" + inner + ") WHERE ROWNUM <= ?";
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setLong(1, warehouseId);
-            ps.setInt(2, limit);
-            return mapMany(ps.executeQuery());
-        }
+        return jdbc.query(
+                sql,
+                ps -> {
+                    ps.setLong(1, warehouseId);
+                    ps.setInt(2, limit);
+                },
+                StockStatisticsRepository::mapRow
+        );
     }
 
     /**
@@ -68,13 +65,14 @@ public class StockStatisticsRepository {
 
         String sql = "SELECT * FROM (" + inner + ") WHERE ROWNUM <= ?";
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setLong(1, warehouseId);
-            ps.setInt(2, limit);
-            return mapMany(ps.executeQuery());
-        }
+        return jdbc.query(
+                sql,
+                ps -> {
+                    ps.setLong(1, warehouseId);
+                    ps.setInt(2, limit);
+                },
+                StockStatisticsRepository::mapRow
+        );
     }
 
     /**
@@ -90,13 +88,14 @@ public class StockStatisticsRepository {
 
         String sql = "SELECT * FROM (" + inner + ") WHERE ROWNUM <= ?";
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setLong(1, warehouseId);
-            ps.setInt(2, limit);
-            return mapMany(ps.executeQuery());
-        }
+        return jdbc.query(
+                sql,
+                ps -> {
+                    ps.setLong(1, warehouseId);
+                    ps.setInt(2, limit);
+                },
+                StockStatisticsRepository::mapRow
+        );
     }
 
     public StockStatisticsTotalsDTO loadTotals(Long warehouseId) throws SQLException {
@@ -104,10 +103,9 @@ public class StockStatisticsRepository {
             throw new SQLException("warehouseId is required");
         }
 
-        try (Connection c = dataSource.getConnection()) {
+        return jdbc.withConnection(c -> {
 
             Long totalItems = queryLong(
-                    c,
                     """
                             SELECT COUNT(*)
                             FROM SKL_ARTIKLIG g
@@ -118,7 +116,6 @@ public class StockStatisticsRepository {
             );
 
             Long missingCount = queryLong(
-                    c,
                     """
                             SELECT COUNT(*)
                             FROM SKL_ARTIKLIG g
@@ -135,7 +132,6 @@ public class StockStatisticsRepository {
             );
 
             Long needsFillCount = queryLong(
-                    c,
                     """
                             SELECT COUNT(*)
                             FROM SKL_ARTIKLIG g
@@ -152,7 +148,6 @@ public class StockStatisticsRepository {
             );
 
             Long overstockedCount = queryLong(
-                    c,
                     """
                             SELECT COUNT(*)
                             FROM SKL_ARTIKLIG g
@@ -167,7 +162,6 @@ public class StockStatisticsRepository {
             );
 
             Long reservedCount = queryLong(
-                    c,
                     """
                             SELECT COUNT(*)
                             FROM SKL_ARTIKLIG g
@@ -181,7 +175,6 @@ public class StockStatisticsRepository {
             );
 
             BigDecimal totalStockQty = queryDecimal(
-                    c,
                     """
                             SELECT NVL(SUM(NVL(a.ZALIHATRENUTNA, 0)), 0)
                             FROM SKL_ARTIKLIG g
@@ -200,29 +193,31 @@ public class StockStatisticsRepository {
                     .reservedCount(reservedCount)
                     .totalStockQty(totalStockQty)
                     .build();
-        }
+        });
     }
 
-    private static Long queryLong(Connection c, String sql, Long warehouseId) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, warehouseId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return 0L;
-                long v = rs.getLong(1);
-                return rs.wasNull() ? 0L : v;
-            }
-        }
+    private Long queryLong(String sql, Long warehouseId) throws SQLException {
+        Long v = jdbc.queryOne(
+                sql,
+                ps -> ps.setLong(1, warehouseId),
+                rs -> {
+                    long x = rs.getLong(1);
+                    return rs.wasNull() ? 0L : x;
+                }
+        );
+        return v == null ? 0L : v;
     }
 
-    private static BigDecimal queryDecimal(Connection c, String sql, Long warehouseId) throws SQLException {
-        try (PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, warehouseId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return BigDecimal.ZERO;
-                BigDecimal v = rs.getBigDecimal(1);
-                return v == null ? BigDecimal.ZERO : v;
-            }
-        }
+    private BigDecimal queryDecimal(String sql, Long warehouseId) throws SQLException {
+        BigDecimal v = jdbc.queryOne(
+                sql,
+                ps -> ps.setLong(1, warehouseId),
+                rs -> {
+                    BigDecimal x = rs.getBigDecimal(1);
+                    return x == null ? BigDecimal.ZERO : x;
+                }
+        );
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     private static StringBuilder baseSelect() {
@@ -245,12 +240,6 @@ public class StockStatisticsRepository {
                 WHERE NVL(g.AKTIVANARTIKL,1) = 1
                   AND g.SKLADISTE_ID = ?
                 """);
-    }
-
-    private static List<StockItemStatus> mapMany(ResultSet rs) throws SQLException {
-        List<StockItemStatus> out = new ArrayList<>();
-        while (rs.next()) out.add(mapRow(rs));
-        return out;
     }
 
     private static StockItemStatus mapRow(ResultSet rs) throws SQLException {

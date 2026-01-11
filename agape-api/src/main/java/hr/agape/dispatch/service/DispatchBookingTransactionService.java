@@ -1,6 +1,7 @@
 package hr.agape.dispatch.service;
 
-import hr.agape.dispatch.config.DispatchMkConfig;
+import hr.agape.dispatch.config.DispatchDocumentConfig;
+import hr.agape.dispatch.config.DispatchStornoDocumentConfig;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import hr.agape.document.dto.DocumentItemLineDTO;
 import hr.agape.document.repository.DocumentHeaderRepository;
@@ -13,26 +14,29 @@ import jakarta.transaction.Transactional;
 import java.sql.SQLException;
 import java.util.List;
 
+import static jakarta.transaction.Transactional.TxType.NOT_SUPPORTED;
+
 @ApplicationScoped
 public class DispatchBookingTransactionService {
 
     private final DocumentHeaderRepository headerRepo;
     private final DocumentLineRepository lineRepo;
     private final DocumentRepository documentRepository;
-    private final DispatchMkConfig mkCfg;
+    private final DispatchDocumentConfig dispatchDocumentConfig;
+    private final DispatchStornoDocumentConfig dispatchStornoDocumentConfig;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
     public DispatchBookingTransactionService(
             DocumentHeaderRepository headerRepo,
             DocumentLineRepository lineRepo,
             DocumentRepository documentRepository,
-            DispatchMkConfig mkCfg
+            DispatchDocumentConfig dispatchDocumentConfig, DispatchStornoDocumentConfig dispatchStornoDocumentConfig
     ) {
         this.headerRepo = headerRepo;
         this.lineRepo = lineRepo;
         this.documentRepository = documentRepository;
-        this.mkCfg = mkCfg;
+        this.dispatchDocumentConfig = dispatchDocumentConfig;
+        this.dispatchStornoDocumentConfig = dispatchStornoDocumentConfig;
     }
 
     /**
@@ -67,27 +71,38 @@ public class DispatchBookingTransactionService {
      * REQUIRED:
      * Cancel already posted document (simple UPDATE).
      */
+    @Deprecated
     @Transactional(Transactional.TxType.REQUIRED)
     public DocumentHeaderEntity cancelPosted(Long headerId, Long actorOib, String reason) throws SQLException {
         return headerRepo.cancelDispatch(headerId, actorOib, reason);
     }
 
-    /**
-     * REQUIRES_NEW:
-     * Calls legacy PL/SQL posting procedure which commits internally.
-     * This MUST be isolated from outer transactions.
-     */
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    @Transactional(NOT_SUPPORTED)
     public void postViaMkProcedure(Long headerId, String actorOibDigits) throws SQLException {
         documentRepository.bookDocument(
                 headerId,
                 actorOibDigits,
-                mkCfg.knjizitiNaSkladiste(),
-                mkCfg.knjizitiUkPopisa(),
-                mkCfg.knjizitiNormative(),
-                mkCfg.generirajZapisnik(),
-                mkCfg.azurirajProdajne(),
-                mkCfg.azurirajNabavne()
+                dispatchDocumentConfig.knjizitiNaSkladiste(),
+                dispatchDocumentConfig.knjizitiUkPopisa(),
+                dispatchDocumentConfig.knjizitiNormative(),
+                dispatchDocumentConfig.generirajZapisnik(),
+                dispatchDocumentConfig.azurirajProdajne(),
+                dispatchDocumentConfig.azurirajNabavne()
         );
+    }
+
+    @Transactional(NOT_SUPPORTED)
+    public void cancelViaProcedure(Long headerId, String cancelReason) throws SQLException {
+        documentRepository.cancelDocument(
+                headerId,
+                dispatchStornoDocumentConfig.naSkladiste(),
+                dispatchStornoDocumentConfig.ukPopisa(),
+                dispatchStornoDocumentConfig.veznid(),
+                dispatchStornoDocumentConfig.postaviOznaku()
+        );
+
+        if (cancelReason != null && !cancelReason.isBlank()) {
+            headerRepo.setCancelNote(headerId, cancelReason);
+        }
     }
 }

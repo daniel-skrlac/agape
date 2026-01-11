@@ -208,7 +208,6 @@ public class DispatchBookingService {
                         continue;
                     }
 
-                    // VAT
                     String vatKey = req.getDocumentId() + "#" + whId;
                     Long pdvId = vatByKey.get(vatKey);
                     if (pdvId == null) {
@@ -218,7 +217,6 @@ public class DispatchBookingService {
                         continue;
                     }
 
-                    // Item attributes (NAZIV_ID/JMJ_ID)
                     String attrErr = validateItemAttrsPresent(req, attrsByItem, i);
                     if (attrErr != null) {
                         failCount++;
@@ -229,10 +227,8 @@ public class DispatchBookingService {
                     DocumentHeaderEntity headerInput = mapper.toHeader(req);
                     List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
 
-                    // Create draft (TX REQUIRED)
                     DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
 
-                    // If requested draft -> success
                     if (req.isDraft()) {
                         DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
                         DispatchResponseDTO dto = mapper.toResponse(fresh);
@@ -248,11 +244,9 @@ public class DispatchBookingService {
                         continue;
                     }
 
-                    // Post (TX REQUIRES_NEW, PL/SQL commits)
                     try {
                         tx.postViaMkProcedure(created.getId(), actorOibDigits);
                     } catch (Exception postEx) {
-                        // Draft exists, posting failed. Mark as FAILED but include headerId for troubleshooting/UI.
                         DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
                         DispatchResponseDTO dto = mapper.toResponse(fresh != null ? fresh : created);
                         dto.setStatus(fresh != null ? DispatchApiMapper.statusFromEntity(fresh) :
@@ -268,7 +262,6 @@ public class DispatchBookingService {
                         continue;
                     }
 
-                    // Check posted flag
                     DocumentHeaderEntity posted = headerRepo.findHeader(created.getId());
                     if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
                         DocumentHeaderEntity fresh = posted != null ? posted : created;
@@ -285,7 +278,6 @@ public class DispatchBookingService {
                         continue;
                     }
 
-                    // Success posted
                     DispatchResponseDTO dto = mapper.toResponse(posted);
                     dto.setStatus(DispatchStatusEnum.POSTED.name());
 
@@ -312,7 +304,6 @@ public class DispatchBookingService {
                     .items(results)
                     .build();
 
-            // You can return 200 OK even with partial failures (frontend reads items[])
             return ServiceResponseDirector.successOk(out, "Bulk dispatch processed (partial success supported).");
 
         } catch (Exception e) {
@@ -350,7 +341,6 @@ public class DispatchBookingService {
      */
     public ServiceResponseDTO<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
         try {
-            Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
 
             DocumentHeaderEntity existing = headerRepo.findHeader(headerId);
@@ -358,7 +348,6 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.errorNotFound("Dispatch " + headerId + " not found.");
             }
 
-            // CANCEL
             if (body.isCancel()) {
                 if (!Boolean.TRUE.equals(existing.getPosted())) {
                     return ServiceResponseDirector.errorBadRequest("Cannot cancel: dispatch is not POSTED.");
@@ -367,17 +356,18 @@ public class DispatchBookingService {
                     return ServiceResponseDirector.errorBadRequest("Cannot cancel: already CANCELLED.");
                 }
 
-                DocumentHeaderEntity cancelled = tx.cancelPosted(headerId, actorOibNum, body.getCancelReason());
-                if (cancelled == null) {
-                    return ServiceResponseDirector.errorBadRequest("Unable to cancel (already cancelled or not posted).");
+                tx.cancelViaProcedure(headerId, body.getCancelReason());
+
+                DocumentHeaderEntity cancelled = headerRepo.findHeader(headerId);
+                if (cancelled == null || cancelled.getCancelledBy() == null) {
+                    return ServiceResponseDirector.errorBadRequest("Cancel procedure did not mark document as cancelled. Check Oracle logs.");
                 }
 
                 DispatchResponseDTO dto = mapper.toResponse(cancelled);
                 dto.setStatus(DispatchStatusEnum.CANCELLED.name());
-                return ServiceResponseDirector.successOk(dto, "Dispatch cancelled.");
+                return ServiceResponseDirector.successOk(dto, "Dispatch cancelled (storno).");
             }
 
-            // POST NOW
             if (body.isPostNow()) {
                 if (Boolean.TRUE.equals(existing.getPosted())) {
                     return ServiceResponseDirector.errorBadRequest("Already POSTED.");
@@ -398,7 +388,6 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.successOk(dto, "Dispatch posted.");
             }
 
-            // EDIT DRAFT
             if (Boolean.TRUE.equals(existing.getPosted())) {
                 return ServiceResponseDirector.errorBadRequest("Cannot edit: dispatch already POSTED.");
             }
@@ -411,7 +400,6 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.errorInternal("Cannot resolve warehouse for documentId=" + existing.getDocumentId());
             }
 
-            // Validate items exist
             Set<Long> itemIds = body.getItems().stream()
                     .map(DispatchUpdateRequestDTO.DispatchItemPatch::getItemId)
                     .collect(Collectors.toSet());
@@ -462,10 +450,6 @@ public class DispatchBookingService {
             return ServiceResponseDirector.errorInternal("Failed to update dispatch note: " + safeMsg(e));
         }
     }
-
-    // ------------------------
-    // Helpers
-    // ------------------------
 
     private String validateReferences(DispatchRequestDTO r, Long warehouseId, int idx) throws SQLException {
         if (warehouseId == null) {

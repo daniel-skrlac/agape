@@ -1,5 +1,6 @@
 package hr.agape.document.repository;
 
+import hr.agape.common.database.Jdbc;
 import hr.agape.common.util.TimeUtil;
 import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.document.domain.DocumentHeaderEntity;
@@ -8,7 +9,6 @@ import jakarta.inject.Inject;
 import oracle.jdbc.OraclePreparedStatement;
 import oracle.jdbc.OracleTypes;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -24,21 +24,15 @@ import java.util.List;
 @ApplicationScoped
 public class DocumentHeaderRepository {
 
-    private final DataSource dataSource;
+    private final Jdbc jdbc;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
-    public DocumentHeaderRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
-        this.dataSource = dataSource;
+    public DocumentHeaderRepository(Jdbc jdbc) {
+        this.jdbc = jdbc;
     }
 
-    /**
-     * FIX: Always insert as DRAFT (KNJIZENO=0). Posting is done via Oracle procedure (KNJIZI_MK...).
-     */
     public DocumentHeaderEntity insert(DocumentHeaderEntity h, boolean ignoredPostNow) throws SQLException {
-        try (Connection c = dataSource.getConnection()) {
-            return doInsertHeader(c, h);
-        }
+        return jdbc.withConnection(c -> doInsertHeader(c, h));
     }
 
     private DocumentHeaderEntity doInsertHeader(Connection c, DocumentHeaderEntity h) throws SQLException {
@@ -68,81 +62,91 @@ public class DocumentHeaderRepository {
                 INTO ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 """;
 
-        try (PreparedStatement ps = c.prepareStatement(sql)) {
-            OraclePreparedStatement ops = ps.unwrap(OraclePreparedStatement.class);
+        return jdbc.updateReturning(
+                c,
+                sql,
+                ps -> {
+                    // IN params (1..4)
+                    Jdbc.setLong(ps, 1, h.getDocumentId());
+                    Jdbc.setLocalDate(ps, 2, h.getDocumentDate());
+                    Jdbc.setLong(ps, 3, h.getPartnerId());
+                    Jdbc.setLong(ps, 4, h.getCreatedBy());
 
-            if (h.getDocumentId() != null) ops.setLong(1, h.getDocumentId());
-            else ops.setNull(1, Types.NUMERIC);
+                    // RETURNING params (5..14)
+                    OraclePreparedStatement ops = ps.unwrap(OraclePreparedStatement.class);
 
-            if (h.getDocumentDate() != null) ops.setDate(2, Date.valueOf(h.getDocumentDate()));
-            else ops.setNull(2, Types.DATE);
+                    ops.registerReturnParameter(5, OracleTypes.NUMBER);     // ID
+                    ops.registerReturnParameter(6, OracleTypes.NUMBER);     // DOKUMENTBR
+                    ops.registerReturnParameter(7, OracleTypes.DATE);       // DATUM_DOKUMENTA
+                    ops.registerReturnParameter(8, OracleTypes.TIMESTAMP);  // DATUM_IZRADE
+                    ops.registerReturnParameter(9, OracleTypes.NUMBER);     // KNJIZENO
+                    ops.registerReturnParameter(10, OracleTypes.NUMBER);    // KNJIZIO
+                    ops.registerReturnParameter(11, OracleTypes.TIMESTAMP); // DATUM_KNJIZENJA
+                    ops.registerReturnParameter(12, OracleTypes.NUMBER);    // STORNIRAO
+                    ops.registerReturnParameter(13, OracleTypes.TIMESTAMP); // DATUM_STORNO
+                    ops.registerReturnParameter(14, OracleTypes.CLOB);      // NAPOMENA
+                },
+                rs -> mapReturningInsertRow(h, rs)
+        );
+    }
 
-            if (h.getPartnerId() != null) ops.setLong(3, h.getPartnerId());
-            else ops.setNull(3, Types.NUMERIC);
+    private static DocumentHeaderEntity mapReturningInsertRow(DocumentHeaderEntity request, ResultSet rs) throws SQLException {
+        // Column order is exactly the RETURNING list order
+        long id = rs.getLong(1);
 
-            if (h.getCreatedBy() != null) ops.setLong(4, h.getCreatedBy());
-            else ops.setNull(4, Types.NUMERIC);
+        Long documentNumber = rs.getLong(2);
+        if (rs.wasNull()) documentNumber = null;
 
-            ops.registerReturnParameter(5, OracleTypes.NUMBER);     // ID
-            ops.registerReturnParameter(6, OracleTypes.NUMBER);     // DOKUMENTBR
-            ops.registerReturnParameter(7, OracleTypes.DATE);       // DATUM_DOKUMENTA
-            ops.registerReturnParameter(8, OracleTypes.TIMESTAMP);  // DATUM_IZRADE
-            ops.registerReturnParameter(9, OracleTypes.NUMBER);     // KNJIZENO
-            ops.registerReturnParameter(10, OracleTypes.NUMBER);    // KNJIZIO
-            ops.registerReturnParameter(11, OracleTypes.TIMESTAMP); // DATUM_KNJIZENJA
-            ops.registerReturnParameter(12, OracleTypes.NUMBER);    // STORNIRAO
-            ops.registerReturnParameter(13, OracleTypes.TIMESTAMP); // DATUM_STORNO
-            ops.registerReturnParameter(14, OracleTypes.CLOB);      // NAPOMENA
+        Date dd = rs.getDate(3);
+        LocalDate normalizedDocDate = (dd != null ? dd.toLocalDate() : null);
 
-            ops.executeUpdate();
+        Timestamp tsCreated = rs.getTimestamp(4);
+        OffsetDateTime createdAt = TimeUtil.oracleTimestampToZagreb(tsCreated);
 
-            try (ResultSet rs = ops.getReturnResultSet()) {
-                rs.next();
+        boolean posted = (rs.getLong(5) == 1);
 
-                long id = rs.getLong(1);
+        Long postedBy = rs.getLong(6);
+        if (rs.wasNull()) postedBy = null;
 
-                Long documentNumber = rs.getLong(2);
-                if (rs.wasNull()) documentNumber = null;
+        Timestamp tsPosted = rs.getTimestamp(7);
+        OffsetDateTime postedAt = TimeUtil.oracleTimestampToZagreb(tsPosted);
 
-                Date dd = rs.getDate(3);
-                LocalDate normalizedDocDate = (dd != null ? dd.toLocalDate() : null);
+        Long cancelledBy = rs.getLong(8);
+        if (rs.wasNull()) cancelledBy = null;
 
-                Timestamp tsCreated = rs.getTimestamp(4);
-                OffsetDateTime createdAt = TimeUtil.oracleTimestampToZagreb(tsCreated);
+        Timestamp tsStorno = rs.getTimestamp(9);
+        OffsetDateTime cancelledAt = TimeUtil.oracleTimestampToZagreb(tsStorno);
 
-                boolean posted = (rs.getLong(5) == 1);
+        String note = rs.getString(10);
 
-                Long postedBy = rs.getLong(6);
-                if (rs.wasNull()) postedBy = null;
+        return DocumentHeaderEntity.builder()
+                .id(id)
+                .documentId(request.getDocumentId())
+                .documentNumber(documentNumber)
+                .documentDate(normalizedDocDate)
+                .partnerId(request.getPartnerId())
+                .createdBy(request.getCreatedBy())
+                .createdAt(createdAt)
+                .posted(posted)
+                .postedBy(postedBy)
+                .postedAt(postedAt)
+                .cancelledBy(cancelledBy)
+                .cancelledAt(cancelledAt)
+                .cancelNote(note)
+                .build();
+    }
 
-                Timestamp tsPosted = rs.getTimestamp(7);
-                OffsetDateTime postedAt = TimeUtil.oracleTimestampToZagreb(tsPosted);
+    public void setCancelNote(Long headerId, String reason) throws SQLException {
+        final String sql = """
+                UPDATE SD_GLAVA
+                   SET NAPOMENA = ?
+                 WHERE ID = ?
+                """;
 
-                Long cancelledBy = rs.getLong(8);
-                if (rs.wasNull()) cancelledBy = null;
-
-                Timestamp tsStorno = rs.getTimestamp(9);
-                OffsetDateTime cancelledAt = TimeUtil.oracleTimestampToZagreb(tsStorno);
-
-                String note = rs.getString(10);
-
-                return DocumentHeaderEntity.builder()
-                        .id(id)
-                        .documentId(h.getDocumentId())
-                        .documentNumber(documentNumber)
-                        .documentDate(normalizedDocDate)
-                        .partnerId(h.getPartnerId())
-                        .createdBy(h.getCreatedBy())
-                        .createdAt(createdAt)
-                        .posted(posted)
-                        .postedBy(postedBy)
-                        .postedAt(postedAt)
-                        .cancelledBy(cancelledBy)
-                        .cancelledAt(cancelledAt)
-                        .cancelNote(note)
-                        .build();
-            }
-        }
+        jdbc.update(sql, ps -> {
+            Jdbc.setClobString(ps, 1, reason);
+            Jdbc.setLong(ps, 2, headerId);
+        });
     }
 
     public DocumentHeaderEntity findHeader(Long id) throws SQLException {
@@ -165,16 +169,7 @@ public class DocumentHeaderRepository {
                 WHERE g.ID = ?
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setLong(1, id);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                return mapRowToEntity(rs);
-            }
-        }
+        return jdbc.queryOne(sql, ps -> ps.setLong(1, id), DocumentHeaderRepository::mapRowToEntity);
     }
 
     /**
@@ -191,16 +186,12 @@ public class DocumentHeaderRepository {
                    AND STORNIRAO IS NULL
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            if (actorOib != null) ps.setLong(1, actorOib);
-            else ps.setNull(1, Types.NUMERIC);
-            ps.setLong(2, headerId);
+        int updated = jdbc.update(sql, ps -> {
+            Jdbc.setLong(ps, 1, actorOib);
+            Jdbc.setLong(ps, 2, headerId);
+        });
 
-            int updated = ps.executeUpdate();
-            if (updated == 0) return null;
-        }
-
+        if (updated == 0) return null;
         return findHeader(headerId);
     }
 
@@ -216,22 +207,14 @@ public class DocumentHeaderRepository {
                    AND STORNIRAO IS NULL
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        int updated = jdbc.update(sql, ps -> {
+            Jdbc.setLong(ps, 1, partnerId);
+            Jdbc.setClobString(ps, 2, note);
+            ps.setNull(3, Types.NUMERIC); // keeping your original behavior
+            Jdbc.setLong(ps, 4, headerId);
+        });
 
-            if (partnerId != null) ps.setLong(1, partnerId);
-            else ps.setNull(1, Types.NUMERIC);
-
-            if (note != null) ps.setString(2, note);
-            else ps.setNull(2, Types.CLOB);
-
-            ps.setNull(3, Types.NUMERIC);
-            ps.setLong(4, headerId);
-
-            int updated = ps.executeUpdate();
-            if (updated == 0) return null;
-        }
-
+        if (updated == 0) return null;
         return findHeader(headerId);
     }
 
@@ -246,21 +229,13 @@ public class DocumentHeaderRepository {
                    AND STORNIRAO IS NULL
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        int updated = jdbc.update(sql, ps -> {
+            Jdbc.setLong(ps, 1, actorOib);
+            Jdbc.setClobString(ps, 2, reason);
+            Jdbc.setLong(ps, 3, headerId);
+        });
 
-            if (actorOib != null) ps.setLong(1, actorOib);
-            else ps.setNull(1, Types.NUMERIC);
-
-            if (reason != null) ps.setString(2, reason);
-            else ps.setNull(2, Types.CLOB);
-
-            ps.setLong(3, headerId);
-
-            int updated = ps.executeUpdate();
-            if (updated == 0) return null;
-        }
-
+        if (updated == 0) return null;
         return findHeader(headerId);
     }
 
@@ -274,15 +249,15 @@ public class DocumentHeaderRepository {
         List<Object> params = new ArrayList<>();
         addWhereClauses(filter, sql, params);
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql.toString())) {
-
-            bindParams(ps, params);
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getLong("CNT");
+        return jdbc.withConnection(c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql.toString())) {
+                bindParams(ps, params);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    return rs.getLong("CNT");
+                }
             }
-        }
+        });
     }
 
     public List<DocumentHeaderEntity> pageFiltered(DispatchSearchFilter filter) throws SQLException {
@@ -326,21 +301,19 @@ public class DocumentHeaderRepository {
                 WHERE rn >= ?
                 """;
 
-        List<DocumentHeaderEntity> out = new ArrayList<>(size);
+        return jdbc.withConnection(c -> {
+            try (PreparedStatement ps = c.prepareStatement(pagedSql)) {
+                int idx = bindParams(ps, params);
+                ps.setInt(idx++, end);
+                ps.setInt(idx, start);
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(pagedSql)) {
-
-            int idx = bindParams(ps, params);
-            ps.setInt(idx++, end);
-            ps.setInt(idx, start);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) out.add(mapRowToEntity(rs));
+                List<DocumentHeaderEntity> out = new ArrayList<>(size);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.add(mapRowToEntity(rs));
+                }
+                return out;
             }
-        }
-
-        return out;
+        });
     }
 
     private static void addWhereClauses(DispatchSearchFilter f, StringBuilder sql, List<Object> params) {

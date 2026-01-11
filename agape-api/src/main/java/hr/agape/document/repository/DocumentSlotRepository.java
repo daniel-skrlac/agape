@@ -1,24 +1,20 @@
 package hr.agape.document.repository;
 
+import hr.agape.common.database.Jdbc;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 //SD_SIFREG
 @ApplicationScoped
 public class DocumentSlotRepository {
 
-    private final DataSource dataSource;
+    private final Jdbc jdbc;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
-    public DocumentSlotRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
-        this.dataSource = dataSource;
+    public DocumentSlotRepository(Jdbc jdbc) {
+        this.jdbc = jdbc;
     }
 
     public boolean existsForWarehouse(Long documentId, Long warehouseId) throws SQLException {
@@ -30,16 +26,16 @@ public class DocumentSlotRepository {
                    AND ROWNUM = 1
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        Integer one = jdbc.queryOne(
+                sql,
+                ps -> {
+                    ps.setLong(1, documentId);
+                    ps.setLong(2, warehouseId);
+                },
+                rs -> rs.getInt(1)
+        );
 
-            ps.setLong(1, documentId);
-            ps.setLong(2, warehouseId);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
-            }
-        }
+        return one != null;
     }
 
     public Long warehouseForDocument(Long documentId) throws SQLException {
@@ -50,18 +46,13 @@ public class DocumentSlotRepository {
                    AND ROWNUM = 1
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setLong(1, documentId);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return null;
+        return jdbc.queryOne(
+                sql,
+                ps -> ps.setLong(1, documentId),
+                rs -> {
+                    long whRaw = rs.getLong("SKLADISTE_ID");
+                    return rs.wasNull() ? null : whRaw;
                 }
-                long whRaw = rs.getLong("SKLADISTE_ID");
-                return rs.wasNull() ? null : whRaw;
-            }
-        }
+        );
     }
 }

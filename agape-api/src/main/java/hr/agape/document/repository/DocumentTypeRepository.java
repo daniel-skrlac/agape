@@ -1,15 +1,11 @@
 package hr.agape.document.repository;
 
+import hr.agape.common.database.Jdbc;
 import hr.agape.document.lookup.view.DocumentSlotTypeView;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,12 +13,11 @@ import java.util.Optional;
 @ApplicationScoped
 public class DocumentTypeRepository {
 
-    private final DataSource dataSource;
+    private final Jdbc jdbc;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
-    public DocumentTypeRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
-        this.dataSource = dataSource;
+    public DocumentTypeRepository(Jdbc jdbc) {
+        this.jdbc = jdbc;
     }
 
     public Optional<DocumentSlotTypeView> findDocumentSlot(int documentId) throws SQLException {
@@ -42,35 +37,31 @@ public class DocumentTypeRepository {
                     WHERE ROWNUM = 1
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        DocumentSlotTypeView view = jdbc.queryOne(
+                sql,
+                ps -> ps.setInt(1, documentId),
+                rs -> DocumentSlotTypeView.builder()
+                        .documentId(rs.getInt("DOKUMENT_ID"))
+                        .documentCode(rs.getString("DOKUMENTID"))
+                        .displayName(rs.getString("NAZIVDOKUMENTA"))
+                        .inOutFlag(rs.getInt("ULAZIZLAZ"))
+                        .changesStock(rs.getInt("MIJENJAZALIHU"))
+                        .build()
+        );
 
-            ps.setInt(1, documentId);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return Optional.empty();
-
-                return Optional.of(
-                        DocumentSlotTypeView.builder()
-                                .documentId(rs.getInt("DOKUMENT_ID"))
-                                .documentCode(rs.getString("DOKUMENTID"))
-                                .displayName(rs.getString("NAZIVDOKUMENTA"))
-                                .inOutFlag(rs.getInt("ULAZIZLAZ"))
-                                .changesStock(rs.getInt("MIJENJAZALIHU"))
-                                .build()
-                );
-            }
-        }
+        return Optional.ofNullable(view);
     }
 
     public long countDistinctDocumentIds() throws SQLException {
         final String sql = "SELECT COUNT(*) FROM (SELECT DISTINCT DOKUMENT_ID FROM SD_SIFREG)";
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            rs.next();
-            return rs.getLong(1);
-        }
+
+        Long cnt = jdbc.queryOne(
+                sql,
+                null,
+                rs -> rs.getLong(1)
+        );
+
+        return (cnt == null) ? 0L : cnt;
     }
 
     public List<DocumentSlotTypeView> pageDocumentSlots(int offset, int limit) throws SQLException {
@@ -104,29 +95,19 @@ public class DocumentTypeRepository {
         int start = offset + 1;
         int end = offset + limit;
 
-        List<DocumentSlotTypeView> out = new ArrayList<>(limit);
-
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
-            ps.setInt(1, start);
-            ps.setInt(2, end);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(
-                            DocumentSlotTypeView.builder()
-                                    .documentId(rs.getInt("DOKUMENT_ID"))
-                                    .documentCode(rs.getString("DOKUMENTID"))
-                                    .displayName(rs.getString("NAZIVDOKUMENTA"))
-                                    .inOutFlag(rs.getInt("ULAZIZLAZ"))
-                                    .changesStock(rs.getInt("MIJENJAZALIHU"))
-                                    .build()
-                    );
-                }
-            }
-        }
-
-        return out;
+        return jdbc.query(
+                sql,
+                ps -> {
+                    ps.setInt(1, start);
+                    ps.setInt(2, end);
+                },
+                rs -> DocumentSlotTypeView.builder()
+                        .documentId(rs.getInt("DOKUMENT_ID"))
+                        .documentCode(rs.getString("DOKUMENTID"))
+                        .displayName(rs.getString("NAZIVDOKUMENTA"))
+                        .inOutFlag(rs.getInt("ULAZIZLAZ"))
+                        .changesStock(rs.getInt("MIJENJAZALIHU"))
+                        .build()
+        );
     }
 }

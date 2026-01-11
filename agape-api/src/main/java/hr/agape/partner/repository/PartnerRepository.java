@@ -1,5 +1,6 @@
 package hr.agape.partner.repository;
 
+import hr.agape.common.database.Jdbc;
 import hr.agape.partner.domain.PartnerEntity;
 import hr.agape.partner.dto.PartnerSearchFilter;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -7,8 +8,6 @@ import jakarta.inject.Inject;
 import oracle.jdbc.OraclePreparedStatement;
 import oracle.jdbc.OracleTypes;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -21,12 +20,11 @@ import java.util.List;
 @ApplicationScoped
 public class PartnerRepository {
 
-    private final DataSource dataSource;
+    private final Jdbc jdbc;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
-    public PartnerRepository(@io.quarkus.agroal.DataSource("oracle") DataSource dataSource) {
-        this.dataSource = dataSource;
+    public PartnerRepository(Jdbc jdbc) {
+        this.jdbc = jdbc;
     }
 
     public boolean isMissingOrInactive(Long partnerId) throws SQLException {
@@ -36,13 +34,14 @@ public class PartnerRepository {
                  WHERE PARTNER_ID = ?
                    AND NVL(AKTIVAN, 1) = 1
                 """;
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, partnerId);
-            try (ResultSet rs = ps.executeQuery()) {
-                return !rs.next();
-            }
-        }
+
+        Integer one = jdbc.queryOne(
+                sql,
+                ps -> ps.setLong(1, partnerId),
+                rs -> rs.getInt(1)
+        );
+
+        return one == null;
     }
 
     public PartnerEntity findById(Long id) throws SQLException {
@@ -64,14 +63,7 @@ public class PartnerRepository {
                     WHERE p.PARTNER_ID = ?
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setLong(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) return null;
-                return mapRowToEntity(rs);
-            }
-        }
+        return jdbc.queryOne(sql, ps -> ps.setLong(1, id), PartnerRepository::mapRowToEntity);
     }
 
     public PartnerEntity insert(PartnerEntity in) throws SQLException {
@@ -93,40 +85,39 @@ public class PartnerRepository {
                     RETURNING PARTNER_ID INTO ?
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+        Long newId = jdbc.withConnection(c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql)) {
+                OraclePreparedStatement ops = ps.unwrap(OraclePreparedStatement.class);
 
-            OraclePreparedStatement ops = ps.unwrap(OraclePreparedStatement.class);
+                Jdbc.setLong(ops, 1, in.getTenantId());
 
-            if (in.getTenantId() != null) ops.setLong(1, in.getTenantId());
-            else ops.setNull(1, Types.NUMERIC);
-            if (in.getStatusId() != null) ops.setInt(2, in.getStatusId());
-            else ops.setNull(2, Types.NUMERIC);
-            if (in.getPartnerNumber() != null) ops.setInt(3, in.getPartnerNumber());
-            else ops.setNull(3, Types.NUMERIC);
-            if (in.getTaxNumber() != null) ops.setString(4, in.getTaxNumber());
-            else ops.setNull(4, Types.VARCHAR);
-            if (in.getName() != null) ops.setString(5, in.getName());
-            else ops.setNull(5, Types.VARCHAR);
-            if (in.getAddress() != null) ops.setString(6, in.getAddress());
-            else ops.setNull(6, Types.VARCHAR);
-            if (in.getPostalCode() != null) ops.setString(7, in.getPostalCode());
-            else ops.setNull(7, Types.VARCHAR);
-            if (in.getCity() != null) ops.setString(8, in.getCity());
-            else ops.setNull(8, Types.VARCHAR);
-            if (in.getActive() != null) ops.setInt(9, in.getActive() ? 1 : 0);
-            else ops.setNull(9, Types.NUMERIC);
+                if (in.getStatusId() != null) ops.setInt(2, in.getStatusId());
+                else ops.setNull(2, Types.NUMERIC);
 
-            ops.registerReturnParameter(10, OracleTypes.NUMBER); // PARTNER_ID
-            ops.executeUpdate();
+                if (in.getPartnerNumber() != null) ops.setInt(3, in.getPartnerNumber());
+                else ops.setNull(3, Types.NUMERIC);
 
-            long newId;
-            try (ResultSet rs = ops.getReturnResultSet()) {
-                rs.next();
-                newId = rs.getLong(1);
+                Jdbc.setString(ops, 4, in.getTaxNumber());
+                Jdbc.setString(ops, 5, in.getName());
+                Jdbc.setString(ops, 6, in.getAddress());
+                Jdbc.setString(ops, 7, in.getPostalCode());
+                Jdbc.setString(ops, 8, in.getCity());
+
+                if (in.getActive() != null) ops.setInt(9, in.getActive() ? 1 : 0);
+                else ops.setNull(9, Types.NUMERIC);
+
+                ops.registerReturnParameter(10, OracleTypes.NUMBER); // PARTNER_ID
+                ops.executeUpdate();
+
+                try (ResultSet rs = ops.getReturnResultSet()) {
+                    if (!rs.next()) return null;
+                    long id = rs.getLong(1);
+                    return rs.wasNull() ? null : id;
+                }
             }
-            return findById(newId);
-        }
+        });
+
+        return (newId == null) ? null : findById(newId);
     }
 
     public PartnerEntity update(Long id, PartnerEntity patch) throws SQLException {
@@ -144,31 +135,27 @@ public class PartnerRepository {
                     WHERE PARTNER_ID = ?
                 """;
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-
+        int updated = jdbc.update(sql, ps -> {
             if (patch.getStatusId() != null) ps.setInt(1, patch.getStatusId());
             else ps.setNull(1, Types.NUMERIC);
+
             if (patch.getPartnerNumber() != null) ps.setInt(2, patch.getPartnerNumber());
             else ps.setNull(2, Types.NUMERIC);
-            if (patch.getTaxNumber() != null) ps.setString(3, patch.getTaxNumber());
-            else ps.setNull(3, Types.VARCHAR);
-            if (patch.getName() != null) ps.setString(4, patch.getName());
-            else ps.setNull(4, Types.VARCHAR);
-            if (patch.getAddress() != null) ps.setString(5, patch.getAddress());
-            else ps.setNull(5, Types.VARCHAR);
-            if (patch.getPostalCode() != null) ps.setString(6, patch.getPostalCode());
-            else ps.setNull(6, Types.VARCHAR);
-            if (patch.getCity() != null) ps.setString(7, patch.getCity());
-            else ps.setNull(7, Types.VARCHAR);
+
+            Jdbc.setString(ps, 3, patch.getTaxNumber());
+            Jdbc.setString(ps, 4, patch.getName());
+            Jdbc.setString(ps, 5, patch.getAddress());
+            Jdbc.setString(ps, 6, patch.getPostalCode());
+            Jdbc.setString(ps, 7, patch.getCity());
+
             if (patch.getActive() != null) ps.setInt(8, patch.getActive() ? 1 : 0);
             else ps.setNull(8, Types.NUMERIC);
-            ps.setLong(9, id);
 
-            int updated = ps.executeUpdate();
-            if (updated == 0) return null;
-            return findById(id);
-        }
+            ps.setLong(9, id);
+        });
+
+        if (updated == 0) return null;
+        return findById(id);
     }
 
     public long countFiltered(PartnerSearchFilter f) throws SQLException {
@@ -181,14 +168,15 @@ public class PartnerRepository {
         List<Object> params = new ArrayList<>();
         addWhereClauses(f, sql, params);
 
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql.toString())) {
-            bindParams(ps, params);
-            try (ResultSet rs = ps.executeQuery()) {
-                rs.next();
-                return rs.getLong("CNT");
+        return jdbc.withConnection(c -> {
+            try (PreparedStatement ps = c.prepareStatement(sql.toString())) {
+                bindParams(ps, params);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    return rs.getLong("CNT");
+                }
             }
-        }
+        });
     }
 
     public List<PartnerEntity> pageFiltered(PartnerSearchFilter f) throws SQLException {
@@ -231,21 +219,20 @@ public class PartnerRepository {
                     WHERE rn >= ?
                 """;
 
-        List<PartnerEntity> out = new ArrayList<>(size);
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement(pagedSql)) {
+        return jdbc.withConnection(c -> {
+            try (PreparedStatement ps = c.prepareStatement(pagedSql)) {
 
-            int idx = bindParams(ps, params);
-            ps.setInt(idx++, end);
-            ps.setInt(idx, start);
+                int idx = bindParams(ps, params);
+                ps.setInt(idx++, end);
+                ps.setInt(idx, start);
 
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(mapRowToEntity(rs));
+                List<PartnerEntity> out = new ArrayList<>(size);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) out.add(mapRowToEntity(rs));
                 }
+                return out;
             }
-        }
-        return out;
+        });
     }
 
     private static void addWhereClauses(PartnerSearchFilter f, StringBuilder sql, List<Object> params) {
