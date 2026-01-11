@@ -114,7 +114,7 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.successOk(out, "Dispatch note saved as DRAFT.");
             }
 
-            tx.postViaMkProcedure(created.getId(), actorOibDigits);
+            tx.postViaProcedure(created.getId(), actorOibDigits);
 
             DocumentHeaderEntity posted = headerRepo.findHeader(created.getId());
             if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
@@ -245,7 +245,7 @@ public class DispatchBookingService {
                     }
 
                     try {
-                        tx.postViaMkProcedure(created.getId(), actorOibDigits);
+                        tx.postViaProcedure(created.getId(), actorOibDigits);
                     } catch (Exception postEx) {
                         DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
                         DispatchResponseDTO dto = mapper.toResponse(fresh != null ? fresh : created);
@@ -376,7 +376,7 @@ public class DispatchBookingService {
                     return ServiceResponseDirector.errorBadRequest("Cannot post: dispatch CANCELLED.");
                 }
 
-                tx.postViaMkProcedure(existing.getId(), actorOibDigits);
+                tx.postViaProcedure(existing.getId(), actorOibDigits);
 
                 DocumentHeaderEntity posted = headerRepo.findHeader(existing.getId());
                 if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {

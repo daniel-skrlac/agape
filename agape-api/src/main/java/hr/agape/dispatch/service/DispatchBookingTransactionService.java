@@ -78,7 +78,7 @@ public class DispatchBookingTransactionService {
     }
 
     @Transactional(NOT_SUPPORTED)
-    public void postViaMkProcedure(Long headerId, String actorOibDigits) throws SQLException {
+    public void postViaProcedure(Long headerId, String actorOibDigits) throws SQLException {
         documentRepository.bookDocument(
                 headerId,
                 actorOibDigits,
