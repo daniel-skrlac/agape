@@ -17,4 +17,5 @@ public class TemplateResponseDTO {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private List<TemplateDocResponseDTO> documents;
+    private boolean shared;
 }

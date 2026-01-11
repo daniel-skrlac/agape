@@ -150,7 +150,7 @@ public class Jdbc {
     }
 
     private static String allocateUnique(Connection c, String lockName) throws SQLException {
-        try (CallableStatement cs = c.prepareCall("{ call DBMS_LOCK.ALLOCATE_UNIQUE(?, ?) }")) {
+        try (CallableStatement cs = c.prepareCall("{ call SYS.DBMS_LOCK.ALLOCATE_UNIQUE(?, ?) }")) {
             cs.setString(1, lockName);
             cs.registerOutParameter(2, Types.VARCHAR);
             cs.execute();
@@ -159,14 +159,14 @@ public class Jdbc {
     }
 
     private static void requestExclusive(Connection c, String lockHandle, int timeoutSeconds) throws SQLException {
-        try (CallableStatement cs = c.prepareCall("{ ? = call DBMS_LOCK.REQUEST(?, ?, ?, ?) }")) {
+        try (CallableStatement cs = c.prepareCall("{ ? = call SYS.DBMS_LOCK.REQUEST(?, ?, ?, ?) }")) {
             cs.registerOutParameter(1, Types.INTEGER);
             cs.setString(2, lockHandle);
-            cs.setInt(3, 6);
-            cs.setInt(4, timeoutSeconds);
-            cs.setInt(5, 0);
-
+            cs.setInt(3, 6);              // lockmode: 6 = exclusive
+            cs.setInt(4, timeoutSeconds); // timeout
+            cs.setInt(5, 0);              // release_on_commit = FALSE (important)
             cs.execute();
+
             int rc = cs.getInt(1);
             if (rc != 0) {
                 throw new SQLException("Could not acquire DB lock '" + lockHandle + "' rc=" + rc
@@ -176,7 +176,7 @@ public class Jdbc {
     }
 
     private static void release(Connection c, String lockHandle) throws SQLException {
-        try (CallableStatement cs = c.prepareCall("{ ? = call DBMS_LOCK.RELEASE(?) }")) {
+        try (CallableStatement cs = c.prepareCall("{ ? = call SYS.DBMS_LOCK.RELEASE(?) }")) {
             cs.registerOutParameter(1, Types.INTEGER);
             cs.setString(2, lockHandle);
             cs.execute();

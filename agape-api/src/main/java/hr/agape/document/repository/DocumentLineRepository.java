@@ -21,23 +21,35 @@ public class DocumentLineRepository {
     }
 
     public void insert(Long headerId, List<DocumentItemLineDTO> lines) throws SQLException {
-        final String sql = """
+        if (lines == null || lines.isEmpty()) return;
+
+        final String lockHeaderSql = "SELECT 1 FROM SD_GLAVA WHERE ID = ? FOR UPDATE";
+        final String maxLineSql = "SELECT NVL(MAX(STAVKABR), 0) FROM SD_STAVKE WHERE SD_GLAVA_ID = ?";
+        final String insertSql = """
                 INSERT INTO SD_STAVKE
-                  (ID,
-                   SD_GLAVA_ID,
-                   ARTIKL_ID,
-                   KOLICINA,
-                   STAVKABR,
-                   NAZIV_ID,
-                   PDV_ID,
-                   JMJ_ID)
+                  (ID, SD_GLAVA_ID, ARTIKL_ID, KOLICINA, STAVKABR, NAZIV_ID, PDV_ID, JMJ_ID)
                 VALUES
-                  (SD_STAVKE_SEQ.NEXTVAL,
-                   ?, ?, ?, NULL, ?, ?, ?)
+                  (SD_STAVKE_SEQ.NEXTVAL, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         jdbc.withConnectionVoid(c -> {
-            try (PreparedStatement ps = c.prepareStatement(sql)) {
+            try (PreparedStatement lock = c.prepareStatement(lockHeaderSql)) {
+                lock.setLong(1, headerId);
+                lock.executeQuery().close();
+            }
+
+            long start;
+            try (PreparedStatement ps = c.prepareStatement(maxLineSql)) {
+                ps.setLong(1, headerId);
+                try (var rs = ps.executeQuery()) {
+                    rs.next();
+                    start = rs.getLong(1);
+                }
+            }
+
+            try (PreparedStatement ps = c.prepareStatement(insertSql)) {
+                long lineNo = start + 1;
+
                 for (DocumentItemLineDTO pl : lines) {
                     ps.setLong(1, headerId);
 
@@ -47,14 +59,16 @@ public class DocumentLineRepository {
                     if (pl.getQuantity() != null) ps.setObject(3, pl.getQuantity(), Types.NUMERIC);
                     else ps.setNull(3, Types.NUMERIC);
 
-                    if (pl.getNameId() != null) ps.setObject(4, pl.getNameId(), Types.NUMERIC);
-                    else ps.setNull(4, Types.NUMERIC);
+                    ps.setLong(4, lineNo++);
 
-                    if (pl.getValueAddedTaxId() != null) ps.setObject(5, pl.getValueAddedTaxId(), Types.NUMERIC);
+                    if (pl.getNameId() != null) ps.setObject(5, pl.getNameId(), Types.NUMERIC);
                     else ps.setNull(5, Types.NUMERIC);
 
-                    if (pl.getUnitOfMeasureId() != null) ps.setObject(6, pl.getUnitOfMeasureId(), Types.NUMERIC);
+                    if (pl.getValueAddedTaxId() != null) ps.setObject(6, pl.getValueAddedTaxId(), Types.NUMERIC);
                     else ps.setNull(6, Types.NUMERIC);
+
+                    if (pl.getUnitOfMeasureId() != null) ps.setObject(7, pl.getUnitOfMeasureId(), Types.NUMERIC);
+                    else ps.setNull(7, Types.NUMERIC);
 
                     ps.addBatch();
                 }

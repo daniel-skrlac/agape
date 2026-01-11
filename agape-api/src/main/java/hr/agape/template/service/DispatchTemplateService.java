@@ -43,6 +43,9 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class DispatchTemplateService {
@@ -92,11 +95,16 @@ public class DispatchTemplateService {
             }
 
             List<DispatchTemplateEntity> owned = templateRepo.listHeaders(userId, folderId, q);
-            List<DispatchTemplateEntity> shared = new ArrayList<>();
 
+            List<DispatchTemplateEntity> shared = List.of();
             if (includeShared && folderId == null) {
                 shared = templateRepo.listSharedHeaders(userId, q);
             }
+
+            Set<Long> sharedIds = shared.stream()
+                    .map(DispatchTemplateEntity::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
 
             List<DispatchTemplateEntity> all = new ArrayList<>(owned.size() + shared.size());
             all.addAll(owned);
@@ -107,10 +115,15 @@ public class DispatchTemplateService {
                     .thenComparing(t -> t.getName() == null ? "" : t.getName().toLowerCase())
                     .thenComparing(DispatchTemplateEntity::getId, Comparator.nullsLast(Comparator.reverseOrder())));
 
-            return ServiceResponseDirector.successOk(
-                    all.stream().map(templateMapper::toDto).toList(),
-                    "OK"
-            );
+            List<TemplateResponseDTO> dto = all.stream()
+                    .map(t -> {
+                        TemplateResponseDTO out = templateMapper.toDto(t);
+                        out.setShared(sharedIds.contains(t.getId()));
+                        return out;
+                    })
+                    .toList();
+
+            return ServiceResponseDirector.successOk(dto, "OK");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to list templates: " + e.getMessage());
         }
