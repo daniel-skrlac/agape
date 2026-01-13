@@ -12,15 +12,20 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
     public DispatchTemplateEntity findFull(Long templateId, Long ownerUserId) {
 
         DispatchTemplateEntity t = find("""
-                SELECT DISTINCT t FROM DispatchTemplateEntity t
+                SELECT DISTINCT t
+                FROM DispatchTemplateEntity t
                 LEFT JOIN FETCH t.documents d
-                WHERE t.id = ?1 AND t.owner.id = ?2
-                """, templateId, ownerUserId).firstResult();
+                WHERE t.id = ?1
+                  AND t.owner.id = ?2
+                """, templateId, ownerUserId)
+                .singleResultOptional()
+                .orElse(null);
 
         if (t == null) return null;
 
         find("""
-                SELECT DISTINCT d FROM DispatchTemplateDocEntity d
+                SELECT DISTINCT d
+                FROM DispatchTemplateDocEntity d
                 LEFT JOIN FETCH d.items i
                 WHERE d.template.id = ?1
                 """, templateId).list();
@@ -31,16 +36,21 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
     public DispatchTemplateEntity findFullAccessible(Long templateId, Long userId) {
 
         DispatchTemplateEntity t = find("""
-                SELECT DISTINCT t FROM DispatchTemplateEntity t
+                SELECT DISTINCT t
+                FROM DispatchTemplateEntity t
                 LEFT JOIN FETCH t.documents d
                 LEFT JOIN t.shares s
-                WHERE t.id = ?1 AND (t.owner.id = ?2 OR s.sharedWith.id = ?2)
-                """, templateId, userId).firstResult();
+                WHERE t.id = ?1
+                  AND (t.owner.id = ?2 OR s.sharedWith.id = ?2)
+                """, templateId, userId)
+                .singleResultOptional()
+                .orElse(null);
 
         if (t == null) return null;
 
         find("""
-                SELECT DISTINCT d FROM DispatchTemplateDocEntity d
+                SELECT DISTINCT d
+                FROM DispatchTemplateDocEntity d
                 LEFT JOIN FETCH d.items i
                 WHERE d.template.id = ?1
                 """, templateId).list();

@@ -129,7 +129,7 @@
 
   # ───────────── 3) ensure user ─────────────
   section "3) Ensure IN_WPRG user (idempotent)"
-  docker compose -f "$DB_COMPOSE" up --no-deps --build --abort-on-container-exit --exit-code-from oracle-ensure-user oracle-ensure-user || true
+  docker compose -f "$DB_COMPOSE" run --rm oracle-ensure-user
 
   # ───────────── 4) import dump ─────────────
   if [[ "$IMPORT_DUMP" == "1" ]]; then

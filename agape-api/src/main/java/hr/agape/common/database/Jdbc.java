@@ -159,12 +159,14 @@ public class Jdbc {
     }
 
     private static void requestExclusive(Connection c, String lockHandle, int timeoutSeconds) throws SQLException {
-        try (CallableStatement cs = c.prepareCall("{ ? = call SYS.DBMS_LOCK.REQUEST(?, ?, ?, ?) }")) {
+        try (CallableStatement cs = c.prepareCall(
+                "BEGIN ? := SYS.DBMS_LOCK.REQUEST(?, ?, ?, FALSE); END;")) {
+
             cs.registerOutParameter(1, Types.INTEGER);
             cs.setString(2, lockHandle);
-            cs.setInt(3, 6);              // lockmode: 6 = exclusive
-            cs.setInt(4, timeoutSeconds); // timeout
-            cs.setInt(5, 0);              // release_on_commit = FALSE (important)
+            cs.setInt(3, 6);
+            cs.setInt(4, timeoutSeconds);
+
             cs.execute();
 
             int rc = cs.getInt(1);
@@ -174,6 +176,7 @@ public class Jdbc {
             }
         }
     }
+
 
     private static void release(Connection c, String lockHandle) throws SQLException {
         try (CallableStatement cs = c.prepareCall("{ ? = call SYS.DBMS_LOCK.RELEASE(?) }")) {

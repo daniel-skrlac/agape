@@ -31,7 +31,7 @@ services:
     entrypoint:
       [
         "bash","-lc",
-        "sqlplus -s system/${ORACLE_PASSWORD}@oracle-xe:1521/XE @/bootstrap/ensure_in_wprg.sql"
+        "sqlplus -s /nolog @/bootstrap/ensure_in_wprg.sql \"${ORACLE_PASSWORD}\""
       ]
     restart: "no"
 
