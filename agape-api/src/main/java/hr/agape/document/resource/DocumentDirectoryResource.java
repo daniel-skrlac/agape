@@ -39,11 +39,12 @@ public class DocumentDirectoryResource {
 
     @GET
     @Path("/doc-types")
-    public Response pageDocumentTypes(
+    public Response pageDocumentDescriptors(
             @QueryParam("page") @DefaultValue("0") int page,
-            @QueryParam("size") @DefaultValue("10") int size
+            @QueryParam("size") @DefaultValue("20") int size,
+            @QueryParam("q") String q
     ) {
-        return Responses.from(service.pageDocumentDescriptors(page, size));
+        return Responses.from(service.pageDocumentDescriptors(page, size, q));
     }
 
     @GET

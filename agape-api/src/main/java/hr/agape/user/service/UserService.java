@@ -1,29 +1,38 @@
 package hr.agape.user.service;
 
+import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.user.domain.UserEntity;
-import hr.agape.user.dto.UpdateDefaultWarehouseRequestDTO;
 import hr.agape.user.dto.UpdateUserRequestDTO;
+import hr.agape.user.dto.UserDirectoryResponseDTO;
 import hr.agape.user.dto.UserResponseDTO;
+import hr.agape.user.mapper.UserDirectoryMapper;
 import hr.agape.user.mapper.UserMapper;
 import hr.agape.user.repository.UserRepository;
+import hr.agape.user.util.AuthUtil;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+
+import java.util.List;
 
 @ApplicationScoped
 public class UserService {
 
     private final UserRepository userRepo;
     private final UserMapper userMapper;
+    private final UserDirectoryMapper directoryMapper;
+    private final AuthUtil authUtil;
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public UserService(UserRepository userRepo, UserMapper userMapper) {
+    public UserService(UserRepository userRepo, UserMapper userMapper, UserDirectoryMapper directoryMapper, AuthUtil authUtil) {
         this.userRepo = userRepo;
         this.userMapper = userMapper;
+        this.directoryMapper = directoryMapper;
+        this.authUtil = authUtil;
     }
 
     public ServiceResponseDTO<UserResponseDTO> getById(Long userId) {
@@ -102,6 +111,28 @@ public class UserService {
             return ServiceResponseDirector.successOk(dto, "User updated.");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to update user: " + e.getMessage());
+        }
+    }
+
+    public ServiceResponseDTO<PagedResultDTO<UserDirectoryResponseDTO>> pageUsers(int page, int size, String q) {
+        try {
+            authUtil.requireUserId();
+
+            long total = userRepo.countDirectory(q);
+            List<UserDirectoryResponseDTO> items = userRepo.pageDirectory(q, page, size)
+                    .stream()
+                    .map(directoryMapper::toDto)
+                    .toList();
+
+            PagedResultDTO<UserDirectoryResponseDTO> out = new PagedResultDTO<>();
+            out.setItems(items);
+            out.setPage(page);
+            out.setSize(size);
+            out.setTotal((int) total);
+
+            return ServiceResponseDirector.successOk(out, "OK");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to get users data: " + e.getMessage());
         }
     }
 }

@@ -110,4 +110,86 @@ public class DocumentTypeRepository {
                         .build()
         );
     }
+
+    public long countDistinctDocumentIdsFiltered(String q) throws SQLException {
+        final String sql = """
+                    SELECT COUNT(*) FROM (
+                        SELECT DISTINCT r.DOKUMENT_ID
+                        FROM SD_SIFREG r
+                        JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                        WHERE LOWER(z.NAZIVDOKUMENTA) LIKE ?
+                           OR LOWER(z.DOKUMENTID) LIKE ?
+                           OR TO_CHAR(r.DOKUMENT_ID) LIKE ?
+                    )
+                """;
+
+        String like = "%" + q.toLowerCase().trim() + "%";
+
+        Long cnt = jdbc.queryOne(
+                sql,
+                ps -> {
+                    ps.setString(1, like);
+                    ps.setString(2, like);
+                    ps.setString(3, like);
+                },
+                rs -> rs.getLong(1)
+        );
+
+        return (cnt == null) ? 0L : cnt;
+    }
+
+    public List<DocumentSlotTypeView> pageDocumentSlotsFiltered(int offset, int limit, String q) throws SQLException {
+        final String sql = """
+                    WITH dids AS (
+                      SELECT DISTINCT r.DOKUMENT_ID AS DID
+                        FROM SD_SIFREG r
+                        JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                       WHERE LOWER(z.NAZIVDOKUMENTA) LIKE ?
+                          OR LOWER(z.DOKUMENTID) LIKE ?
+                          OR TO_CHAR(r.DOKUMENT_ID) LIKE ?
+                    ),
+                    ranked AS (
+                      SELECT d.DID,
+                             ROW_NUMBER() OVER (ORDER BY d.DID) AS rn
+                        FROM dids d
+                    )
+                    SELECT r2.DOKUMENT_ID,
+                           z.DOKUMENTID,
+                           z.NAZIVDOKUMENTA,
+                           z.ULAZIZLAZ,
+                           z.MIJENJAZALIHU
+                      FROM ranked x
+                      JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
+                      JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
+                     WHERE x.rn BETWEEN ? AND ?
+                       AND r2.SD_SIFREZ_ID = (
+                            SELECT MIN(r3.SD_SIFREZ_ID)
+                              FROM SD_SIFREG r3
+                             WHERE r3.DOKUMENT_ID = x.DID
+                       )
+                     ORDER BY r2.DOKUMENT_ID
+                """;
+
+        String like = "%" + q.toLowerCase().trim() + "%";
+        int start = offset + 1;
+        int end = offset + limit;
+
+        return jdbc.query(
+                sql,
+                ps -> {
+                    ps.setString(1, like);
+                    ps.setString(2, like);
+                    ps.setString(3, like);
+                    ps.setInt(4, start);
+                    ps.setInt(5, end);
+                },
+                rs -> DocumentSlotTypeView.builder()
+                        .documentId(rs.getInt("DOKUMENT_ID"))
+                        .documentCode(rs.getString("DOKUMENTID"))
+                        .displayName(rs.getString("NAZIVDOKUMENTA"))
+                        .inOutFlag(rs.getInt("ULAZIZLAZ"))
+                        .changesStock(rs.getInt("MIJENJAZALIHU"))
+                        .build()
+        );
+    }
 }

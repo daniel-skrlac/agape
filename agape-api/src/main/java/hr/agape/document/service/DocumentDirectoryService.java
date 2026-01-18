@@ -63,15 +63,22 @@ public class DocumentDirectoryService {
     }
 
     @Transactional
-    public ServiceResponseDTO<PagedResultDTO<DocumentDescriptorResponseDTO>> pageDocumentDescriptors(int page, int size) {
+    public ServiceResponseDTO<PagedResultDTO<DocumentDescriptorResponseDTO>> pageDocumentDescriptors(int page, int size, String q) {
         try {
             int p = Math.max(0, page);
             int s = Math.max(1, size);
             int offset = p * s;
 
-            long total = docTypeRepo.countDistinctDocumentIds();
+            String qq = (q == null) ? null : q.trim();
+            boolean hasQ = (qq != null && !qq.isBlank());
 
-            List<DocumentSlotTypeView> slotViews = docTypeRepo.pageDocumentSlots(offset, s);
+            long total = hasQ
+                    ? docTypeRepo.countDistinctDocumentIdsFiltered(qq)
+                    : docTypeRepo.countDistinctDocumentIds();
+
+            List<DocumentSlotTypeView> slotViews = hasQ
+                    ? docTypeRepo.pageDocumentSlotsFiltered(offset, s, qq)
+                    : docTypeRepo.pageDocumentSlots(offset, s);
 
             List<DocumentDescriptorResponseDTO> dtoList = slotViews.stream()
                     .map(mapper::toResponseDto)
