@@ -27,4 +27,5 @@ public class DocumentItemLineDTO {
     private Long nameId;              // NAZIV_ID
     private Long unitOfMeasureId;     // JMJ_ID
     private Long valueAddedTaxId;     // PDV_ID
+    private Long lineNumber;          // STAVKABR
 }

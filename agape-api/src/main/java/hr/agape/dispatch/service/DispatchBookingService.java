@@ -11,6 +11,7 @@ import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.dispatch.dto.DispatchSummaryResponseDTO;
 import hr.agape.dispatch.dto.DispatchUpdateRequestDTO;
 import hr.agape.dispatch.enumeration.DispatchStatusEnum;
+import hr.agape.dispatch.enumeration.DocumentTextType;
 import hr.agape.dispatch.mapper.DispatchApiMapper;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import hr.agape.document.dto.DocumentItemLineDTO;
@@ -103,6 +104,9 @@ public class DispatchBookingService {
             if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
             DocumentHeaderEntity headerInput = mapper.toHeader(req);
+            headerInput.setTextType(DocumentTextType.OTPREMNICA);
+            headerInput.setItemCount(req.getItems().size());
+
             List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
 
             DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
@@ -225,6 +229,9 @@ public class DispatchBookingService {
                     }
 
                     DocumentHeaderEntity headerInput = mapper.toHeader(req);
+                    headerInput.setTextType(DocumentTextType.OTPREMNICA);
+                    headerInput.setItemCount(req.getItems().size());
+
                     List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
 
                     DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
@@ -420,6 +427,7 @@ public class DispatchBookingService {
             }
 
             List<DocumentItemLineDTO> newLines = new ArrayList<>(body.getItems().size());
+            long br = 1;
             for (DispatchUpdateRequestDTO.DispatchItemPatch p : body.getItems()) {
                 DocumentItemAttributesView a = attrsByItem.get(p.getItemId());
                 if (a == null || a.getNameId() == null || a.getUnitOfMeasureId() == null) {
@@ -434,6 +442,7 @@ public class DispatchBookingService {
                         .nameId(a.getNameId())
                         .unitOfMeasureId(a.getUnitOfMeasureId())
                         .valueAddedTaxId(pdvId)
+                        .lineNumber(br++)
                         .build());
             }
 
@@ -495,6 +504,7 @@ public class DispatchBookingService {
             Long pdvId
     ) {
         List<DocumentItemLineDTO> out = new ArrayList<>(req.getItems().size());
+        long br = 1;
         for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
             DocumentItemAttributesView a = attrsByItem.get(it.getItemId());
             out.add(DocumentItemLineDTO.builder()
@@ -503,6 +513,7 @@ public class DispatchBookingService {
                     .nameId(a.getNameId())
                     .unitOfMeasureId(a.getUnitOfMeasureId())
                     .valueAddedTaxId(pdvId)
+                    .lineNumber(br++)
                     .build());
         }
         return out;

@@ -1,5 +1,6 @@
 package hr.agape.document.domain;
 
+import hr.agape.dispatch.enumeration.DocumentTextType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -77,4 +78,7 @@ public class DocumentHeaderEntity {
     private Long cancelledBy;       // SD_GLAVA.STORNIRAO
     private OffsetDateTime cancelledAt;// SD_GLAVA.DATUM_STORNO
     private String cancelNote;         // SD_GLAVA.NAPOMENA
+
+    private DocumentTextType textType; // -> SD_GLAVA.SIFRATEKSTA
+    private Integer itemCount;         // -> SD_GLAVA.BROJSTAVAKA
 }

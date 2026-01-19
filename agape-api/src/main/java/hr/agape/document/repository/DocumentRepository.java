@@ -40,6 +40,11 @@ public class DocumentRepository {
             try (CallableStatement cs = c.prepareCall("{ call KNJIZI_MK.KNJIZI_MK_DOKUMENT(?,?,?,?,?,?,?,?) }")) {
                 cs.setLong(1, sdGlavaId);
 
+                try (CallableStatement cs0 = c.prepareCall("{ call GLO.OPERATER(?) }")) {
+                    cs0.setLong(1, Long.parseLong(actorOibDigits));
+                    cs0.execute();
+                }
+
                 try {
                     cs.setLong(2, Long.parseLong(actorOibDigits));
                 } catch (NumberFormatException nfe) {
