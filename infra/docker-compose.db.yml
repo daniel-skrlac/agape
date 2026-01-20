@@ -12,7 +12,7 @@ services:
       - ./oracle/dumps:/dumps
       - ./oracle/bootstrap:/bootstrap:ro
     healthcheck:
-      test: ["CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XE"]
+      test: [ "CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XE" ]
       interval: 15s
       timeout: 5s
       retries: 40
@@ -119,10 +119,24 @@ SQL\n\
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h localhost"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h localhost" ]
       interval: 5s
       timeout: 3s
       retries: 30
+
+  oracle-post-bootstrap:
+    image: gvenzl/oracle-xe:11
+    depends_on:
+      oracle-impdp:
+        condition: service_completed_successfully
+    volumes:
+      - ./oracle/bootstrap:/bootstrap:ro
+    entrypoint:
+      [
+        "bash","-lc",
+        "set -euo pipefail; sqlplus -s /nolog @/bootstrap/create_agape_api.sql"
+      ]
+    restart: "no"
 
 volumes:
   xe-data:

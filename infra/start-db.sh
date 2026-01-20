@@ -145,6 +145,10 @@
     echo "Info: IMPORT_DUMP=0 — skipping import."
   fi
 
+    # ───────────── 4b) create AGAPE_API wrapper ─────────────
+    section "4b) Create AGAPE_API wrapper package"
+    docker compose -f "$DB_COMPOSE" run --rm oracle-post-bootstrap
+
   # ───────────── 5) status ─────────────
   section "5) Show DB stack status"
   docker compose -f "$DB_COMPOSE" ps || true
