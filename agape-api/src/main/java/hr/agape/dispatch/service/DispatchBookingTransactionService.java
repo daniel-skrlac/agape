@@ -1,5 +1,6 @@
 package hr.agape.dispatch.service;
 
+import hr.agape.common.config.AgapeConfig;
 import hr.agape.dispatch.config.DispatchDocumentConfig;
 import hr.agape.dispatch.config.DispatchStornoDocumentConfig;
 import hr.agape.document.domain.DocumentHeaderEntity;
@@ -24,19 +25,21 @@ public class DispatchBookingTransactionService {
     private final DocumentRepository documentRepository;
     private final DispatchDocumentConfig dispatchDocumentConfig;
     private final DispatchStornoDocumentConfig dispatchStornoDocumentConfig;
+    private final AgapeConfig  agapeConfig;
 
     @Inject
     public DispatchBookingTransactionService(
             DocumentHeaderRepository headerRepo,
             DocumentLineRepository lineRepo,
             DocumentRepository documentRepository,
-            DispatchDocumentConfig dispatchDocumentConfig, DispatchStornoDocumentConfig dispatchStornoDocumentConfig
+            DispatchDocumentConfig dispatchDocumentConfig, DispatchStornoDocumentConfig dispatchStornoDocumentConfig, AgapeConfig agapeConfig
     ) {
         this.headerRepo = headerRepo;
         this.lineRepo = lineRepo;
         this.documentRepository = documentRepository;
         this.dispatchDocumentConfig = dispatchDocumentConfig;
         this.dispatchStornoDocumentConfig = dispatchStornoDocumentConfig;
+        this.agapeConfig = agapeConfig;
     }
 
     /**
@@ -79,8 +82,11 @@ public class DispatchBookingTransactionService {
 
     @Transactional(NOT_SUPPORTED)
     public void postViaProcedure(Long headerId, String actorOibDigits) throws SQLException {
+        String postingOibDigits = agapeConfig.oib();
+
         documentRepository.bookDocument(
                 headerId,
+                postingOibDigits,
                 actorOibDigits,
                 dispatchDocumentConfig.knjizitiNaSkladiste(),
                 dispatchDocumentConfig.knjizitiUkPopisa(),

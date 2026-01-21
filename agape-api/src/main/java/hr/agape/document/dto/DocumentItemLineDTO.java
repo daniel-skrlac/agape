@@ -26,6 +26,6 @@ public class DocumentItemLineDTO {
     private BigDecimal quantity;      // KOLICINA
     private Long nameId;              // NAZIV_ID
     private Long unitOfMeasureId;     // JMJ_ID
-    private Long valueAddedTaxId;     // PDV_ID
+    private Long valueAddedTaxId;     // PDV_ID (SIFREPDV)
     private Long lineNumber;          // STAVKABR
 }

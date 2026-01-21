@@ -20,12 +20,33 @@ public class DocumentRepository {
         this.jdbc = jdbc;
     }
 
+    public void recalcHeader(Long sdGlavaId) throws SQLException {
+        String lockName = "SD_GLAVA:" + sdGlavaId;
+        jdbc.withExclusiveLock(lockName, 30, c -> {
+            try (CallableStatement cs = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA(?) }")) {
+                cs.setLong(1, sdGlavaId);
+                cs.execute();
+            }
+        });
+    }
+
+    public void recalcHeaderTmp(Long sdGlavaId) throws SQLException {
+        String lockName = "SD_GLAVA:" + sdGlavaId;
+        jdbc.withExclusiveLock(lockName, 30, c -> {
+            try (CallableStatement cs = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA_TMP(?) }")) {
+                cs.setLong(1, sdGlavaId);
+                cs.execute();
+            }
+        });
+    }
+
     /**
      * Calls PL/SQL posting procedure OUTSIDE any Java transaction.
      * The procedure commits/rolls back internally (legacy behavior).
      */
     public void bookDocument(
             Long sdGlavaId,
+            String operatorOibDigits,
             String actorOibDigits,
             int knjizitiNaSkladiste,
             int knjizitiUkPopisa,
@@ -40,8 +61,13 @@ public class DocumentRepository {
             try (CallableStatement cs = c.prepareCall("{ call KNJIZI_MK.KNJIZI_MK_DOKUMENT(?,?,?,?,?,?,?,?) }")) {
                 cs.setLong(1, sdGlavaId);
 
+//                try (CallableStatement cs2 = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA(?) }")) {
+//                    cs2.setLong(1, sdGlavaId);
+//                    cs2.execute();
+//                }
+
                 try (CallableStatement cs0 = c.prepareCall("{ call GLO.OPERATER(?) }")) {
-                    cs0.setLong(1, Long.parseLong(actorOibDigits));
+                    cs0.setLong(1, Long.parseLong(operatorOibDigits));
                     cs0.execute();
                 }
 
@@ -60,6 +86,11 @@ public class DocumentRepository {
 
                 cs.execute();
             }
+
+//            try (CallableStatement cs = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA(?) }")) {
+//                cs.setLong(1, sdGlavaId);
+//                cs.execute();
+//            }
         });
     }
 

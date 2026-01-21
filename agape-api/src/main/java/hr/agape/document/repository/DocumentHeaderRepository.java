@@ -213,7 +213,7 @@ public class DocumentHeaderRepository {
         int updated = jdbc.update(sql, ps -> {
             Jdbc.setLong(ps, 1, partnerId);
             Jdbc.setClobString(ps, 2, note);
-            ps.setNull(3, Types.NUMERIC); // keeping your original behavior
+            ps.setNull(3, Types.NUMERIC);
             Jdbc.setLong(ps, 4, headerId);
         });
 

@@ -1,5 +1,6 @@
 package hr.agape.dispatch.service;
 
+import hr.agape.common.config.AgapeConfig;
 import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
@@ -16,10 +17,11 @@ import hr.agape.dispatch.mapper.DispatchApiMapper;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import hr.agape.document.dto.DocumentItemLineDTO;
 import hr.agape.document.lookup.repository.DocumentItemLookupRepository;
-import hr.agape.document.lookup.repository.DocumentVatLookupRepository;
 import hr.agape.document.lookup.view.DocumentItemAttributesView;
 import hr.agape.document.repository.DocumentHeaderRepository;
 import hr.agape.document.repository.DocumentSlotRepository;
+import hr.agape.document.user.repository.UserRepository;
+import hr.agape.document.warehouse.service.WarehouseService;
 import hr.agape.partner.repository.PartnerRepository;
 import hr.agape.user.util.AuthUtil;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -39,10 +41,9 @@ import java.util.stream.Collectors;
 public class DispatchBookingService {
 
     private static final String REQ_PREFIX = "Request[";
-    private static final String PDV_MISSING_FOR_DOC = "No PDV_ID found for documentId=";
 
     private final DocumentSlotRepository slotRepo;
-    private final DocumentVatLookupRepository vatLookupRepo;
+    private final WarehouseService warehouseService;
     private final DocumentHeaderRepository headerRepo;
     private final DispatchApiMapper mapper;
     private final PartnerRepository partnerRepo;
@@ -50,22 +51,23 @@ public class DispatchBookingService {
     private final DocumentItemLookupRepository itemAttrsRepo;
     private final AuthUtil authUtil;
     private final DispatchBookingTransactionService tx;
+    private final UserRepository userRepo;
+    private final AgapeConfig agapeConfig;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
     public DispatchBookingService(
             DocumentSlotRepository slotRepo,
-            DocumentVatLookupRepository vatLookupRepo,
+            WarehouseService warehouseService,
             DocumentHeaderRepository headerRepo,
             DispatchApiMapper mapper,
             PartnerRepository partnerRepo,
             hr.agape.document.repository.DocumentItemRepository itemRepo,
             DocumentItemLookupRepository itemAttrsRepo,
             AuthUtil authUtil,
-            DispatchBookingTransactionService tx
+            DispatchBookingTransactionService tx, UserRepository userRepo, AgapeConfig agapeConfig
     ) {
         this.slotRepo = slotRepo;
-        this.vatLookupRepo = vatLookupRepo;
+        this.warehouseService = warehouseService;
         this.headerRepo = headerRepo;
         this.mapper = mapper;
         this.partnerRepo = partnerRepo;
@@ -73,6 +75,8 @@ public class DispatchBookingService {
         this.itemAttrsRepo = itemAttrsRepo;
         this.authUtil = authUtil;
         this.tx = tx;
+        this.userRepo = userRepo;
+        this.agapeConfig = agapeConfig;
     }
 
     /**
@@ -84,15 +88,19 @@ public class DispatchBookingService {
         try {
             Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
+            var user = userRepo.findByOib();
+            if (user == null) {
+                return ServiceResponseDirector.errorBadRequest("No KORISNIK found");
+            }
             req.setCreatedBy(actorOibNum);
 
             Long whId = slotRepo.warehouseForDocument(req.getDocumentId());
             String err = validateReferences(req, whId, 0);
             if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
-            Long pdvId = resolveVat(req.getDocumentId(), whId);
+            Long pdvId = warehouseService.resolveVatIdForUser(whId, user.getUserId());
             if (pdvId == null) {
-                return ServiceResponseDirector.errorBadRequest(PDV_MISSING_FOR_DOC + req.getDocumentId() + " in warehouse " + whId + ".");
+                return ServiceResponseDirector.errorBadRequest("Mapped PDV_ID= does not exist for given warehouse.");
             }
 
             Set<Long> itemIds = req.getItems().stream()
@@ -107,7 +115,7 @@ public class DispatchBookingService {
             headerInput.setTextType(DocumentTextType.OTPREMNICA);
             headerInput.setItemCount(req.getItems().size());
 
-            List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
+            List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId, user.getUserId());
 
             DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
 
@@ -152,28 +160,17 @@ public class DispatchBookingService {
         try {
             Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
+            var user = userRepo.findByOib();
+            if (user == null) {
+                return ServiceResponseDirector.errorBadRequest("No KORISNIK found.");
+            }
 
             List<DispatchBulkItemResultDTO> results = new ArrayList<>(requests.size());
 
             List<Long> whByIdx = new ArrayList<>(requests.size());
             for (DispatchRequestDTO r : requests) {
-                r.setCreatedBy(actorOibNum);
-
-                Long whId = slotRepo.warehouseForDocument(r.getDocumentId());
-                whByIdx.add(whId);
-            }
-
-            Map<String, Long> vatByKey = new HashMap<>();
-            for (int i = 0; i < requests.size(); i++) {
-                DispatchRequestDTO r = requests.get(i);
-                Long whId = whByIdx.get(i);
-                if (whId == null || r.getDocumentId() == null) continue;
-
-                String key = r.getDocumentId() + "#" + whId;
-                if (!vatByKey.containsKey(key)) {
-                    Long vat = resolveVat(r.getDocumentId(), whId);
-                    if (vat != null) vatByKey.put(key, vat);
-                }
+                r.setCreatedBy(/*actorOibNum*/Long.parseLong(agapeConfig.oib()));
+                whByIdx.add(slotRepo.warehouseForDocument(r.getDocumentId()));
             }
 
             Set<Long> allItemIds = requests.stream()
@@ -189,16 +186,19 @@ public class DispatchBookingService {
                     ? Map.of()
                     : itemAttrsRepo.findAttributes(allItemIds);
 
-            int postedCount = 0;
-            int draftCount = 0;
-            int successCount = 0;
-            int failCount = 0;
+            Map<Long, Long> pdvByWarehouse = new HashMap<>();
+            for (Long whId : whByIdx) {
+                if (whId == null) continue;
+                pdvByWarehouse.computeIfAbsent(whId, k -> warehouseService.resolveVatIdForUser(k, user.getUserId()));
+            }
+
+            int postedCount = 0, draftCount = 0, successCount = 0, failCount = 0;
 
             for (int i = 0; i < requests.size(); i++) {
                 DispatchRequestDTO req = requests.get(i);
                 Long whId = whByIdx.get(i);
 
-                DispatchBulkItemResultDTO.DispatchBulkItemResultDTOBuilder rb = DispatchBulkItemResultDTO.builder()
+                var rb = DispatchBulkItemResultDTO.builder()
                         .index(i)
                         .documentId(req.getDocumentId())
                         .partnerId(req.getPartnerId())
@@ -212,12 +212,14 @@ public class DispatchBookingService {
                         continue;
                     }
 
-                    String vatKey = req.getDocumentId() + "#" + whId;
-                    Long pdvId = vatByKey.get(vatKey);
+                    Long pdvId = pdvByWarehouse.get(whId);
                     if (pdvId == null) {
-                        String msg = PDV_MISSING_FOR_DOC + req.getDocumentId() + " in warehouse " + whId + ".";
                         failCount++;
-                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(msg).build());
+                        results.add(rb.success(false)
+                                .status(DispatchStatusEnum.FAILED.name())
+                                .error(REQ_PREFIX + i + "]: cannot resolve PDV_ID for warehouseId=" + whId + " (mapping " +
+                                        "missing or TAX_CATEGORY missing).")
+                                .build());
                         continue;
                     }
 
@@ -232,7 +234,7 @@ public class DispatchBookingService {
                     headerInput.setTextType(DocumentTextType.OTPREMNICA);
                     headerInput.setItemCount(req.getItems().size());
 
-                    List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId);
+                    List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId, user.getUserId());
 
                     DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
 
@@ -256,8 +258,6 @@ public class DispatchBookingService {
                     } catch (Exception postEx) {
                         DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
                         DispatchResponseDTO dto = mapper.toResponse(fresh != null ? fresh : created);
-                        dto.setStatus(fresh != null ? DispatchApiMapper.statusFromEntity(fresh) :
-                                DispatchStatusEnum.DRAFT.name());
 
                         failCount++;
                         results.add(rb.success(false)
@@ -271,16 +271,12 @@ public class DispatchBookingService {
 
                     DocumentHeaderEntity posted = headerRepo.findHeader(created.getId());
                     if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
-                        DocumentHeaderEntity fresh = posted != null ? posted : created;
-                        DispatchResponseDTO dto = mapper.toResponse(fresh);
-                        dto.setStatus(DispatchApiMapper.statusFromEntity(fresh));
-
                         failCount++;
                         results.add(rb.success(false)
                                 .headerId(created.getId())
                                 .status(DispatchStatusEnum.FAILED.name())
                                 .error("Posting did not set KNJIZENO=1 (check PL/SQL / logs).")
-                                .response(dto)
+                                .response(mapper.toResponse(posted != null ? posted : created))
                                 .build());
                         continue;
                     }
@@ -349,6 +345,10 @@ public class DispatchBookingService {
     public ServiceResponseDTO<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
         try {
             String actorOibDigits = authUtil.requireOibDigits();
+            var user = userRepo.findByOib();
+            if (user == null) {
+                return ServiceResponseDirector.errorBadRequest("No KORISNIK found.");
+            }
 
             DocumentHeaderEntity existing = headerRepo.findHeader(headerId);
             if (existing == null) {
@@ -419,11 +419,9 @@ public class DispatchBookingService {
 
             Map<Long, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(itemIds);
 
-            Long pdvId = resolveVat(existing.getDocumentId(), whId);
+            Long pdvId = warehouseService.resolveVatIdForUser(whId, user.getUserId());
             if (pdvId == null) {
-                return ServiceResponseDirector.errorBadRequest(
-                        "No PDV_ID for documentId=" + existing.getDocumentId() + " and warehouseId=" + whId
-                );
+                return ServiceResponseDirector.errorBadRequest("Mapped PDV_ID= does not exist for given warehouse.");
             }
 
             List<DocumentItemLineDTO> newLines = new ArrayList<>(body.getItems().size());
@@ -484,10 +482,6 @@ public class DispatchBookingService {
         return null;
     }
 
-    private Long resolveVat(Long documentId, Long warehouseId) throws SQLException {
-        return vatLookupRepo.valueAddedTaxIdForDocumentAndWarehouse(documentId, warehouseId).orElse(null);
-    }
-
     private static String validateItemAttrsPresent(DispatchRequestDTO req, Map<Long, DocumentItemAttributesView> attrsByItem, int idx) {
         for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
             DocumentItemAttributesView a = attrsByItem.get(it.getItemId());
@@ -501,7 +495,8 @@ public class DispatchBookingService {
     private static List<DocumentItemLineDTO> prepareLines(
             DispatchRequestDTO req,
             Map<Long, DocumentItemAttributesView> attrsByItem,
-            Long pdvId
+            Long pdvId,
+            Long korisnikId
     ) {
         List<DocumentItemLineDTO> out = new ArrayList<>(req.getItems().size());
         long br = 1;
