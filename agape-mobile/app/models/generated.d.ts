@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-13 18:05:56.
+// Generated using typescript-generator version 3.2.1263 on 2026-01-25 21:17:55.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -47,7 +47,7 @@ export interface DispatchLineResponseDTO {
 }
 
 export interface DispatchRequestDTO {
-    documentId: number;
+    warehouseId: number;
     documentDate: Date;
     partnerId: number;
     items: DispatchItemRequest[];
@@ -111,6 +111,17 @@ export interface DocumentItemLineDTO {
     nameId: number;
     unitOfMeasureId: number;
     valueAddedTaxId: number;
+    lineNumber: number;
+    note: string;
+}
+
+export interface DocumentItemPriceDTO {
+    itemId: number;
+    pdvId: number;
+    priceFak: number;
+    priceNab: number;
+    priceMp: number;
+    priceJedinice: number;
 }
 
 export interface WarehouseDTO {
@@ -180,6 +191,7 @@ export interface FolderResponseDTO {
 
 export interface TemplateBookManyRequestDTO {
     templateId: number;
+    warehouseId: number;
     partnerIds: number[];
     documentDate: Date;
     draftOverride: boolean;
@@ -187,6 +199,7 @@ export interface TemplateBookManyRequestDTO {
 
 export interface TemplateBookOneRequestDTO {
     templateId: number;
+    warehouseId: number;
     partnerId: number;
     documentDate: Date;
     draftOverride: boolean;
@@ -300,6 +313,12 @@ export interface UpdateUserRequestDTO {
     name: string;
     password: string;
     defaultWarehouseId: number;
+}
+
+export interface UserDirectoryResponseDTO {
+    id: number;
+    username: string;
+    name: string;
 }
 
 export interface UserResponseDTO {

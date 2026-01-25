@@ -1,0 +1,166 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dispatchTemplateService } from "../services/dispatchTemplateService";
+import type {
+  FolderCreateRequestDTO,
+  FolderRenameRequestDTO,
+  TemplateCreateRequestDTO,
+  TemplateUpdateRequestDTO,
+  TemplateDocUpsertRequestDTO,
+  TemplateItemUpsertRequestDTO,
+  TemplateShareCreateRequestDTO,
+  TemplateCopyRequestDTO,
+  TemplateBookOneRequestDTO,
+  TemplateBookManyRequestDTO,
+} from "@/app/models/generated";
+
+const keys = {
+  folders: ["tpl-folders"] as const,
+  list: (args: any) => ["tpl-list", args] as const,
+  one: (id: number) => ["tpl-one", id] as const,
+  shares: (id: number) => ["tpl-shares", id] as const,
+};
+
+export function useTemplateFolders() {
+  return useQuery({
+    queryKey: keys.folders,
+    queryFn: ({ signal }) => dispatchTemplateService.listFolders(signal),
+    retry: 1,
+  });
+}
+
+export function useCreateFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: FolderCreateRequestDTO) => dispatchTemplateService.createFolder(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.folders }),
+  });
+}
+
+export function useRenameFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; payload: FolderRenameRequestDTO }) => dispatchTemplateService.renameFolder(args.id, args.payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.folders }),
+  });
+}
+
+export function useDeleteFolder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => dispatchTemplateService.deleteFolder(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.folders }),
+  });
+}
+
+export function useTemplateList(args: { folderId: number | null | undefined; q: string; mode: "MOJI" | "DIJELJENI" | "SVE" }) {
+  const includeShared = args.mode !== "MOJI";
+  const folderId = args.mode === "DIJELJENI" ? null : args.folderId ?? null; // shared ignorira folder filter
+  return useQuery({
+    queryKey: keys.list({ folderId, q: args.q, includeShared, mode: args.mode }),
+    queryFn: ({ signal }) =>
+      dispatchTemplateService.listTemplates(
+        { folderId, name: args.q.trim() || undefined, includeShared },
+        signal
+      ),
+    retry: 1,
+  });
+}
+
+export function useTemplate(id: number) {
+  return useQuery({
+    queryKey: keys.one(id),
+    queryFn: ({ signal }) => dispatchTemplateService.getTemplate(id, signal),
+    retry: 1,
+  });
+}
+
+export function useCreateTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: TemplateCreateRequestDTO) => dispatchTemplateService.createTemplate(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.folders });
+      qc.invalidateQueries({ queryKey: ["tpl-list"] });
+    },
+  });
+}
+
+export function useUpdateTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; payload: TemplateUpdateRequestDTO }) => dispatchTemplateService.updateTemplate(args.id, args.payload),
+    onSuccess: (_t, args) => {
+      qc.invalidateQueries({ queryKey: keys.one(args.id) });
+      qc.invalidateQueries({ queryKey: ["tpl-list"] });
+    },
+  });
+}
+
+export function useDeleteTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => dispatchTemplateService.deleteTemplate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tpl-list"] }),
+  });
+}
+
+export function useUpsertDoc() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { templateId: number; payload: TemplateDocUpsertRequestDTO }) => dispatchTemplateService.upsertTemplateDoc(args.templateId, args.payload),
+    onSuccess: (t) => qc.invalidateQueries({ queryKey: keys.one(t.id) }),
+  });
+}
+
+export function useReplaceItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { templateId: number; docId: number; items: TemplateItemUpsertRequestDTO[] }) =>
+      dispatchTemplateService.replaceTemplateDocItems(args.templateId, args.docId, args.items),
+    onSuccess: (t) => qc.invalidateQueries({ queryKey: keys.one(t.id) }),
+  });
+}
+
+export function useShares(templateId: number) {
+  return useQuery({
+    queryKey: keys.shares(templateId),
+    queryFn: ({ signal }) => dispatchTemplateService.listShares(templateId, signal),
+    retry: 1,
+  });
+}
+
+export function useShare(templateId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: TemplateShareCreateRequestDTO) => dispatchTemplateService.shareTemplate(templateId, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.shares(templateId) }),
+  });
+}
+
+export function useRevokeShare(templateId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (shareId: number) => dispatchTemplateService.revokeShare(templateId, shareId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.shares(templateId) }),
+  });
+}
+
+export function useCopyTemplate(templateId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: TemplateCopyRequestDTO) => dispatchTemplateService.copyTemplate(templateId, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tpl-list"] }),
+  });
+}
+
+export function useBookOne() {
+  return useMutation({
+    mutationFn: (payload: TemplateBookOneRequestDTO) => dispatchTemplateService.bookOne(payload),
+  });
+}
+
+export function useBookMany() {
+  return useMutation({
+    mutationFn: (payload: TemplateBookManyRequestDTO) => dispatchTemplateService.bookMany(payload),
+  });
+}

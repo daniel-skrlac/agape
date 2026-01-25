@@ -72,11 +72,11 @@ export default function TabLayout() {
       >
 
         <Tabs.Screen
-          name="scan"
+          name="templates"
           options={{
-            title: "Skeniraj",
+            title: "Predlošci",
             sceneStyle: { backgroundColor: "transparent" },
-            tabBarIcon: ({ color }) => <TabBarIcon name="camera" color={color} />
+            tabBarIcon: ({ color }) => <TabBarIcon name="copy" color={color} />,
           }}
         />
 

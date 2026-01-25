@@ -54,6 +54,19 @@ export default function RegisterScreen() {
                 )}
 
                 <TextField
+                  label={Strings.auth.oibLabel ?? "OIB"}
+                  placeholder={Strings.auth.oibPlaceholder ?? "Unesite OIB (11 znamenki)"}
+                  value={form.values.oib}
+                  onChangeText={form.setOib}
+                  onBlur={() => form.markTouched("oib")}
+                  keyboardType="number-pad"
+                  returnKeyType="next"
+                />
+                {!!form.errors.oibError && (
+                  <Text style={styles.fieldError}>{form.errors.oibError}</Text>
+                )}
+
+                <TextField
                   label={Strings.auth.usernameLabel}
                   placeholder={Strings.auth.usernamePlaceholder}
                   autoCapitalize="none"
