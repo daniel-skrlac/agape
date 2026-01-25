@@ -1,6 +1,5 @@
 package hr.agape.dispatch.service;
 
-import hr.agape.common.config.AgapeConfig;
 import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
@@ -15,13 +14,16 @@ import hr.agape.dispatch.enumeration.DispatchStatusEnum;
 import hr.agape.dispatch.enumeration.DocumentTextType;
 import hr.agape.dispatch.mapper.DispatchApiMapper;
 import hr.agape.document.domain.DocumentHeaderEntity;
+import hr.agape.document.domain.DocumentItemPriceEntity;
 import hr.agape.document.dto.DocumentItemLineDTO;
 import hr.agape.document.lookup.repository.DocumentItemLookupRepository;
+import hr.agape.document.lookup.repository.VatCategoryRepository;
 import hr.agape.document.lookup.view.DocumentItemAttributesView;
 import hr.agape.document.repository.DocumentHeaderRepository;
+import hr.agape.document.repository.DocumentItemPriceRepository;
+import hr.agape.document.repository.DocumentItemRepository;
 import hr.agape.document.repository.DocumentSlotRepository;
 import hr.agape.document.user.repository.UserRepository;
-import hr.agape.document.warehouse.service.WarehouseService;
 import hr.agape.partner.repository.PartnerRepository;
 import hr.agape.user.util.AuthUtil;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -43,65 +45,66 @@ public class DispatchBookingService {
     private static final String REQ_PREFIX = "Request[";
 
     private final DocumentSlotRepository slotRepo;
-    private final WarehouseService warehouseService;
     private final DocumentHeaderRepository headerRepo;
     private final DispatchApiMapper mapper;
     private final PartnerRepository partnerRepo;
-    private final hr.agape.document.repository.DocumentItemRepository itemRepo;
+    private final DocumentItemRepository itemRepo;
     private final DocumentItemLookupRepository itemAttrsRepo;
+    private final DocumentItemPriceRepository itemPriceRepo;
+    private final VatCategoryRepository vatRepo;
     private final AuthUtil authUtil;
     private final DispatchBookingTransactionService tx;
     private final UserRepository userRepo;
-    private final AgapeConfig agapeConfig;
 
     @Inject
     public DispatchBookingService(
             DocumentSlotRepository slotRepo,
-            WarehouseService warehouseService,
             DocumentHeaderRepository headerRepo,
             DispatchApiMapper mapper,
             PartnerRepository partnerRepo,
-            hr.agape.document.repository.DocumentItemRepository itemRepo,
+            DocumentItemRepository itemRepo,
             DocumentItemLookupRepository itemAttrsRepo,
+            DocumentItemPriceRepository itemPriceRepo,
+            VatCategoryRepository vatRepo,
             AuthUtil authUtil,
-            DispatchBookingTransactionService tx, UserRepository userRepo, AgapeConfig agapeConfig
+            DispatchBookingTransactionService tx,
+            UserRepository userRepo
     ) {
         this.slotRepo = slotRepo;
-        this.warehouseService = warehouseService;
         this.headerRepo = headerRepo;
         this.mapper = mapper;
         this.partnerRepo = partnerRepo;
         this.itemRepo = itemRepo;
         this.itemAttrsRepo = itemAttrsRepo;
+        this.itemPriceRepo = itemPriceRepo;
+        this.vatRepo = vatRepo;
         this.authUtil = authUtil;
         this.tx = tx;
         this.userRepo = userRepo;
-        this.agapeConfig = agapeConfig;
     }
 
-    /**
-     * BOOK ONE:
-     * - TX#1 REQUIRED: create draft header+lines
-     * - TX#2 REQUIRES_NEW: call PL/SQL posting (commits internally)
-     */
+    @Deprecated
     public ServiceResponseDTO<DispatchResponseDTO> bookOne(DispatchRequestDTO req) {
         try {
             Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
+
             var user = userRepo.findByOib();
             if (user == null) {
                 return ServiceResponseDirector.errorBadRequest("No KORISNIK found");
             }
+
             req.setCreatedBy(actorOibNum);
 
-            Long whId = slotRepo.warehouseForDocument(req.getDocumentId());
-            String err = validateReferences(req, whId, 0);
-            if (err != null) return ServiceResponseDirector.errorBadRequest(err);
-
-            Long pdvId = warehouseService.resolveVatIdForUser(whId, user.getUserId());
-            if (pdvId == null) {
-                return ServiceResponseDirector.errorBadRequest("Mapped PDV_ID= does not exist for given warehouse.");
+            Long whId = req.getWarehouseId();
+            Long documentId = slotRepo.resolveDispatchDocumentIdForWarehouse(whId);
+            if (documentId == null) {
+                return ServiceResponseDirector.errorBadRequest(REQ_PREFIX + "0]: cannot resolve DOKUMENT_ID for warehouseId=" + whId);
             }
+            req.setDocumentId(documentId);
+
+            String err = validateReferences(req, whId, documentId, 0);
+            if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
             Set<Long> itemIds = req.getItems().stream()
                     .map(DispatchRequestDTO.DispatchItemRequest::getItemId)
@@ -111,11 +114,16 @@ public class DispatchBookingService {
             err = validateItemAttrsPresent(req, attrsByItem, 0);
             if (err != null) return ServiceResponseDirector.errorBadRequest(err);
 
+            Map<Long, Long> pdvByItem = resolvePdvByItemOrError(itemIds, user.getUserId());
+            if (pdvByItem == null) {
+                return ServiceResponseDirector.errorBadRequest(REQ_PREFIX + "0]: missing PDV in SKL_ACIJENE or inactive PDV in SIFREPDV.");
+            }
+
             DocumentHeaderEntity headerInput = mapper.toHeader(req);
             headerInput.setTextType(DocumentTextType.OTPREMNICA);
             headerInput.setItemCount(req.getItems().size());
 
-            List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId, user.getUserId());
+            List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvByItem);
 
             DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
 
@@ -126,7 +134,7 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.successOk(out, "Dispatch note saved as DRAFT.");
             }
 
-            tx.postViaProcedure(created.getId(), actorOibDigits);
+            tx.postViaProcedure(created, actorOibDigits);
 
             DocumentHeaderEntity posted = headerRepo.findHeader(created.getId());
             if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
@@ -146,20 +154,11 @@ public class DispatchBookingService {
         }
     }
 
-    /**
-     * BOOK BULK (partial success):
-     * We DO NOT fail-fast.
-     * For each request:
-     * - validate
-     * - create draft (REQUIRED)
-     * - if not draft -> post (REQUIRES_NEW)
-     * - collect success/failure per request
-     * Because PL/SQL commits, you cannot do true "all-or-nothing".
-     */
     public ServiceResponseDTO<DispatchBulkResponseDTO> bookBulk(List<DispatchRequestDTO> requests) {
         try {
             Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
+
             var user = userRepo.findByOib();
             if (user == null) {
                 return ServiceResponseDirector.errorBadRequest("No KORISNIK found.");
@@ -167,10 +166,21 @@ public class DispatchBookingService {
 
             List<DispatchBulkItemResultDTO> results = new ArrayList<>(requests.size());
 
+            List<Long> docByIdx = new ArrayList<>(requests.size());
             List<Long> whByIdx = new ArrayList<>(requests.size());
+
             for (DispatchRequestDTO r : requests) {
-                r.setCreatedBy(/*actorOibNum*/Long.parseLong(agapeConfig.oib()));
-                whByIdx.add(slotRepo.warehouseForDocument(r.getDocumentId()));
+                Long whId = (r == null) ? null : r.getWarehouseId();
+                whByIdx.add(whId);
+
+                if (r != null) {
+                    r.setCreatedBy(actorOibNum);
+                }
+
+                Long docId = (whId == null) ? null : slotRepo.resolveDispatchDocumentIdForWarehouse(whId);
+                docByIdx.add(docId);
+
+                if (r != null) r.setDocumentId(docId);
             }
 
             Set<Long> allItemIds = requests.stream()
@@ -186,40 +196,47 @@ public class DispatchBookingService {
                     ? Map.of()
                     : itemAttrsRepo.findAttributes(allItemIds);
 
-            Map<Long, Long> pdvByWarehouse = new HashMap<>();
-            for (Long whId : whByIdx) {
-                if (whId == null) continue;
-                pdvByWarehouse.computeIfAbsent(whId, k -> warehouseService.resolveVatIdForUser(k, user.getUserId()));
-            }
-
+            Map<Long, Long> pdvByItemGlobal = allItemIds.isEmpty()
+                    ? Map.of()
+                    : resolvePdvByItemOrThrow(allItemIds, user.getUserId());
             int postedCount = 0, draftCount = 0, successCount = 0, failCount = 0;
 
             for (int i = 0; i < requests.size(); i++) {
                 DispatchRequestDTO req = requests.get(i);
                 Long whId = whByIdx.get(i);
+                Long documentId = docByIdx.get(i);
 
                 var rb = DispatchBulkItemResultDTO.builder()
                         .index(i)
-                        .documentId(req.getDocumentId())
-                        .partnerId(req.getPartnerId())
-                        .requestedDraft(req.isDraft());
+                        .documentId(documentId)
+                        .partnerId(req != null ? req.getPartnerId() : null)
+                        .requestedDraft(req != null && req.isDraft());
 
                 try {
-                    String refErr = validateReferences(req, whId, i);
-                    if (refErr != null) {
+                    if (req == null) {
                         failCount++;
-                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(refErr).build());
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(REQ_PREFIX + i + "]: request is null").build());
                         continue;
                     }
 
-                    Long pdvId = pdvByWarehouse.get(whId);
-                    if (pdvId == null) {
+                    if (whId == null) {
                         failCount++;
-                        results.add(rb.success(false)
-                                .status(DispatchStatusEnum.FAILED.name())
-                                .error(REQ_PREFIX + i + "]: cannot resolve PDV_ID for warehouseId=" + whId + " (mapping " +
-                                        "missing or TAX_CATEGORY missing).")
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(REQ_PREFIX + i + "]: warehouseId missing").build());
+                        continue;
+                    }
+
+                    if (documentId == null) {
+                        failCount++;
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name())
+                                .error(REQ_PREFIX + i + "]: cannot resolve DOKUMENT_ID for warehouseId=" + whId + " (SD_SIFREZ/SD_SIFREG).")
                                 .build());
+                        continue;
+                    }
+
+                    String refErr = validateReferences(req, whId, documentId, i);
+                    if (refErr != null) {
+                        failCount++;
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(refErr).build());
                         continue;
                     }
 
@@ -230,11 +247,18 @@ public class DispatchBookingService {
                         continue;
                     }
 
+                    String pdvErr = validatePdvPresentAndActive(req, pdvByItemGlobal, user.getUserId(), i);
+                    if (pdvErr != null) {
+                        failCount++;
+                        results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name()).error(pdvErr).build());
+                        continue;
+                    }
+
                     DocumentHeaderEntity headerInput = mapper.toHeader(req);
                     headerInput.setTextType(DocumentTextType.OTPREMNICA);
                     headerInput.setItemCount(req.getItems().size());
 
-                    List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvId, user.getUserId());
+                    List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvByItemGlobal);
 
                     DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
 
@@ -254,7 +278,7 @@ public class DispatchBookingService {
                     }
 
                     try {
-                        tx.postViaProcedure(created.getId(), actorOibDigits);
+                        tx.postViaProcedure(created, actorOibDigits);
                     } catch (Exception postEx) {
                         DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
                         DispatchResponseDTO dto = mapper.toResponse(fresh != null ? fresh : created);
@@ -345,6 +369,7 @@ public class DispatchBookingService {
     public ServiceResponseDTO<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
         try {
             String actorOibDigits = authUtil.requireOibDigits();
+
             var user = userRepo.findByOib();
             if (user == null) {
                 return ServiceResponseDirector.errorBadRequest("No KORISNIK found.");
@@ -383,7 +408,7 @@ public class DispatchBookingService {
                     return ServiceResponseDirector.errorBadRequest("Cannot post: dispatch CANCELLED.");
                 }
 
-                tx.postViaProcedure(existing.getId(), actorOibDigits);
+                tx.postViaProcedure(existing, actorOibDigits);
 
                 DocumentHeaderEntity posted = headerRepo.findHeader(existing.getId());
                 if (posted == null || !Boolean.TRUE.equals(posted.getPosted())) {
@@ -402,6 +427,7 @@ public class DispatchBookingService {
                 return ServiceResponseDirector.errorBadRequest("Cannot edit: dispatch CANCELLED.");
             }
 
+            // we can keep this legacy resolution for updates (existing doc already has documentId)
             Long whId = slotRepo.warehouseForDocument(existing.getDocumentId());
             if (whId == null) {
                 return ServiceResponseDirector.errorInternal("Cannot resolve warehouse for documentId=" + existing.getDocumentId());
@@ -419,19 +445,26 @@ public class DispatchBookingService {
 
             Map<Long, DocumentItemAttributesView> attrsByItem = itemAttrsRepo.findAttributes(itemIds);
 
-            Long pdvId = warehouseService.resolveVatIdForUser(whId, user.getUserId());
-            if (pdvId == null) {
-                return ServiceResponseDirector.errorBadRequest("Mapped PDV_ID= does not exist for given warehouse.");
+            // PDV per item from SKL_ACIJENE (not config map)
+            Map<Long, Long> pdvByItem = resolvePdvByItemOrError(itemIds, user.getUserId());
+            if (pdvByItem == null) {
+                return ServiceResponseDirector.errorBadRequest("Missing PDV in SKL_ACIJENE or inactive PDV in SIFREPDV for one of items.");
             }
 
             List<DocumentItemLineDTO> newLines = new ArrayList<>(body.getItems().size());
             long br = 1;
+
             for (DispatchUpdateRequestDTO.DispatchItemPatch p : body.getItems()) {
                 DocumentItemAttributesView a = attrsByItem.get(p.getItemId());
                 if (a == null || a.getNameId() == null || a.getUnitOfMeasureId() == null) {
                     return ServiceResponseDirector.errorBadRequest(
                             "Item attributes missing (NAZIV_ID/JMJ_ID) for itemId=" + p.getItemId()
                     );
+                }
+
+                Long pdvId = pdvByItem.get(p.getItemId());
+                if (pdvId == null) {
+                    return ServiceResponseDirector.errorBadRequest("Missing PDV_ID in SKL_ACIJENE for itemId=" + p.getItemId());
                 }
 
                 newLines.add(DocumentItemLineDTO.builder()
@@ -458,13 +491,21 @@ public class DispatchBookingService {
         }
     }
 
-    private String validateReferences(DispatchRequestDTO r, Long warehouseId, int idx) throws SQLException {
+    // -------------------- FIXED VALIDATION / HELPERS --------------------
+
+    private String validateReferences(DispatchRequestDTO r, Long warehouseId, Long documentId, int idx) throws SQLException {
         if (warehouseId == null) {
-            return REQ_PREFIX + idx + "]: cannot resolve warehouse for documentId=" + r.getDocumentId();
+            return REQ_PREFIX + idx + "]: warehouseId missing.";
         }
-        if (!slotRepo.existsForWarehouse(r.getDocumentId(), warehouseId)) {
-            return REQ_PREFIX + idx + "]: unknown (documentId, warehouseId)=(" + r.getDocumentId() + "," + warehouseId + ")";
+        if (documentId == null) {
+            return REQ_PREFIX + idx + "]: cannot resolve DOKUMENT_ID for warehouseId=" + warehouseId + " (SD_SIFREZ/SD_SIFREG).";
         }
+
+        // optional extra sanity: mapping exists (should be true by definition if resolved)
+        if (!slotRepo.existsForWarehouse(documentId, warehouseId)) {
+            return REQ_PREFIX + idx + "]: unknown mapping (documentId, warehouseId)=(" + documentId + "," + warehouseId + ")";
+        }
+
         if (partnerRepo.isMissingOrInactive(r.getPartnerId())) {
             return REQ_PREFIX + idx + "]: partner not found or inactive: " + r.getPartnerId();
         }
@@ -492,16 +533,87 @@ public class DispatchBookingService {
         return null;
     }
 
+    /**
+     * Resolve PDV per item from SKL_ACIJENE and validate PDV is active in SIFREPDV for the user.
+     * Returns null on any error so caller can return a clean message.
+     */
+    private Map<Long, Long> resolvePdvByItemOrError(Set<Long> itemIds, long korisnikId) {
+        try {
+            List<DocumentItemPriceEntity> prices = itemPriceRepo.findPrices(itemIds);
+
+            Map<Long, Long> pdvByItem = new HashMap<>(itemIds.size());
+            for (DocumentItemPriceEntity p : prices) {
+                if (p == null || p.getItemId() == null) continue;
+                pdvByItem.put(p.getItemId(), p.getPdvId());
+            }
+
+            // ensure every item has PDV and it's active for user
+            for (Long itemId : itemIds) {
+                Long pdvId = pdvByItem.get(itemId);
+                if (pdvId == null) return null;
+                if (!vatRepo.existsActiveSifrepdv(korisnikId, pdvId)) return null;
+            }
+
+            return pdvByItem;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Same as resolvePdvByItemOrError, but throws - used in bulk global preload.
+     */
+    private Map<Long, Long> resolvePdvByItemOrThrow(Set<Long> itemIds, long korisnikId) throws SQLException {
+        List<DocumentItemPriceEntity> prices = itemPriceRepo.findPrices(itemIds);
+
+        Map<Long, Long> pdvByItem = new HashMap<>(itemIds.size());
+        for (DocumentItemPriceEntity p : prices) {
+            if (p == null || p.getItemId() == null) continue;
+            pdvByItem.put(p.getItemId(), p.getPdvId());
+        }
+
+        for (Long itemId : itemIds) {
+            Long pdvId = pdvByItem.get(itemId);
+            if (pdvId == null) {
+                throw new SQLException("Missing PDV_ID in SKL_ACIJENE for itemId=" + itemId);
+            }
+            if (!vatRepo.existsActiveSifrepdv(korisnikId, pdvId)) {
+                throw new SQLException("Inactive PDV_ID in SIFREPDV for korisnikId=" + korisnikId + ", pdvId=" + pdvId);
+            }
+        }
+        return pdvByItem;
+    }
+
+    private String validatePdvPresentAndActive(
+            DispatchRequestDTO req,
+            Map<Long, Long> pdvByItem,
+            long korisnikId,
+            int idx
+    ) throws SQLException {
+        for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
+            Long pdvId = pdvByItem.get(it.getItemId());
+            if (pdvId == null) {
+                return REQ_PREFIX + idx + "]: missing PDV_ID in SKL_ACIJENE for itemId=" + it.getItemId();
+            }
+            if (!vatRepo.existsActiveSifrepdv(korisnikId, pdvId)) {
+                return REQ_PREFIX + idx + "]: PDV_ID not active for korisnikId=" + korisnikId + " pdvId=" + pdvId + " (itemId=" + it.getItemId() + ")";
+            }
+        }
+        return null;
+    }
+
     private static List<DocumentItemLineDTO> prepareLines(
             DispatchRequestDTO req,
             Map<Long, DocumentItemAttributesView> attrsByItem,
-            Long pdvId,
-            Long korisnikId
+            Map<Long, Long> pdvByItem
     ) {
         List<DocumentItemLineDTO> out = new ArrayList<>(req.getItems().size());
         long br = 1;
+
         for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
             DocumentItemAttributesView a = attrsByItem.get(it.getItemId());
+            Long pdvId = pdvByItem.get(it.getItemId());
+
             out.add(DocumentItemLineDTO.builder()
                     .itemId(it.getItemId())
                     .quantity(BigDecimal.valueOf(it.getQuantity()))

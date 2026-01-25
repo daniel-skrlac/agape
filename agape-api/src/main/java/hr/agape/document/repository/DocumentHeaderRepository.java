@@ -35,6 +35,14 @@ public class DocumentHeaderRepository {
         return jdbc.withConnection(c -> doInsertHeader(c, h));
     }
 
+    public DocumentHeaderEntity insert(Connection c, DocumentHeaderEntity h) throws SQLException {
+        return doInsertHeader(c, h);
+    }
+
+    public DocumentHeaderEntity updateDraftHeader(Connection c, Long headerId, Long partnerId, String note) throws SQLException {
+        return updateDraftHeaderInternal(c, headerId, partnerId, note);
+    }
+
     private DocumentHeaderEntity doInsertHeader(Connection c, DocumentHeaderEntity h) throws SQLException {
 
         final String sql = """
@@ -94,7 +102,6 @@ public class DocumentHeaderRepository {
     }
 
     private static DocumentHeaderEntity mapReturningInsertRow(DocumentHeaderEntity request, ResultSet rs) throws SQLException {
-        // Column order is exactly the RETURNING list order
         long id = rs.getLong(1);
 
         Long documentNumber = rs.getLong(2);
@@ -178,6 +185,7 @@ public class DocumentHeaderRepository {
     /**
      * Optional: stays if we ever want to post without procedure.
      */
+    @Deprecated
     public DocumentHeaderEntity postDispatch(Long headerId, Long actorOib) throws SQLException {
         final String sql = """
                 UPDATE SD_GLAVA
@@ -198,7 +206,7 @@ public class DocumentHeaderRepository {
         return findHeader(headerId);
     }
 
-    public DocumentHeaderEntity updateDraftHeader(Long headerId, Long partnerId, String note) throws SQLException {
+    public DocumentHeaderEntity updateDraftHeaderInternal(Connection c, Long headerId, Long partnerId, String note) throws SQLException {
         final String sql = """
                 UPDATE SD_GLAVA
                    SET PARTNER_ID = COALESCE(?, PARTNER_ID),
@@ -210,7 +218,7 @@ public class DocumentHeaderRepository {
                    AND STORNIRAO IS NULL
                 """;
 
-        int updated = jdbc.update(sql, ps -> {
+        int updated = jdbc.update(c, sql, ps -> {
             Jdbc.setLong(ps, 1, partnerId);
             Jdbc.setClobString(ps, 2, note);
             ps.setNull(3, Types.NUMERIC);

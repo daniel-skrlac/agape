@@ -10,8 +10,6 @@ public interface AgapeConfig {
 
     Operater operater();
 
-    Map<String, Long> pdvByWarehouse();
-
     interface Operater {
         String oib();
     }

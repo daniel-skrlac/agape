@@ -6,6 +6,7 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.sql.CallableStatement;
+import java.sql.Connection;
 import java.sql.SQLException;
 
 @ApplicationScoped
@@ -18,6 +19,30 @@ public class DocumentRepository {
     @Inject
     public DocumentRepository(Jdbc jdbc) {
         this.jdbc = jdbc;
+    }
+
+    public void initLegacyContext(Connection c, Long dokumentId, String operatorOibDigits) throws SQLException {
+        final String plsql = """
+                BEGIN
+                  KNJIZI_MK.CITAJ_GLOBALNO(?);
+                  GLO.DOKUMENT_ID := ?;
+                  GLO.OPERATER(?);
+                EXCEPTION
+                  WHEN OTHERS THEN
+                    RAISE;
+                END;
+                """;
+
+        try (CallableStatement cs = c.prepareCall(plsql)) {
+            cs.setLong(1, dokumentId);
+            cs.setLong(2, dokumentId);
+            try {
+                cs.setLong(3, Long.parseLong(operatorOibDigits));
+            } catch (NumberFormatException nfe) {
+                cs.setString(3, operatorOibDigits);
+            }
+            cs.execute();
+        }
     }
 
     public void recalcHeader(Long sdGlavaId) throws SQLException {
@@ -46,6 +71,7 @@ public class DocumentRepository {
      */
     public void bookDocument(
             Long sdGlavaId,
+            Long documentId,
             String operatorOibDigits,
             String actorOibDigits,
             int knjizitiNaSkladiste,
@@ -61,15 +87,7 @@ public class DocumentRepository {
             try (CallableStatement cs = c.prepareCall("{ call KNJIZI_MK.KNJIZI_MK_DOKUMENT(?,?,?,?,?,?,?,?) }")) {
                 cs.setLong(1, sdGlavaId);
 
-//                try (CallableStatement cs2 = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA(?) }")) {
-//                    cs2.setLong(1, sdGlavaId);
-//                    cs2.execute();
-//                }
-
-                try (CallableStatement cs0 = c.prepareCall("{ call GLO.OPERATER(?) }")) {
-                    cs0.setLong(1, Long.parseLong(operatorOibDigits));
-                    cs0.execute();
-                }
+                initLegacyContext(c, documentId, operatorOibDigits);
 
                 try {
                     cs.setLong(2, Long.parseLong(actorOibDigits));
@@ -86,11 +104,6 @@ public class DocumentRepository {
 
                 cs.execute();
             }
-
-//            try (CallableStatement cs = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA(?) }")) {
-//                cs.setLong(1, sdGlavaId);
-//                cs.execute();
-//            }
         });
     }
 
@@ -124,5 +137,26 @@ public class DocumentRepository {
                 cs.execute();
             }
         });
+    }
+
+    /**
+     * Run recalculation in the SAME Oracle session/transaction (same Connection).
+     * This is critical if legacy logic depends on session state / GLO context / temporary tables.
+     */
+    public void recalcHeaderTmp(Connection c, Long sdGlavaId) throws SQLException {
+        try (CallableStatement cs = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA_TMP(?) }")) {
+            cs.setLong(1, sdGlavaId);
+            cs.execute();
+        }
+    }
+
+    /**
+     * Full recalc in the same session.
+     */
+    public void recalcHeader(Connection c, Long sdGlavaId) throws SQLException {
+        try (CallableStatement cs = c.prepareCall("{ call AGAPE_API.RECALC_SD_GLAVA(?) }")) {
+            cs.setLong(1, sdGlavaId);
+            cs.execute();
+        }
     }
 }

@@ -24,10 +24,17 @@ import java.util.List;
 public class DispatchRequestDTO {
 
     /**
-     * Logical document slot used by the warehouse, e.g. 3, 9, 23, 32.
-     * Maps to SD_GLAVA.DOKUMENT_ID (via SD_SIFREG → SD_SIFREZ decides “outgoing stock” rules).
+     * Warehouse (SKLADISTE_ID) from which goods are dispatched.
+     * This MUST be provided by the client.
      */
     @NotNull
+    private Long warehouseId;
+
+    /**
+     * Derived server-side: SD_GLAVA.DOKUMENT_ID.
+     * DO NOT send from client.
+     */
+    @JsonIgnore
     private Long documentId;
 
     /**

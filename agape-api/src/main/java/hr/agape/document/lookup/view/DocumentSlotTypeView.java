@@ -67,4 +67,34 @@ public class DocumentSlotTypeView {
      * </ul>
      */
     private Integer changesStock;
+
+
+    // SD_SIFREZ.KNJIZITINASKLADISTE (0/1)
+    private Integer knjizitiNaSkladiste;
+
+    // SD_SIFREZ.KNJIZITIUKPOPISA (0/1)
+    private Integer knjizitiUkPopisa;
+
+    // SD_SIFREZ.KNJIZITINORMATIVE (0/1)
+    private Integer knjizitiNormative;
+
+    // SD_SIFREZ.KNJIZITISASTAVNICU (0/1)
+    private Integer knjizitiSastavnicu;
+
+    // ---- NEW: tipovi koji se mogu koristiti za derivacije ponašanja ----
+
+    // SD_SIFREZ.TIPPRODAJNIHCIJENA
+    private Integer tipProdajnihCijena;
+
+    // SD_SIFREZ.TIPNABAVNECIJENE
+    private Integer tipNabavneCijene;
+
+    // SD_SIFREZ.TIPKNJIGEPOPISA
+    private Integer tipKnjigePopisa;
+
+    // SD_SIFREZ.TIPKARTICE (nekad korisno za MK logiku)
+    private Integer tipKartice;
+
+    // SD_SIFREZ.TIPBAZA (informativno)
+    private Integer tipBaza;
 }

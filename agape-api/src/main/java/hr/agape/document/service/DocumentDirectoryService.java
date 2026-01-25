@@ -40,7 +40,7 @@ public class DocumentDirectoryService {
     }
 
     @Transactional
-    public ServiceResponseDTO<DocumentDescriptorResponseDTO> getDocumentDescriptor(int documentId) {
+    public ServiceResponseDTO<DocumentDescriptorResponseDTO> getDocumentDescriptor(Long documentId) {
         try {
             return docTypeRepo.findDocumentSlot(documentId)
                     .map(slotView ->

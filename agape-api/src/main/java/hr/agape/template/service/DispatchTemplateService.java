@@ -65,7 +65,6 @@ public class DispatchTemplateService {
     private final AuthUtil authUtil;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
     public DispatchTemplateService(
             DispatchTemplateFolderRepository folderRepo,
             DispatchTemplateRepository templateRepo, DispatchTemplateShareRepository dispatchTemplateShareRepo,
@@ -162,6 +161,7 @@ public class DispatchTemplateService {
             LocalDate docDate = req.getDocumentDate() != null ? req.getDocumentDate() : LocalDate.now(ZAGREB);
 
             List<DispatchRequestDTO> bulk = buildRequestsForPartner(
+                    req.getWarehouseId(),
                     req.getPartnerId(),
                     docDate,
                     req.getDraftOverride(),
@@ -196,7 +196,7 @@ public class DispatchTemplateService {
 
             List<DispatchRequestDTO> all = new ArrayList<>();
             for (Long partnerId : req.getPartnerIds()) {
-                all.addAll(buildRequestsForPartner(partnerId, docDate, req.getDraftOverride(), t));
+                all.addAll(buildRequestsForPartner(req.getWarehouseId(), partnerId, docDate, req.getDraftOverride(), t));
             }
 
             return oracleBooking.bookBulk(all);
@@ -578,6 +578,7 @@ public class DispatchTemplateService {
     }
 
     private static List<DispatchRequestDTO> buildRequestsForPartner(
+            Long warehouseId,
             Long partnerId,
             LocalDate docDate,
             Boolean draftOverride,
@@ -593,6 +594,7 @@ public class DispatchTemplateService {
             DispatchRequestDTO dr = new DispatchRequestDTO();
             dr.setDocumentId(d.getDocumentId());
             dr.setPartnerId(partnerId);
+            dr.setWarehouseId(warehouseId);
             dr.setDocumentDate(docDate);
 
             boolean isDraft = (draftOverride != null)

@@ -32,7 +32,7 @@ public class DocumentDirectoryResource {
     @GET
     @Path("/doc-types/{documentId}")
     public Response getDocumentDescriptor(
-            @PathParam("documentId") int documentId
+            @PathParam("documentId") Long documentId
     ) {
         return Responses.from(service.getDocumentDescriptor(documentId));
     }

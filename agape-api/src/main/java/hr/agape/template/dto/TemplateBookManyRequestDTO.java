@@ -14,6 +14,9 @@ public class TemplateBookManyRequestDTO {
     @NotNull
     private Long templateId;
 
+    @NotNull
+    private Long warehouseId;
+
     @NotEmpty
     private List<Long> partnerIds;
 

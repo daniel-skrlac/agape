@@ -13,6 +13,9 @@ public class TemplateBookOneRequestDTO {
     private Long templateId;
 
     @NotNull
+    private Long warehouseId;
+
+    @NotNull
     private Long partnerId;
 
     private LocalDate documentDate;

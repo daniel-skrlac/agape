@@ -28,4 +28,5 @@ public class DocumentItemLineDTO {
     private Long unitOfMeasureId;     // JMJ_ID
     private Long valueAddedTaxId;     // PDV_ID (SIFREPDV)
     private Long lineNumber;          // STAVKABR
+    private String note;
 }

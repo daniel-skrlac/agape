@@ -9,7 +9,6 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
-//SD_SIFREZ
 @ApplicationScoped
 public class DocumentTypeRepository {
 
@@ -20,16 +19,26 @@ public class DocumentTypeRepository {
         this.jdbc = jdbc;
     }
 
-    public Optional<DocumentSlotTypeView> findDocumentSlot(int documentId) throws SQLException {
+    public Optional<DocumentSlotTypeView> findDocumentSlot(Long documentId) throws SQLException {
         final String sql = """
                     SELECT *
                     FROM (
                         SELECT
                             r.DOKUMENT_ID,
+                            z.SD_SIFREZ_ID,
                             z.DOKUMENTID,
                             z.NAZIVDOKUMENTA,
                             z.ULAZIZLAZ,
-                            z.MIJENJAZALIHU
+                            z.MIJENJAZALIHU,
+                            z.KNJIZITINASKLADISTE,
+                            z.KNJIZITIUKPOPISA,
+                            z.KNJIZITINORMATIVE,
+                            z.KNJIZITISASTAVNICU,
+                            z.TIPPRODAJNIHCIJENA,
+                            z.TIPNABAVNECIJENE,
+                            z.TIPKNJIGEPOPISA,
+                            z.TIPKARTICE,
+                            z.TIPBAZA
                         FROM SD_SIFREG r
                         JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
                         WHERE r.DOKUMENT_ID = ?
@@ -39,13 +48,23 @@ public class DocumentTypeRepository {
 
         DocumentSlotTypeView view = jdbc.queryOne(
                 sql,
-                ps -> ps.setInt(1, documentId),
+                ps -> ps.setLong(1, documentId),
                 rs -> DocumentSlotTypeView.builder()
                         .documentId(rs.getInt("DOKUMENT_ID"))
+                        .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
                         .documentCode(rs.getString("DOKUMENTID"))
                         .displayName(rs.getString("NAZIVDOKUMENTA"))
                         .inOutFlag(rs.getInt("ULAZIZLAZ"))
                         .changesStock(rs.getInt("MIJENJAZALIHU"))
+                        .knjizitiNaSkladiste(rs.getInt("KNJIZITINASKLADISTE"))
+                        .knjizitiUkPopisa(rs.getInt("KNJIZITIUKPOPISA"))
+                        .knjizitiNormative(rs.getInt("KNJIZITINORMATIVE"))
+                        .knjizitiSastavnicu(rs.getInt("KNJIZITISASTAVNICU"))
+                        .tipProdajnihCijena(rs.getInt("TIPPRODAJNIHCIJENA"))
+                        .tipNabavneCijene(rs.getInt("TIPNABAVNECIJENE"))
+                        .tipKnjigePopisa(rs.getInt("TIPKNJIGEPOPISA"))
+                        .tipKartice(rs.getInt("TIPKARTICE"))
+                        .tipBaza(rs.getInt("TIPBAZA"))
                         .build()
         );
 
@@ -55,12 +74,7 @@ public class DocumentTypeRepository {
     public long countDistinctDocumentIds() throws SQLException {
         final String sql = "SELECT COUNT(*) FROM (SELECT DISTINCT DOKUMENT_ID FROM SD_SIFREG)";
 
-        Long cnt = jdbc.queryOne(
-                sql,
-                null,
-                rs -> rs.getLong(1)
-        );
-
+        Long cnt = jdbc.queryOne(sql, null, rs -> rs.getLong(1));
         return (cnt == null) ? 0L : cnt;
     }
 
@@ -76,10 +90,20 @@ public class DocumentTypeRepository {
                         FROM dids d
                     )
                     SELECT r2.DOKUMENT_ID,
+                           z.SD_SIFREZ_ID,
                            z.DOKUMENTID,
                            z.NAZIVDOKUMENTA,
                            z.ULAZIZLAZ,
-                           z.MIJENJAZALIHU
+                           z.MIJENJAZALIHU,
+                           z.KNJIZITINASKLADISTE,
+                           z.KNJIZITIUKPOPISA,
+                           z.KNJIZITINORMATIVE,
+                           z.KNJIZITISASTAVNICU,
+                           z.TIPPRODAJNIHCIJENA,
+                           z.TIPNABAVNECIJENE,
+                           z.TIPKNJIGEPOPISA,
+                           z.TIPKARTICE,
+                           z.TIPBAZA
                       FROM ranked x
                       JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
                       JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
@@ -103,10 +127,20 @@ public class DocumentTypeRepository {
                 },
                 rs -> DocumentSlotTypeView.builder()
                         .documentId(rs.getInt("DOKUMENT_ID"))
+                        .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
                         .documentCode(rs.getString("DOKUMENTID"))
                         .displayName(rs.getString("NAZIVDOKUMENTA"))
                         .inOutFlag(rs.getInt("ULAZIZLAZ"))
                         .changesStock(rs.getInt("MIJENJAZALIHU"))
+                        .knjizitiNaSkladiste(rs.getInt("KNJIZITINASKLADISTE"))
+                        .knjizitiUkPopisa(rs.getInt("KNJIZITIUKPOPISA"))
+                        .knjizitiNormative(rs.getInt("KNJIZITINORMATIVE"))
+                        .knjizitiSastavnicu(rs.getInt("KNJIZITISASTAVNICU"))
+                        .tipProdajnihCijena(rs.getInt("TIPPRODAJNIHCIJENA"))
+                        .tipNabavneCijene(rs.getInt("TIPNABAVNECIJENE"))
+                        .tipKnjigePopisa(rs.getInt("TIPKNJIGEPOPISA"))
+                        .tipKartice(rs.getInt("TIPKARTICE"))
+                        .tipBaza(rs.getInt("TIPBAZA"))
                         .build()
         );
     }
@@ -154,10 +188,20 @@ public class DocumentTypeRepository {
                         FROM dids d
                     )
                     SELECT r2.DOKUMENT_ID,
+                           z.SD_SIFREZ_ID,
                            z.DOKUMENTID,
                            z.NAZIVDOKUMENTA,
                            z.ULAZIZLAZ,
-                           z.MIJENJAZALIHU
+                           z.MIJENJAZALIHU,
+                           z.KNJIZITINASKLADISTE,
+                           z.KNJIZITIUKPOPISA,
+                           z.KNJIZITINORMATIVE,
+                           z.KNJIZITISASTAVNICU,
+                           z.TIPPRODAJNIHCIJENA,
+                           z.TIPNABAVNECIJENE,
+                           z.TIPKNJIGEPOPISA,
+                           z.TIPKARTICE,
+                           z.TIPBAZA
                       FROM ranked x
                       JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
                       JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
@@ -185,10 +229,20 @@ public class DocumentTypeRepository {
                 },
                 rs -> DocumentSlotTypeView.builder()
                         .documentId(rs.getInt("DOKUMENT_ID"))
+                        .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
                         .documentCode(rs.getString("DOKUMENTID"))
                         .displayName(rs.getString("NAZIVDOKUMENTA"))
                         .inOutFlag(rs.getInt("ULAZIZLAZ"))
                         .changesStock(rs.getInt("MIJENJAZALIHU"))
+                        .knjizitiNaSkladiste(rs.getInt("KNJIZITINASKLADISTE"))
+                        .knjizitiUkPopisa(rs.getInt("KNJIZITIUKPOPISA"))
+                        .knjizitiNormative(rs.getInt("KNJIZITINORMATIVE"))
+                        .knjizitiSastavnicu(rs.getInt("KNJIZITISASTAVNICU"))
+                        .tipProdajnihCijena(rs.getInt("TIPPRODAJNIHCIJENA"))
+                        .tipNabavneCijene(rs.getInt("TIPNABAVNECIJENE"))
+                        .tipKnjigePopisa(rs.getInt("TIPKNJIGEPOPISA"))
+                        .tipKartice(rs.getInt("TIPKARTICE"))
+                        .tipBaza(rs.getInt("TIPBAZA"))
                         .build()
         );
     }
