@@ -85,15 +85,24 @@ public class DispatchTemplateService {
         this.authUtil = authUtil;
     }
 
-    public ServiceResponseDTO<List<TemplateResponseDTO>> listTemplateHeaders(Long folderId, String q, boolean includeShared) {
+    public ServiceResponseDTO<List<TemplateResponseDTO>> listTemplateHeaders(
+            Long folderId,
+            String q,
+            boolean includeShared,
+            boolean rootOnly
+    ) {
         try {
             Long userId = authUtil.requireUserId();
+
+            if (rootOnly && folderId != null) {
+                return ServiceResponseDirector.errorBadRequest("Use either folderId or rootOnly, not both.");
+            }
 
             if (folderId != null && !folderRepo.belongsToOwner(folderId, userId)) {
                 return ServiceResponseDirector.errorBadRequest("Folder not found.");
             }
 
-            List<DispatchTemplateEntity> owned = templateRepo.listHeaders(userId, folderId, q);
+            List<DispatchTemplateEntity> owned = templateRepo.listHeaders(userId, folderId, q, rootOnly);
 
             List<DispatchTemplateEntity> shared = List.of();
             if (includeShared && folderId == null) {

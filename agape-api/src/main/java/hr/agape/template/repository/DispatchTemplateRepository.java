@@ -82,20 +82,34 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
                 """ + order, userId, like).list();
     }
 
-    public List<DispatchTemplateEntity> listHeaders(Long ownerUserId, Long folderId, String q) {
+    public List<DispatchTemplateEntity> listHeaders(Long ownerUserId, Long folderId, String q, Boolean rootOnly) {
         String base = "owner.id = ?1";
         String order = " ORDER BY householdSize ASC, LOWER(name) ASC, id DESC";
 
-        if (folderId == null && (q == null || q.isBlank())) {
-            return find(base + " AND folder IS NULL" + order, ownerUserId).list();
+        boolean isRootOnly = Boolean.TRUE.equals(rootOnly);
+        boolean hasFolder = folderId != null;
+        boolean hasQ = q != null && !q.isBlank();
+
+        if (hasFolder) {
+            if (!hasQ) {
+                return find(base + " AND folder.id = ?2" + order, ownerUserId, folderId).list();
+            }
+            String like = "%" + q.toLowerCase().trim() + "%";
+            return find(base + " AND folder.id = ?2 AND LOWER(name) LIKE ?3" + order, ownerUserId, folderId, like).list();
         }
-        if (folderId != null && (q == null || q.isBlank())) {
-            return find(base + " AND folder.id = ?2" + order, ownerUserId, folderId).list();
-        }
-        String like = "%" + q.toLowerCase().trim() + "%";
-        if (folderId == null) {
+
+        if (isRootOnly) {
+            if (!hasQ) {
+                return find(base + " AND folder IS NULL" + order, ownerUserId).list();
+            }
+            String like = "%" + q.toLowerCase().trim() + "%";
             return find(base + " AND folder IS NULL AND LOWER(name) LIKE ?2" + order, ownerUserId, like).list();
         }
-        return find(base + " AND folder.id = ?2 AND LOWER(name) LIKE ?3" + order, ownerUserId, folderId, like).list();
+
+        if (!hasQ) {
+            return find(base + order, ownerUserId).list();
+        }
+        String like = "%" + q.toLowerCase().trim() + "%";
+        return find(base + " AND LOWER(name) LIKE ?2" + order, ownerUserId, like).list();
     }
 }
