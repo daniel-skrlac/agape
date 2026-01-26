@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-25 21:17:55.
+// Generated using typescript-generator version 3.2.1263 on 2026-01-26 19:39:52.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -231,6 +231,13 @@ export interface TemplateDocUpsertRequestDTO {
     sortOrder: number;
     draft: boolean;
     defaultNote: string;
+}
+
+export interface TemplateFilterDTO {
+    folderId: number;
+    name: string;
+    includeShared: boolean;
+    rootOnly: boolean;
 }
 
 export interface TemplateItemResponseDTO {

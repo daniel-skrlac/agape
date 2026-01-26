@@ -124,6 +124,9 @@ const Strings = {
     fullNameLabel: "Ime i prezime:",
     fullNamePlaceholder: "Unesite ime i prezime",
 
+    oibLabel: "OIB:",
+    oibPlaceholder: "Unesite OIB",
+
     loginTitle: "Prijava",
     loginButton: "Prijava",
     loginToRegisterQuestion: "Nemate korisnički račun?",

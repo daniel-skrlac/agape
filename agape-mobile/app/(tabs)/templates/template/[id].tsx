@@ -6,8 +6,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import Screen from "@/components/ui/Screen";
 import { useDeleteTemplate, useTemplate } from "@/app/api/hooks/useDispatchTemplates";
 import { Banner } from "@/components/Banner";
-import { ConfirmSheet } from "@/components/ConfirmSheet";
 import Colors from "@/constants/Colors";
+import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
 export default function PredlozakDetalji() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -51,12 +51,13 @@ export default function PredlozakDetalji() {
               <Text style={s.dangerText}>Obriši predložak</Text>
             </Pressable>
 
-            <ConfirmSheet
+            <CenterConfirmSheet
               visible={confirmDel}
               title="Obrisati predložak?"
-              description={t.name}
+              description={t?.name}
               danger
               confirmText="Obriši"
+              loading={delM.isPending}
               onClose={() => setConfirmDel(false)}
               onConfirm={async () => {
                 await delM.mutateAsync(id);
@@ -64,6 +65,7 @@ export default function PredlozakDetalji() {
                 router.back();
               }}
             />
+
           </>
         )}
       </View>

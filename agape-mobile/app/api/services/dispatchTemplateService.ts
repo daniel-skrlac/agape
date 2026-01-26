@@ -30,13 +30,24 @@ export const dispatchTemplateService = {
     return api.request<void>(`/api/v1/dispatch-template-folders/${id}`, { method: "DELETE", signal });
   },
 
-  listTemplates(params: { folderId?: number | null; name?: string; includeShared?: boolean }, signal?: AbortSignal) {
+  listTemplates(
+    params: { folderId?: number | null; name?: string; includeShared?: boolean; rootOnly?: boolean },
+    signal?: AbortSignal
+  ) {
     const q = new URLSearchParams();
+
     if (params.folderId !== undefined && params.folderId !== null) q.set("folderId", String(params.folderId));
+
     if (params.name) q.set("name", params.name);
     if (params.includeShared !== undefined) q.set("includeShared", String(params.includeShared));
+
+    if (params.rootOnly === true) q.set("rootOnly", "true");
+
     const qs = q.toString();
-    return api.request<TemplateResponseDTO[]>(`/api/v1/dispatch-templates${qs ? `?${qs}` : ""}`, { method: "GET", signal });
+    return api.request<TemplateResponseDTO[]>(
+      `/api/v1/dispatch-templates${qs ? `?${qs}` : ""}`,
+      { method: "GET", signal }
+    );
   },
   getTemplate(id: number, signal?: AbortSignal) {
     return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}`, { method: "GET", signal });

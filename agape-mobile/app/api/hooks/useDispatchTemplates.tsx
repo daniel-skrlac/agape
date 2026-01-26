@@ -31,7 +31,8 @@ export function useTemplateFolders() {
 export function useCreateFolder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: FolderCreateRequestDTO) => dispatchTemplateService.createFolder(payload),
+    mutationFn: (payload: { name: string; parentId?: number | null }) =>
+      dispatchTemplateService.createFolder(payload as any),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.folders }),
   });
 }
@@ -39,7 +40,8 @@ export function useCreateFolder() {
 export function useRenameFolder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: number; payload: FolderRenameRequestDTO }) => dispatchTemplateService.renameFolder(args.id, args.payload),
+    mutationFn: (args: { id: number; payload: FolderRenameRequestDTO }) =>
+      dispatchTemplateService.renameFolder(args.id, args.payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.folders }),
   });
 }
@@ -52,14 +54,25 @@ export function useDeleteFolder() {
   });
 }
 
-export function useTemplateList(args: { folderId: number | null | undefined; q: string; mode: "MOJI" | "DIJELJENI" | "SVE" }) {
-  const includeShared = args.mode !== "MOJI";
-  const folderId = args.mode === "DIJELJENI" ? null : args.folderId ?? null; // shared ignorira folder filter
+/**
+ * list templates:
+ * - rootOnly se smije slati SAMO kad folderId==null
+ * - includeShared: true/false po modu
+ */
+export function useTemplateList(args: {
+  folderId: number | null | undefined;
+  q: string;
+  includeShared: boolean;
+  rootOnly: boolean;
+}) {
+  const folderId = args.folderId ?? null;
+  const rootOnly = folderId == null ? args.rootOnly : false; // ✅ backend rule
+
   return useQuery({
-    queryKey: keys.list({ folderId, q: args.q, includeShared, mode: args.mode }),
+    queryKey: keys.list({ folderId, q: args.q, includeShared: args.includeShared, rootOnly }),
     queryFn: ({ signal }) =>
       dispatchTemplateService.listTemplates(
-        { folderId, name: args.q.trim() || undefined, includeShared },
+        { folderId, name: args.q.trim() || undefined, includeShared: args.includeShared, rootOnly },
         signal
       ),
     retry: 1,
@@ -78,17 +91,15 @@ export function useCreateTemplate() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: TemplateCreateRequestDTO) => dispatchTemplateService.createTemplate(payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: keys.folders });
-      qc.invalidateQueries({ queryKey: ["tpl-list"] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tpl-list"] }),
   });
 }
 
 export function useUpdateTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: number; payload: TemplateUpdateRequestDTO }) => dispatchTemplateService.updateTemplate(args.id, args.payload),
+    mutationFn: (args: { id: number; payload: TemplateUpdateRequestDTO }) =>
+      dispatchTemplateService.updateTemplate(args.id, args.payload),
     onSuccess: (_t, args) => {
       qc.invalidateQueries({ queryKey: keys.one(args.id) });
       qc.invalidateQueries({ queryKey: ["tpl-list"] });
@@ -107,7 +118,8 @@ export function useDeleteTemplate() {
 export function useUpsertDoc() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { templateId: number; payload: TemplateDocUpsertRequestDTO }) => dispatchTemplateService.upsertTemplateDoc(args.templateId, args.payload),
+    mutationFn: (args: { templateId: number; payload: TemplateDocUpsertRequestDTO }) =>
+      dispatchTemplateService.upsertTemplateDoc(args.templateId, args.payload),
     onSuccess: (t) => qc.invalidateQueries({ queryKey: keys.one(t.id) }),
   });
 }
