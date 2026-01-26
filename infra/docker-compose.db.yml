@@ -134,8 +134,10 @@ SQL\n\
     entrypoint:
       [
         "bash","-lc",
-        "set -euo pipefail; sqlplus -s /nolog @/bootstrap/create_agape_api.sql"
+        "sqlplus -s \"IN_WPRG/${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE\" @/bootstrap/create_agape_api.sql"
       ]
+    environment:
+      ORACLE_APP_PASSWORD: ${ORACLE_APP_PASSWORD}
     restart: "no"
 
 volumes:
