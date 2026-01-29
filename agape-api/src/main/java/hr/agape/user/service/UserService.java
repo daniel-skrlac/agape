@@ -116,10 +116,11 @@ public class UserService {
 
     public ServiceResponseDTO<PagedResultDTO<UserDirectoryResponseDTO>> pageUsers(int page, int size, String q) {
         try {
-            authUtil.requireUserId();
+            Long currentUserId = authUtil.requireUserId();
 
-            long total = userRepo.countDirectory(q);
-            List<UserDirectoryResponseDTO> items = userRepo.pageDirectory(q, page, size)
+            long total = userRepo.countDirectoryExcludingUser(q, currentUserId);
+
+            List<UserDirectoryResponseDTO> items = userRepo.pageDirectoryExcludingUser(q, currentUserId, page, size)
                     .stream()
                     .map(directoryMapper::toDto)
                     .toList();

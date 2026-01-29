@@ -9,6 +9,32 @@ import java.util.List;
 @ApplicationScoped
 public class DispatchTemplateRepository implements PanacheRepository<DispatchTemplateEntity> {
 
+    public List<String> listNamesForOwnerAndFolder(Long ownerUserId, Long folderId, Long excludeTemplateId) {
+        if (folderId == null) {
+            if (excludeTemplateId == null) {
+                return find("SELECT t.name FROM DispatchTemplateEntity t WHERE t.owner.id = ?1 AND t.folder IS NULL", ownerUserId)
+                        .project(String.class).list();
+            }
+            return find("SELECT t.name FROM DispatchTemplateEntity t WHERE t.owner.id = ?1 AND t.folder IS NULL AND t.id <> ?2",
+                    ownerUserId, excludeTemplateId)
+                    .project(String.class).list();
+        }
+
+        if (excludeTemplateId == null) {
+            return find("SELECT t.name FROM DispatchTemplateEntity t WHERE t.owner.id = ?1 AND t.folder.id = ?2",
+                    ownerUserId, folderId)
+                    .project(String.class).list();
+        }
+
+        return find("SELECT t.name FROM DispatchTemplateEntity t WHERE t.owner.id = ?1 AND t.folder.id = ?2 AND t.id <> ?3",
+                ownerUserId, folderId, excludeTemplateId)
+                .project(String.class).list();
+    }
+
+    public List<DispatchTemplateEntity> listByOwnerAndFolder(Long ownerUserId, Long folderId) {
+        return find("owner.id = ?1 AND folder.id = ?2 ORDER BY id ASC", ownerUserId, folderId).list();
+    }
+
     public DispatchTemplateEntity findFull(Long templateId, Long ownerUserId) {
 
         DispatchTemplateEntity t = find("""

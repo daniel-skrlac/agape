@@ -22,4 +22,7 @@ public class TemplateBookManyRequestDTO {
 
     private LocalDate documentDate;
     private Boolean draftOverride;
+
+    private List<TemplateBookDocPatchDTO> docPatches;
+    private List<TemplateBookExtraDocDTO> extraDocuments;
 }

@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 @Setter
@@ -19,6 +20,11 @@ public class TemplateBookOneRequestDTO {
     private Long partnerId;
 
     private LocalDate documentDate;
+
     private Boolean draftOverride;
+
+    private List<TemplateBookDocPatchDTO> docPatches;
+
+    private List<TemplateBookExtraDocDTO> extraDocuments;
 }
 

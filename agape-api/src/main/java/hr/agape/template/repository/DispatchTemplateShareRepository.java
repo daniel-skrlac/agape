@@ -21,9 +21,7 @@ public class DispatchTemplateShareRepository implements PanacheRepository<Dispat
         return count("template.id = ?1 AND sharedWith.id = ?2", templateId, userId) > 0;
     }
 
-    public List<Long> sharedTemplateIdsForUser(Long userId) {
-        return find("SELECT s.template.id FROM DispatchTemplateShareEntity s WHERE s.sharedWith.id = ?1", userId)
-                .project(Long.class)
-                .list();
+    public List<DispatchTemplateShareEntity> listForSharedWith(Long userId) {
+        return find("sharedWith.id = ?1", userId).list();
     }
 }

@@ -20,4 +20,24 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
     public DispatchTemplateFolderEntity findOwned(Long folderId, Long ownerUserId) {
         return find("id = ?1 AND owner.id = ?2", folderId, ownerUserId).firstResult();
     }
+
+    public List<String> listChildNames(Long ownerUserId, Long parentId) {
+        if (parentId == null) {
+            return find("""
+                    SELECT f.name
+                    FROM DispatchTemplateFolderEntity f
+                    WHERE f.owner.id = ?1 AND f.parent IS NULL
+                    """, ownerUserId)
+                    .project(String.class)
+                    .list();
+        }
+
+        return find("""
+                SELECT f.name
+                FROM DispatchTemplateFolderEntity f
+                WHERE f.owner.id = ?1 AND f.parent.id = ?2
+                """, ownerUserId, parentId)
+                .project(String.class)
+                .list();
+    }
 }

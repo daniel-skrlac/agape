@@ -27,6 +27,8 @@ public interface DispatchApiMapper {
     @Mapping(target = "cancelledBy", ignore = true)
     @Mapping(target = "cancelledAt", ignore = true)
     @Mapping(target = "cancelNote", ignore = true)
+    @Mapping(target = "textType", ignore = true)
+    @Mapping(target = "itemCount", ignore = true)
     DocumentHeaderEntity toHeader(DispatchRequestDTO req);
 
     @Mapping(target = "id", ignore = true)

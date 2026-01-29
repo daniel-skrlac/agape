@@ -1,5 +1,6 @@
 package hr.agape.template.dto;
 
+import hr.agape.template.enumeration.DispatchTemplateSharePermission;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -18,4 +19,5 @@ public class TemplateResponseDTO {
     private OffsetDateTime updatedAt;
     private List<TemplateDocResponseDTO> documents;
     private boolean shared;
+    private DispatchTemplateSharePermission sharedPermission;
 }

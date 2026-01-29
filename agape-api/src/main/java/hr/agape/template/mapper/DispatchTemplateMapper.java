@@ -14,6 +14,8 @@ public interface DispatchTemplateMapper {
 
     @Mapping(target = "folderId", source = "folder.id")
     @Mapping(target = "householdSize", expression = "java(entity.getHouseholdSize() == null ? null : entity.getHouseholdSize().intValue())")
+    @Mapping(target = "shared", ignore = true)
+    @Mapping(target = "sharedPermission", ignore = true)
     TemplateResponseDTO toDto(DispatchTemplateEntity entity);
 
     TemplateDocResponseDTO toDocDto(DispatchTemplateDocEntity entity);
