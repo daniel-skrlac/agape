@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { ActivityIndicator, LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, LayoutAnimation, Pressable, StyleSheet, Text, View, Platform, UIManager } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFocusEffect } from "@react-navigation/native";
 
@@ -22,12 +22,16 @@ const T = {
   orange: "#F97316",
 };
 
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 export default function SettingsScreen() {
   const { session, ready } = useCurrentUser();
   const userId = session?.userId ?? null;
 
   const { data: warehouses, isLoading: whLoading, refetch: refetchWarehouses } = useWarehouses();
-  const p = useUserProfile();
+  const profile = useUserProfile();
 
   const form = useMainWarehouseSettings({
     userId,
@@ -36,29 +40,38 @@ export default function SettingsScreen() {
 
   const [open, setOpen] = useState(false);
 
+  // source-of-truth saved default (session wins, fallback profile)
   const savedDefault = useMemo(() => {
     return (
       ((session?.defaultWarehouseId ?? null) as number | null) ??
-      ((p.data?.defaultWarehouseId ?? null) as number | null) ??
+      ((profile.data?.defaultWarehouseId ?? null) as number | null) ??
       null
     );
-  }, [session?.defaultWarehouseId, p.data?.defaultWarehouseId]);
+  }, [session?.defaultWarehouseId, profile.data?.defaultWarehouseId]);
 
+  // keep latest savedDefault for blur/reset
   const savedDefaultRef = useRef<number | null>(savedDefault);
   useEffect(() => {
     savedDefaultRef.current = savedDefault;
   }, [savedDefault]);
+
+  // keep latest reset fn (avoid unstable deps closing dropdown)
+  const resetToSavedRef = useRef(form.resetToSaved);
+  useEffect(() => {
+    resetToSavedRef.current = form.resetToSaved;
+  }, [form.resetToSaved]);
 
   const selectedLabel = useMemo(() => {
     if (form.values.warehouseId == null) return Strings.settings.mainWarehouse.none;
     return Strings.home.warehouse.item(form.values.warehouseId);
   }, [form.values.warehouseId]);
 
-  const toggleOpen = () => {
+  const toggleOpen = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setOpen((prev) => !prev);
-  };
+  }, []);
 
+  // sync form value to saved default (only if user didn't touch)
   useEffect(() => {
     if (!ready) return;
     if (form.submitting) return;
@@ -69,13 +82,14 @@ export default function SettingsScreen() {
     form.syncToSaved(savedDefault);
   }, [ready, savedDefault, form.submitting, form.touched, form.values.warehouseId, form.syncToSaved]);
 
+  // ✅ FIX: stable focus effect; cleanup only runs on actual blur/unmount
   useFocusEffect(
     useCallback(() => {
       return () => {
         setOpen(false);
-        form.resetToSaved(savedDefaultRef.current);
+        resetToSavedRef.current(savedDefaultRef.current);
       };
-    }, [form.resetToSaved])
+    }, [])
   );
 
   const { refreshing, onRefresh } = usePullToRefresh([
@@ -83,9 +97,9 @@ export default function SettingsScreen() {
       setOpen(false);
       form.clearStatus();
 
-      await Promise.all([refetchWarehouses?.(), p.refetch?.()]);
+      await Promise.all([refetchWarehouses?.(), profile.refetch?.()]);
 
-      form.resetToSaved(savedDefaultRef.current);
+      resetToSavedRef.current(savedDefaultRef.current);
     },
   ]);
 
@@ -160,11 +174,7 @@ export default function SettingsScreen() {
                         form.setWarehouseId(id);
                         setOpen(false);
                       }}
-                      style={({ pressed }) => [
-                        styles.item,
-                        active && styles.itemActive,
-                        pressed && { opacity: 0.95 },
-                      ]}
+                      style={({ pressed }) => [styles.item, active && styles.itemActive, pressed && { opacity: 0.95 }]}
                     >
                       <Text style={styles.itemText}>{Strings.home.warehouse.item(id)}</Text>
                       {active ? <FontAwesome name="check" size={16} color={T.text} /> : null}
@@ -184,11 +194,7 @@ export default function SettingsScreen() {
               (!form.canSubmit || form.submitting) && { opacity: 0.6 },
             ]}
           >
-            {form.submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.saveText}>{Strings.settings.mainWarehouse.save}</Text>
-            )}
+            {form.submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{Strings.settings.mainWarehouse.save}</Text>}
           </Pressable>
         </View>
       </TabScroll>

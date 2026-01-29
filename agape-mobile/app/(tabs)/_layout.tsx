@@ -73,12 +73,20 @@ export default function TabLayout() {
 
         <Tabs.Screen
           name="templates"
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)/templates");
+            },
+          }}
           options={{
             title: "Predlošci",
             sceneStyle: { backgroundColor: "transparent" },
             tabBarIcon: ({ color }) => <TabBarIcon name="copy" color={color} />,
           }}
         />
+
+
 
         <Tabs.Screen
           name="home"

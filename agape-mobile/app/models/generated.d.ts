@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-26 19:39:52.
+// Generated using typescript-generator version 3.2.1263 on 2026-01-29 19:07:01.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -262,6 +262,7 @@ export interface TemplateResponseDTO {
     updatedAt: Date;
     documents: TemplateDocResponseDTO[];
     shared: boolean;
+    sharedPermission: DispatchTemplateSharePermission;
 }
 
 export interface TemplateShareCreateRequestDTO {

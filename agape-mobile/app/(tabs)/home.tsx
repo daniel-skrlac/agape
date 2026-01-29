@@ -7,21 +7,22 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
-  useWindowDimensions,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useFocusEffect, useRouter } from "expo-router";
 
 import Screen from "../../components/ui/Screen";
+import TabScroll from "@/components/ui/TabScroll";
 import Strings from "../../constants/Strings";
 
 import { useStockStatistics } from "../api/hooks/useStockStatistics";
 import { useWarehouses } from "../api/hooks/useWarehouses";
 import { useCurrentUser } from "../api/hooks/useCurrentUser";
-import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useUserProfile } from "../api/hooks/useUserProfile";
 import { usePullToRefresh } from "../api/hooks/usePullToRefresh";
-import TabScroll from "@/components/ui/TabScroll";
+import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
 
 type SectionKey = "missing" | "needsFill" | "most";
 
@@ -35,19 +36,11 @@ const T = {
   borderStrong: "rgba(2, 6, 23, 0.22)",
   divider: "rgba(2, 6, 23, 0.12)",
 
-  pill: "#0B1220",
-  pillText: "#FFFFFF",
-
-  warmHeader: "#FFE3D3",
-  warmIcon: "#FFB389",
   warmBadge: "#FFD3B8",
-  warmAccent: "#F97316",
-
-  coolHeader: "#E0ECFF",
-  coolIcon: "#9EC5FF",
   coolBadge: "#CFE2FF",
-  coolAccent: "#2563EB",
 
+  warmAccent: "#F97316",
+  coolAccent: "#2563EB",
   neutralAccent: "#0B1220",
 
   heroBg: "#FFF4EC",
@@ -62,18 +55,34 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+function useDefaultWarehouseId() {
+  const { session } = useCurrentUser();
+  const profile = useUserProfile();
+
+  const defaultWarehouseId = useMemo(() => {
+    return (
+      ((session?.defaultWarehouseId ?? null) as number | null) ??
+      ((profile.data?.defaultWarehouseId ?? null) as number | null) ??
+      null
+    );
+  }, [session?.defaultWarehouseId, profile.data?.defaultWarehouseId]);
+
+  return { session, profile, defaultWarehouseId };
+}
+
 export default function HomeScreen() {
   useWindowDimensions();
 
-  const { data: warehouses, isLoading: isWarehousesLoading } = useWarehouses();
+  const router = useRouter();
+  const { data: warehouses, isLoading: isWarehousesLoading, refetch: refetchWarehouses } = useWarehouses();
 
+  const { session, profile, defaultWarehouseId } = useDefaultWarehouseId();
+
+  // local-only selection for this screen
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 
-  const { session } = useCurrentUser();
-  const defaultWh = (session?.defaultWarehouseId ?? null) as number | null;
-
+  // if user didn't manually choose -> follow default
   const followsDefaultRef = useRef(true);
 
   useFocusEffect(
@@ -81,13 +90,16 @@ export default function HomeScreen() {
       followsDefaultRef.current = true;
       setWarehouseOpen(false);
       setWarehouseId(null);
+      return () => {
+        setWarehouseOpen(false);
+      };
     }, [])
   );
 
   useEffect(() => {
-    followsDefaultRef.current = true;
+    if (!followsDefaultRef.current) return;
     setWarehouseId(null);
-  }, [defaultWh]);
+  }, [defaultWarehouseId]);
 
   useEffect(() => {
     if (!warehouses?.length) return;
@@ -95,24 +107,29 @@ export default function HomeScreen() {
     if (!followsDefaultRef.current && warehouseId != null) return;
 
     const next =
-      defaultWh != null && warehouses.includes(defaultWh)
-        ? defaultWh
+      defaultWarehouseId != null && warehouses.includes(defaultWarehouseId)
+        ? defaultWarehouseId
         : warehouses[0];
 
     if (warehouseId !== next) setWarehouseId(next);
-  }, [warehouses, defaultWh, warehouseId]);
+  }, [warehouses, defaultWarehouseId, warehouseId]);
 
   const onSelectWarehouse = (id: number) => {
     followsDefaultRef.current = false;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setWarehouseId(id);
     setWarehouseOpen(false);
+  };
+
+  const toggleWarehouse = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setWarehouseOpen((p) => !p);
   };
 
   const stats = useStockStatistics(warehouseId);
   const { data, isLoading, isFetching, dataUpdatedAt } = stats;
 
   const totals = data?.totals;
-
 
   const [open, setOpen] = useState<Record<SectionKey, boolean>>({
     missing: false,
@@ -123,11 +140,6 @@ export default function HomeScreen() {
   const toggle = (k: SectionKey) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setOpen((prev) => ({ ...prev, [k]: !prev[k] }));
-  };
-
-  const toggleWarehouse = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setWarehouseOpen((p) => !p);
   };
 
   const displayName = useMemo(() => {
@@ -159,11 +171,15 @@ export default function HomeScreen() {
       followsDefaultRef.current = true;
       setWarehouseId(null);
       setWarehouseOpen(false);
+
+      // "each view fetches if needed"
+      await Promise.all([refetchWarehouses?.(), profile.refetch?.()]);
+
       await stats.refetch();
     },
   ]);
 
-  const statsRefreshingInline = isFetching && !isPullRefreshing;
+  const statsRefreshingInline = isFetching && !refreshing;
 
   return (
     <TabScroll
@@ -177,6 +193,7 @@ export default function HomeScreen() {
       <Screen>
         <View style={styles.sectionGap}>
           <HeroCard
+            routerPushProfile={() => router.push("/(tabs)/profile")}
             displayName={displayName}
             headerSubtitle={headerSubtitle}
             totalsQty={formatQtyHR(totals?.totalStockQty)}
@@ -204,8 +221,7 @@ export default function HomeScreen() {
                 {statsRefreshingInline ? (
                   <View style={styles.whLoadingRow}>
                     <ActivityIndicator size="small" />
-                    <Text style={styles.whLoadingInline} numberOfLines={1}>
-                    </Text>
+                    <Text style={styles.whLoadingInline} numberOfLines={1} />
                   </View>
                 ) : null}
               </View>
@@ -238,10 +254,7 @@ export default function HomeScreen() {
                       return (
                         <Pressable
                           key={id}
-                          onPress={() => {
-                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                            onSelectWarehouse(id);
-                          }}
+                          onPress={() => onSelectWarehouse(id)}
                           android_ripple={{ color: "rgba(2,6,23,0.08)" }}
                           style={({ pressed }) => [
                             styles.whItem,
@@ -368,8 +381,13 @@ export default function HomeScreen() {
   );
 }
 
-function HeroCard(props: { displayName: string; headerSubtitle: string; totalsQty: string; updatedText: string }) {
-  const router = useRouter();
+function HeroCard(props: {
+  routerPushProfile: () => void;
+  displayName: string;
+  headerSubtitle: string;
+  totalsQty: string;
+  updatedText: string;
+}) {
   return (
     <View style={styles.heroWrap}>
       <View style={styles.heroBgCard}>
@@ -386,7 +404,7 @@ function HeroCard(props: { displayName: string; headerSubtitle: string; totalsQt
             <Text style={styles.heroSubtitle}>{props.headerSubtitle}</Text>
           </View>
 
-          <Pressable onPress={() => router.push("/(tabs)/profile")} style={styles.avatar}>
+          <Pressable onPress={props.routerPushProfile} style={styles.avatar}>
             <FontAwesome name="user" size={18} color={T.text} />
           </Pressable>
         </View>
@@ -430,10 +448,8 @@ function MetricTile(props: {
   fullWidth?: boolean;
 }) {
   const bg = props.tone === "warm" ? styles.metricWarm : props.tone === "cool" ? styles.metricCool : styles.metricNeutral;
-  const iconBg =
-    props.tone === "warm" ? styles.metricIconWarm : props.tone === "cool" ? styles.metricIconCool : styles.metricIconNeut;
-
-  const accent = props.tone === "warm" ? "#f07b7bff" : props.tone === "cool" ? T.coolAccent : T.neutralAccent;
+  const iconBg = props.tone === "warm" ? styles.metricIconWarm : props.tone === "cool" ? styles.metricIconCool : styles.metricIconNeut;
+  const accent = props.tone === "warm" ? T.warmAccent : props.tone === "cool" ? T.coolAccent : T.neutralAccent;
 
   return (
     <View style={[styles.metricTile, bg, { borderLeftColor: accent }, props.fullWidth && styles.fullWidthCard]}>
@@ -545,16 +561,8 @@ function EmptyLine({ text }: { text: string }) {
 }
 
 const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: H_PADDING,
-    paddingTop: 12,
-    paddingBottom: 30,
-    flexGrow: 1,
-  },
-
-  sectionGap: {
-    marginBottom: 14,
-  },
+  content: { paddingHorizontal: H_PADDING, paddingTop: 12, paddingBottom: 30, flexGrow: 1 },
+  sectionGap: { marginBottom: 14 },
 
   surface: {
     borderRadius: 22,
@@ -569,10 +577,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  heroWrap: {
-    borderRadius: 26,
-    overflow: "hidden",
-  },
+  heroWrap: { borderRadius: 26, overflow: "hidden" },
   heroBgCard: {
     borderRadius: 26,
     backgroundColor: T.heroBg,
@@ -600,12 +605,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  kpiRow: {
-    marginTop: 14,
-    flexDirection: "row",
-    gap: 12,
-  },
-
+  kpiRow: { marginTop: 14, flexDirection: "row", gap: 12 },
   kpiChip: {
     flex: 1,
     borderRadius: 18,
@@ -697,33 +697,7 @@ const styles = StyleSheet.create({
 
   pressed: { opacity: 0.97 },
 
-  insight: {
-    padding: 16,
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
-    backgroundColor: "#F3F7FF",
-    borderColor: T.borderStrong,
-  },
-  insightIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    backgroundColor: "#DFEAFF",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.25,
-    borderColor: T.borderStrong,
-  },
-  insightTitle: { fontSize: 14, fontWeight: "900", color: T.text },
-  insightText: { marginTop: 3, fontSize: 14, color: T.subText, lineHeight: 20 },
-
-  metricsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 14,
-  },
+  metricsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 14 },
   metricTile: {
     width: "48%",
     borderRadius: 22,
@@ -752,8 +726,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   metricIconNeut: { backgroundColor: "#FFFFFF" },
-  metricIconWarm: { backgroundColor: "#f07b7bff" },
-  metricIconCool: { backgroundColor: T.coolIcon },
+  metricIconWarm: { backgroundColor: "#FFF2E8" },
+  metricIconCool: { backgroundColor: "#DFEAFF" },
   metricTitle: { fontSize: 12, fontWeight: "900", color: T.muted },
   metricValue: { marginTop: 6, fontSize: 22, fontWeight: "900", color: T.text },
 
@@ -770,7 +744,7 @@ const styles = StyleSheet.create({
     borderColor: T.borderStrong,
   },
   accIconWarm: { backgroundColor: T.warmBadge },
-  accIconCool: { backgroundColor: T.warmBadge },
+  accIconCool: { backgroundColor: T.coolBadge },
 
   accTitle: { fontSize: 15, fontWeight: "900", color: T.text },
   accSub: { marginTop: 3, fontSize: 12, color: "rgba(15,23,42,0.78)" },
@@ -781,7 +755,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: T.warmBadge,
+    backgroundColor: "rgba(2,6,23,0.06)",
     borderWidth: 1.25,
     borderColor: T.divider,
     alignItems: "center",
@@ -815,25 +789,12 @@ const styles = StyleSheet.create({
   rowCode: { marginTop: 3, fontSize: 11, color: T.muted },
 
   rowRight: { alignItems: "flex-end" },
-  qtyBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1.25,
-    borderColor: "rgba(2,6,23,0.22)",
-  },
+  qtyBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1.25, borderColor: "rgba(2,6,23,0.22)" },
   qtyWarm: { backgroundColor: T.warmBadge },
   qtyCool: { backgroundColor: T.coolBadge },
   qtyText: { fontSize: 11, fontWeight: "900", color: T.text },
   rowHint: { marginTop: 4, fontSize: 11, color: T.subText },
 
-  empty: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    borderWidth: 1.25,
-    borderColor: T.borderStrong,
-  },
+  empty: { paddingVertical: 14, paddingHorizontal: 12, backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1.25, borderColor: T.borderStrong },
   emptyText: { fontSize: 14, color: T.subText, lineHeight: 20 },
 });

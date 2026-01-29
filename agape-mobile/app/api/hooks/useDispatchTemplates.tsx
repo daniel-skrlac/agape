@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dispatchTemplateService } from "../services/dispatchTemplateService";
 import type {
-  FolderCreateRequestDTO,
   FolderRenameRequestDTO,
   TemplateCreateRequestDTO,
   TemplateUpdateRequestDTO,
@@ -20,19 +19,28 @@ const keys = {
   shares: (id: number) => ["tpl-shares", id] as const,
 };
 
+export function canEditDeleteTemplate(t: { shared?: boolean; sharedPermission?: "VIEW" | "BOOK" | null }) {
+  if (!t.shared) return true; // owner
+  return t.sharedPermission === "BOOK"; // shared: samo BOOK može edit/delete
+}
+
 export function useTemplateFolders() {
   return useQuery({
     queryKey: keys.folders,
     queryFn: ({ signal }) => dispatchTemplateService.listFolders(signal),
     retry: 1,
+
+    // ✅ ključ: nemoj "trepnuti" na back
+    placeholderData: (prev) => prev,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }
 
 export function useCreateFolder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { name: string; parentId?: number | null }) =>
-      dispatchTemplateService.createFolder(payload as any),
+    mutationFn: (payload: { name: string; parentId?: number | null }) => dispatchTemplateService.createFolder(payload as any),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.folders }),
   });
 }
@@ -40,8 +48,7 @@ export function useCreateFolder() {
 export function useRenameFolder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: number; payload: FolderRenameRequestDTO }) =>
-      dispatchTemplateService.renameFolder(args.id, args.payload),
+    mutationFn: (args: { id: number; payload: FolderRenameRequestDTO }) => dispatchTemplateService.renameFolder(args.id, args.payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.folders }),
   });
 }
@@ -59,14 +66,9 @@ export function useDeleteFolder() {
  * - rootOnly se smije slati SAMO kad folderId==null
  * - includeShared: true/false po modu
  */
-export function useTemplateList(args: {
-  folderId: number | null | undefined;
-  q: string;
-  includeShared: boolean;
-  rootOnly: boolean;
-}) {
+export function useTemplateList(args: { folderId: number | null | undefined; q: string; includeShared: boolean; rootOnly: boolean }) {
   const folderId = args.folderId ?? null;
-  const rootOnly = folderId == null ? args.rootOnly : false; // ✅ backend rule
+  const rootOnly = folderId == null ? args.rootOnly : false;
 
   return useQuery({
     queryKey: keys.list({ folderId, q: args.q, includeShared: args.includeShared, rootOnly }),
@@ -76,6 +78,11 @@ export function useTemplateList(args: {
         signal
       ),
     retry: 1,
+
+    // ✅ ključ: drži stare rezultate dok refetch traje
+    placeholderData: (prev) => prev,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -84,6 +91,9 @@ export function useTemplate(id: number) {
     queryKey: keys.one(id),
     queryFn: ({ signal }) => dispatchTemplateService.getTemplate(id, signal),
     retry: 1,
+    placeholderData: (prev) => prev,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -98,8 +108,7 @@ export function useCreateTemplate() {
 export function useUpdateTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: number; payload: TemplateUpdateRequestDTO }) =>
-      dispatchTemplateService.updateTemplate(args.id, args.payload),
+    mutationFn: (args: { id: number; payload: TemplateUpdateRequestDTO }) => dispatchTemplateService.updateTemplate(args.id, args.payload),
     onSuccess: (_t, args) => {
       qc.invalidateQueries({ queryKey: keys.one(args.id) });
       qc.invalidateQueries({ queryKey: ["tpl-list"] });
@@ -118,8 +127,7 @@ export function useDeleteTemplate() {
 export function useUpsertDoc() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { templateId: number; payload: TemplateDocUpsertRequestDTO }) =>
-      dispatchTemplateService.upsertTemplateDoc(args.templateId, args.payload),
+    mutationFn: (args: { templateId: number; payload: TemplateDocUpsertRequestDTO }) => dispatchTemplateService.upsertTemplateDoc(args.templateId, args.payload),
     onSuccess: (t) => qc.invalidateQueries({ queryKey: keys.one(t.id) }),
   });
 }
@@ -138,6 +146,9 @@ export function useShares(templateId: number) {
     queryKey: keys.shares(templateId),
     queryFn: ({ signal }) => dispatchTemplateService.listShares(templateId, signal),
     retry: 1,
+    placeholderData: (prev) => prev,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 }
 
