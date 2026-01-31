@@ -7,6 +7,7 @@ import { useTemplate, useTemplateFolders, useUpdateTemplate } from "@/app/api/ho
 import { Banner } from "@/components/Banner";
 import { Chip } from "@/components/Chip";
 import Colors from "@/constants/Colors";
+import TemplatesHeader from "../../TemplatesHeader";
 
 export default function UrediPredlozak() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -42,6 +43,7 @@ export default function UrediPredlozak() {
 
   return (
     <Screen>
+      <TemplatesHeader title="Uredi predložak" subtitle={`#${id}`} fallbackHref="/(tabs)/templates" />
       <View style={s.container}>
         {!!err && <Banner type="error" text={err} />}
 

@@ -12,6 +12,7 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
 import { Sheet } from "@/components/Sheet";
 import Colors from "@/constants/Colors";
+import TemplatesHeader from "../../TemplatesHeader";
 
 type Perm = DispatchTemplateSharePermission;
 
@@ -30,12 +31,17 @@ export default function DijeliPredlozak() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmShareId, setConfirmShareId] = useState<number | null>(null);
 
-  const err = (sharesQ.error as any)?.message || (shareM.error as any)?.message || (revokeM.error as any)?.message || null;
+  const err =
+    (sharesQ.error as any)?.message ||
+    (shareM.error as any)?.message ||
+    (revokeM.error as any)?.message ||
+    null;
 
   const list = sharesQ.data ?? [];
 
   return (
     <Screen>
+       <TemplatesHeader title="Dokumenti" subtitle={`Predložak #${templateId}`} />
       <View style={s.container}>
         {!!err && <Banner type="error" text={err} />}
 
@@ -105,6 +111,7 @@ export default function DijeliPredlozak() {
           onClose={() => setPickerOpen(false)}
           keyOf={(u) => String(u.id)}
           fetchPage={async ({ page, size, q }) => {
+            // backend excludes self by default
             const res = await userDirectoryService.pageUsers({ page, size, q });
             return { items: res.items, page: res.page, size: res.size, total: res.total };
           }}
@@ -151,18 +158,41 @@ const s = StyleSheet.create({
   primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
   primaryText: { color: "#fff", fontWeight: "900" },
 
-  card: { backgroundColor: Colors.bg, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, padding: 14, gap: 10 },
+  card: {
+    backgroundColor: Colors.bg,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    padding: 14,
+    gap: 10,
+  },
   title: { fontWeight: "900", color: Colors.text },
   sub: { color: Colors.sub, fontWeight: "700" },
 
-  shareRow: { backgroundColor: Colors.bg, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, padding: 14, flexDirection: "row", alignItems: "center", gap: 10 },
+  shareRow: {
+    backgroundColor: Colors.bg,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   dangerBtn: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: Colors.dangerBg },
   dangerText: { fontWeight: "900", color: Colors.dangerText },
 
   btn: { padding: 12, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center" },
   btnText: { fontWeight: "900", color: Colors.text },
 
-  pickRow: { padding: 12, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, backgroundColor: Colors.bg, gap: 4 },
+  pickRow: {
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+    gap: 4,
+  },
   pickTitle: { fontWeight: "900", color: Colors.text },
   pickSub: { color: Colors.sub, fontWeight: "700" },
   empty: { textAlign: "center", color: Colors.sub, fontWeight: "800", marginTop: 18 },

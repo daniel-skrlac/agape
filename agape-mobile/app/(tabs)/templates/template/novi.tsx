@@ -7,6 +7,7 @@ import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 import { useCreateTemplate } from "@/app/api/hooks/useDispatchTemplates";
+import TemplatesHeader from "../TemplatesHeader";
 
 export default function NewTemplateScreen() {
   const params = useLocalSearchParams<{ folderId?: string; folderName?: string }>();
@@ -24,13 +25,15 @@ export default function NewTemplateScreen() {
 
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const [householdSize, setHouseholdSize] = useState("1");
+  const [householdSize, setHouseholdSize] = useState(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const targetLabel = folderId == null ? "Bez mape (root)" : folderName;
 
   return (
     <Screen>
+      <TemplatesHeader title="Novi predložak" subtitle={folderName ? `Mapa: ${folderName}` : "Root"} fallbackHref="/(tabs)/templates" />
+
       <View style={s.container}>
         {!!errMsg && <Banner type="error" text={errMsg} />}
 

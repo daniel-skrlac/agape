@@ -8,6 +8,7 @@ import { useDeleteTemplate, useTemplate } from "@/app/api/hooks/useDispatchTempl
 import { Banner } from "@/components/Banner";
 import Colors from "@/constants/Colors";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
+import TemplatesHeader from "../TemplatesHeader";
 
 export default function PredlozakDetalji() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -21,8 +22,19 @@ export default function PredlozakDetalji() {
   const t = tQ.data;
   const err = (tQ.error as any)?.message || (delM.error as any)?.message || null;
 
+  // ✅ where we want to land when leaving this screen
+  const backToMoji = () => {
+    router.replace({ pathname: "/(tabs)/templates", params: { mode: "MOJI" } });
+  };
+
   return (
     <Screen>
+      <TemplatesHeader
+        title="Predložak"
+        subtitle={t?.name ? t.name : `#${id}`}
+        fallbackHref={{ pathname: "/(tabs)/templates", params: { mode: "MOJI" } }}
+      />
+
       <View style={s.container}>
         {!!err && <Banner type="error" text={err} />}
 
@@ -35,18 +47,58 @@ export default function PredlozakDetalji() {
                 <Text style={s.title}>{t.name}</Text>
                 {t.shared ? <Text style={s.badge}>DIJELJENO</Text> : null}
               </View>
-              <Text style={s.sub}>Kućanstvo: {t.householdSize}</Text>
+
+              {typeof t.householdSize === "number" ? (
+                <Text style={s.sub}>Kućanstvo: {t.householdSize}</Text>
+              ) : null}
+
               {!!t.description && <Text style={s.desc}>{t.description}</Text>}
             </View>
 
             <View style={s.grid}>
-              <ActionCard icon="pencil" label="Uredi" onPress={() => router.push({ pathname: "/(tabs)/templates/template/[id]/uredi", params: { id: String(id) } })} />
-              <ActionCard icon="file-text-o" label="Dokumenti" onPress={() => router.push({ pathname: "/(tabs)/templates/template/[id]/dokumenti", params: { id: String(id) } })} />
-              <ActionCard icon="share-alt" label="Dijeli" onPress={() => router.push({ pathname: "/(tabs)/templates/template/[id]/dijeli", params: { id: String(id) } })} />
-              <ActionCard icon="truck" label="Kreiraj otpremu" onPress={() => router.push({ pathname: "/(tabs)/templates/template/[id]/otpremi", params: { id: String(id) } })} />
+              <ActionCard
+                icon="pencil"
+                label="Uredi"
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/templates/template/[id]/uredi",
+                    params: { id: String(id) },
+                  })
+                }
+              />
+              <ActionCard
+                icon="file-text-o"
+                label="Dokumenti"
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/templates/template/[id]/dokumenti",
+                    params: { id: String(id) },
+                  })
+                }
+              />
+              <ActionCard
+                icon="share-alt"
+                label="Dijeli"
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/templates/template/[id]/dijeli",
+                    params: { id: String(id) },
+                  })
+                }
+              />
+              <ActionCard
+                icon="truck"
+                label="Kreiraj otpremu"
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/templates/template/[id]/otpremi",
+                    params: { id: String(id) },
+                  })
+                }
+              />
             </View>
 
-            <Pressable style={[s.danger]} onPress={() => setConfirmDel(true)}>
+            <Pressable style={s.danger} onPress={() => setConfirmDel(true)}>
               <FontAwesome name="trash" size={14} color={Colors.dangerText} />
               <Text style={s.dangerText}>Obriši predložak</Text>
             </Pressable>
@@ -62,10 +114,11 @@ export default function PredlozakDetalji() {
               onConfirm={async () => {
                 await delM.mutateAsync(id);
                 setConfirmDel(false);
-                router.back();
+
+                // ✅ always go to templates root (MOJI)
+                backToMoji();
               }}
             />
-
           </>
         )}
       </View>

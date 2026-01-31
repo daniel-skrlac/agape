@@ -13,6 +13,7 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
 import { Sheet } from "@/components/Sheet";
 import Colors from "@/constants/Colors";
+import TemplatesHeader from "../../TemplatesHeader";
 
 type DraftMode = "POSTUJ_PREDLOZAK" | "SVE_SKICA" | "SVE_KONACNO";
 
@@ -68,6 +69,7 @@ export default function KreirajOtpremu() {
 
   return (
     <Screen>
+      <TemplatesHeader title="Otpremi" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
       <View style={s.container}>
         {!!err && <Banner type="error" text={err} />}
 

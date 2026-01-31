@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-29 19:07:01.
+// Generated using typescript-generator version 3.2.1263 on 2026-01-31 18:59:14.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -129,6 +129,14 @@ export interface WarehouseDTO {
     name: string;
 }
 
+export interface ItemDescriptorResponseDTO {
+    itemId: number;
+    code: string;
+    name: string;
+    unit: string;
+    barcode: string;
+}
+
 export interface PartnerResponseDTO {
     id: number;
     tenantId: number;
@@ -172,6 +180,12 @@ export interface StockStatisticsTotalsDTO {
     totalStockQty: number;
 }
 
+export interface FolderCopyRequestDTO {
+    targetParentId: number;
+    includeSubfolders: boolean;
+    includeTemplates: boolean;
+}
+
 export interface FolderCreateRequestDTO {
     parentId: number;
     name: string;
@@ -189,12 +203,35 @@ export interface FolderResponseDTO {
     updatedAt: Date;
 }
 
+export interface TemplateBookDocPatchDTO {
+    documentId: number;
+    addItems: TemplateBookItemDTO[];
+    setItems: TemplateBookItemDTO[];
+    removeItemIds: number[];
+    draftOverride: boolean;
+    noteOverride: string;
+}
+
+export interface TemplateBookExtraDocDTO {
+    documentId: number;
+    draft: boolean;
+    note: string;
+    items: TemplateBookItemDTO[];
+}
+
+export interface TemplateBookItemDTO {
+    itemId: number;
+    quantity: number;
+}
+
 export interface TemplateBookManyRequestDTO {
     templateId: number;
     warehouseId: number;
     partnerIds: number[];
     documentDate: Date;
     draftOverride: boolean;
+    docPatches: TemplateBookDocPatchDTO[];
+    extraDocuments: TemplateBookExtraDocDTO[];
 }
 
 export interface TemplateBookOneRequestDTO {
@@ -203,11 +240,13 @@ export interface TemplateBookOneRequestDTO {
     partnerId: number;
     documentDate: Date;
     draftOverride: boolean;
+    docPatches: TemplateBookDocPatchDTO[];
+    extraDocuments: TemplateBookExtraDocDTO[];
 }
 
 export interface TemplateCopyRequestDTO {
-    newName: string;
     folderId: number;
+    newName: string;
 }
 
 export interface TemplateCreateRequestDTO {

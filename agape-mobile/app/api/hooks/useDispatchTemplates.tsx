@@ -187,3 +187,17 @@ export function useBookMany() {
     mutationFn: (payload: TemplateBookManyRequestDTO) => dispatchTemplateService.bookMany(payload),
   });
 }
+
+export function useDeleteDoc() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (args: { templateId: number; templateDocId: number }) =>
+      dispatchTemplateService.deleteTemplateDoc(args.templateId, args.templateDocId),
+
+    onSuccess: (_res, args) => {
+      qc.invalidateQueries({ queryKey: keys.one(args.templateId) });
+      qc.invalidateQueries({ queryKey: ["tpl-list"] });
+    },
+  });
+}

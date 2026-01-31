@@ -22,6 +22,7 @@ import {
   useTemplateFolders,
   useTemplateList,
 } from "@/app/api/hooks/useDispatchTemplates";
+import TemplatesHeader from "./TemplatesHeader";
 
 type Mode = "SVE" | "MOJI" | "DIJELJENI";
 

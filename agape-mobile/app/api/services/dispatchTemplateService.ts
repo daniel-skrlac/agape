@@ -88,4 +88,10 @@ export const dispatchTemplateService = {
   bookMany(payload: TemplateBookManyRequestDTO, signal?: AbortSignal) {
     return api.request<DispatchBulkResponseDTO>("/api/v1/dispatch-template-booking/bulk", { method: "POST", body: payload, signal });
   },
+  deleteTemplateDoc(templateId: number, templateDocId: number, signal?: AbortSignal) {
+    return api.request<void>(
+      `/api/v1/dispatch-templates/${templateId}/documents/${templateDocId}`,
+      { method: "DELETE", signal }
+    );
+  },
 };

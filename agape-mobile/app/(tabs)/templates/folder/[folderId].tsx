@@ -21,20 +21,21 @@ import {
   useTemplateFolders,
   useTemplateList,
 } from "@/app/api/hooks/useDispatchTemplates";
+import TemplatesHeader from "../TemplatesHeader";
 
 type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
 type Entry =
   | { kind: "FOLDER"; id: number; name: string }
   | {
-      kind: "TPL";
-      id: number;
-      name: string;
-      description?: string | null;
-      householdSize?: number | null;
-      shared?: boolean;
-      sharedPermission?: "VIEW" | "BOOK" | null;
-    };
+    kind: "TPL";
+    id: number;
+    name: string;
+    description?: string | null;
+    householdSize?: number | null;
+    shared?: boolean;
+    sharedPermission?: "VIEW" | "BOOK" | null;
+  };
 
 function RightActionButton({
   label,
@@ -221,25 +222,17 @@ export default function TemplatesFolderScreen() {
         {!!errText && <Banner type="error" text={String(errText)} />}
 
         {/* ✅ custom header: back + naslov + Dodaj */}
-        <View style={s.headerRow}>
-          <Pressable onPress={() => router.back()} hitSlop={10} style={s.backBtn}>
-            <FontAwesome name="chevron-left" size={14} color={Colors.text} />
-          </Pressable>
-
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={s.h1} numberOfLines={1}>
-              {folderName}
-            </Text>
-            <Text style={s.h2} numberOfLines={1}>
-              Podmape i predlošci
-            </Text>
-          </View>
-
-          <Pressable style={s.addBtn} onPress={() => setAddOpen(true)} hitSlop={10}>
-            <FontAwesome name="plus" size={14} color="#fff" />
-            <Text style={s.addText}>Dodaj</Text>
-          </Pressable>
-        </View>
+        <TemplatesHeader
+          title={folderName}
+          subtitle="Podmape i predlošci"
+          fallbackHref="/(tabs)/templates"
+          right={
+            <Pressable style={s.addBtn} onPress={() => setAddOpen(true)} hitSlop={10}>
+              <FontAwesome name="plus" size={14} color="#fff" />
+              <Text style={s.addText}>Dodaj</Text>
+            </Pressable>
+          }
+        />
 
         <TextInput value={q} onChangeText={setQ} placeholder="Pretraži…" placeholderTextColor={Colors.sub} style={s.search} />
 
@@ -248,7 +241,7 @@ export default function TemplatesFolderScreen() {
           keyExtractor={(x) => `${x.kind}-${x.id}`}
           refreshing={refreshing}
           onRefresh={onRefresh}
-          removeClippedSubviews={false} // ✅ bitno za iOS swipeable glitch
+          removeClippedSubviews={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ gap: 10, paddingBottom: 24 }}
           renderItem={({ item }) => {
@@ -343,7 +336,7 @@ export default function TemplatesFolderScreen() {
               style={s.addItem}
               onPress={() => {
                 setAddOpen(false);
-                router.push({ pathname: "/(tabs)/templates/novi", params: { folderId: String(folderId) } });
+                router.push({ pathname: "/(tabs)/templates/template/novi", params: { folderId: String(folderId) } });
               }}
             >
               <FontAwesome name="file-text-o" size={16} color={Colors.text} />
