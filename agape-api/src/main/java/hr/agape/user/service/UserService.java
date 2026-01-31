@@ -27,7 +27,6 @@ public class UserService {
     private final AuthUtil authUtil;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
     public UserService(UserRepository userRepo, UserMapper userMapper, UserDirectoryMapper directoryMapper, AuthUtil authUtil) {
         this.userRepo = userRepo;
         this.userMapper = userMapper;

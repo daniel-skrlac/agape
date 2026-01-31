@@ -435,6 +435,46 @@ public class DispatchTemplateService {
     }
 
     @Transactional
+    public ServiceResponseDTO<Void> deleteTemplateDoc(Long templateId, Long templateDocId) {
+        try {
+            Long userId = authUtil.requireUserId();
+
+            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
+            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
+
+            if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
+                return ServiceResponseDirector.errorBadRequest("Template has no documents.");
+            }
+
+            DispatchTemplateDocEntity doc = null;
+            for (DispatchTemplateDocEntity d : t.getDocuments()) {
+                if (d.getId() != null && d.getId().equals(templateDocId)) {
+                    doc = d;
+                    break;
+                }
+            }
+
+            if (doc == null) return ServiceResponseDirector.errorNotFound("Template document not found.");
+
+            t.getDocuments().remove(doc);
+
+            if (doc.getItems() != null) {
+                for (DispatchTemplateDocItemEntity it : doc.getItems()) {
+                    it.delete();
+                }
+                doc.getItems().clear();
+            }
+
+            doc.delete();
+            t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
+
+            return ServiceResponseDirector.successOk(null, "Template document deleted.");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to delete template document: " + e.getMessage());
+        }
+    }
+
+    @Transactional
     public ServiceResponseDTO<FolderResponseDTO> renameFolder(Long folderId, FolderRenameRequestDTO req) {
         try {
             Long userId = authUtil.requireUserId();

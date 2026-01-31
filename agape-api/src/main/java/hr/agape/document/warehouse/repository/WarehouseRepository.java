@@ -102,4 +102,30 @@ public class WarehouseRepository {
             return out;
         }
     }
+
+    public List<WarehouseDTO> listWarehousesForDocument(int documentId) throws SQLException {
+        final String sql = """
+                SELECT DISTINCT r.SKLADISTE_ID AS WID
+                FROM SD_SIFREG r
+                WHERE r.DOKUMENT_ID = ?
+                ORDER BY r.SKLADISTE_ID
+                """;
+
+        List<WarehouseDTO> out = new ArrayList<>();
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, documentId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int wid = rs.getInt("WID");
+                    out.add(WarehouseDTO.builder()
+                            .warehouseId(wid)
+                            .name("Skladiste " + wid)
+                            .build());
+                }
+            }
+        }
+        return out;
+    }
 }

@@ -102,35 +102,50 @@ public class DocumentDirectoryService {
     }
 
     @Transactional
-    public ServiceResponseDTO<PagedResultDTO<WarehouseDTO>> pageWarehousesForDocument(int documentId, int page, int size) {
+    public ServiceResponseDTO<List<DocumentDescriptorResponseDTO>> listDocumentDescriptors(
+            Long warehouseId,
+            String documentCode,
+            String q
+    ) {
         try {
-            int p = Math.max(0, page);
-            int s = Math.max(1, size);
-            int offset = p * s;
+            String qq = (q == null) ? null : q.trim();
+            String code = (documentCode == null) ? null : documentCode.trim();
+            boolean hasCode = code != null && !code.isBlank();
 
-            long total = warehouseRepo.countWarehousesForDocument(documentId);
-            if (total == 0) {
-                return ServiceResponseDirector.errorNotFound(
-                        "No warehouses found for documentId " + documentId
-                );
+            if (hasCode) {
+                return docTypeRepo.findDocumentSlotByCodeAndWarehouse(warehouseId, code)
+                        .map(v -> ServiceResponseDirector.successOk(
+                                List.of(mapper.toResponseDto(v)),
+                                "OK"
+                        ))
+                        .orElseGet(() -> ServiceResponseDirector.successOk(List.of(), "OK"));
             }
 
-            List<WarehouseDTO> items = warehouseRepo.pageWarehousesForDocument(documentId, offset, s);
+            List<DocumentSlotTypeView> slotViews = docTypeRepo.listDocumentSlots(warehouseId, null, qq);
 
-            PagedResultDTO<WarehouseDTO> result =
-                    PagedResultDTO.<WarehouseDTO>builder()
-                            .items(items)
-                            .page(p)
-                            .size(s)
-                            .total(total)
-                            .build();
+            List<DocumentDescriptorResponseDTO> dtoList = slotViews.stream()
+                    .map(mapper::toResponseDto)
+                    .collect(Collectors.toList());
 
-            return ServiceResponseDirector.successOk(result, "OK");
+            return ServiceResponseDirector.successOk(dtoList, "OK");
         } catch (Exception e) {
             tsr.setRollbackOnly();
-            return ServiceResponseDirector.errorInternal(
-                    "Failed to load warehouses: " + e.getMessage()
-            );
+            return ServiceResponseDirector.errorInternal("Failed to load document types: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public ServiceResponseDTO<List<WarehouseDTO>> listWarehousesForDocument(int documentId) {
+        try {
+            List<WarehouseDTO> items = warehouseRepo.listWarehousesForDocument(documentId);
+
+            if (items == null || items.isEmpty()) {
+                return ServiceResponseDirector.errorNotFound("No warehouses found for documentId " + documentId);
+            }
+
+            return ServiceResponseDirector.successOk(items, "OK");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to load warehouses: " + e.getMessage());
         }
     }
 }

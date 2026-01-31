@@ -39,21 +39,17 @@ public class DocumentDirectoryResource {
 
     @GET
     @Path("/doc-types")
-    public Response pageDocumentDescriptors(
-            @QueryParam("page") @DefaultValue("0") int page,
-            @QueryParam("size") @DefaultValue("20") int size,
+    public Response listDocumentDescriptors(
+            @QueryParam("warehouseId") Long warehouseId,
+            @QueryParam("documentCode") String documentCode,
             @QueryParam("q") String q
     ) {
-        return Responses.from(service.pageDocumentDescriptors(page, size, q));
+        return Responses.from(service.listDocumentDescriptors(warehouseId, documentCode, q));
     }
 
     @GET
     @Path("/doc-types/{documentId}/warehouses")
-    public Response pageWarehousesForDocument(
-            @PathParam("documentId") int documentId,
-            @QueryParam("page") @DefaultValue("0") int page,
-            @QueryParam("size") @DefaultValue("10") int size
-    ) {
-        return Responses.from(service.pageWarehousesForDocument(documentId, page, size));
+    public Response listWarehousesForDocument(@PathParam("documentId") int documentId) {
+        return Responses.from(service.listWarehousesForDocument(documentId));
     }
 }

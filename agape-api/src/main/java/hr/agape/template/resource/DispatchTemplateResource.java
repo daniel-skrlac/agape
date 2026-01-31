@@ -91,4 +91,13 @@ public class DispatchTemplateResource {
     ) {
         return Responses.from(service.replaceTemplateDocItems(templateId, templateDocId, items));
     }
+
+    @DELETE
+    @Path("/{id}/documents/{templateDocId}")
+    public Response deleteTemplateDoc(
+            @PathParam("id") Long templateId,
+            @PathParam("templateDocId") Long templateDocId
+    ) {
+        return Responses.from(service.deleteTemplateDoc(templateId, templateDocId));
+    }
 }
