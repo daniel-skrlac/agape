@@ -3,11 +3,44 @@ package hr.agape.template.repository;
 import hr.agape.template.domain.DispatchTemplateEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @ApplicationScoped
 public class DispatchTemplateRepository implements PanacheRepository<DispatchTemplateEntity> {
+
+    @Inject
+    EntityManager em;
+
+    public boolean existsOwnedDoc(Long templateId, Long templateDocId, Long ownerUserId) {
+        Long cnt = em.createQuery("""
+                SELECT COUNT(d.id)
+                FROM DispatchTemplateDocEntity d
+                WHERE d.id = :docId
+                  AND d.template.id = :templateId
+                  AND d.template.owner.id = :ownerId
+                """, Long.class)
+                .setParameter("docId", templateDocId)
+                .setParameter("templateId", templateId)
+                .setParameter("ownerId", ownerUserId)
+                .getSingleResult();
+
+        return cnt != null && cnt > 0;
+    }
+
+    public int touchUpdatedAt(Long templateId, OffsetDateTime now) {
+        return em.createQuery("""
+                UPDATE DispatchTemplateEntity t
+                SET t.updatedAt = :now
+                WHERE t.id = :id
+                """)
+                .setParameter("now", now)
+                .setParameter("id", templateId)
+                .executeUpdate();
+    }
 
     public List<String> listNamesForOwnerAndFolder(Long ownerUserId, Long folderId, Long excludeTemplateId) {
         if (folderId == null) {

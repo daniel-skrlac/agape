@@ -15,6 +15,7 @@ import hr.agape.template.enumeration.DispatchTemplateSharePermission;
 import hr.agape.template.mapper.DispatchTemplateFolderMapper;
 import hr.agape.template.mapper.DispatchTemplateMapper;
 import hr.agape.template.mapper.DispatchTemplateShareMapper;
+import hr.agape.template.repository.DispatchTemplateDocItemRepository;
 import hr.agape.template.repository.DispatchTemplateFolderRepository;
 import hr.agape.template.repository.DispatchTemplateRepository;
 import hr.agape.template.repository.DispatchTemplateShareRepository;
@@ -23,7 +24,9 @@ import hr.agape.user.repository.UserRepository;
 import hr.agape.user.util.AuthUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
+import org.jboss.logging.Logger;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,6 +43,8 @@ public class DispatchTemplateService {
     private final DispatchTemplateFolderRepository folderRepo;
     private final DispatchTemplateRepository templateRepo;
     private final DispatchTemplateShareRepository dispatchTemplateShareRepo;
+    private final DispatchTemplateDocItemRepository docItemRepo;
+
     private final UserRepository userRepo;
 
     private final DispatchTemplateFolderMapper folderMapper;
@@ -53,7 +58,7 @@ public class DispatchTemplateService {
     public DispatchTemplateService(
             DispatchTemplateFolderRepository folderRepo,
             DispatchTemplateRepository templateRepo,
-            DispatchTemplateShareRepository dispatchTemplateShareRepo,
+            DispatchTemplateShareRepository dispatchTemplateShareRepo, DispatchTemplateDocItemRepository docItemRepo,
             UserRepository userRepo,
             DispatchTemplateFolderMapper folderMapper,
             DispatchTemplateMapper templateMapper,
@@ -64,6 +69,7 @@ public class DispatchTemplateService {
         this.folderRepo = folderRepo;
         this.templateRepo = templateRepo;
         this.dispatchTemplateShareRepo = dispatchTemplateShareRepo;
+        this.docItemRepo = docItemRepo;
         this.userRepo = userRepo;
         this.folderMapper = folderMapper;
         this.templateMapper = templateMapper;
@@ -690,7 +696,14 @@ public class DispatchTemplateService {
             if (req.getFolderId() != null) {
                 DispatchTemplateFolderEntity folder = folderRepo.findOwned(req.getFolderId(), userId);
                 if (folder == null) return ServiceResponseDirector.errorBadRequest("Folder not found.");
+
+                boolean changed = t.getFolder() == null || t.getFolder().getId() == null || !t.getFolder().getId().equals(folder.getId());
+
                 t.setFolder(folder);
+
+                if (changed && t.getName() != null) {
+                    t.setName(makeUniqueTemplateNameForFolder(userId, folder, t.getName(), t.getId()));
+                }
             }
 
             t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
@@ -699,6 +712,61 @@ public class DispatchTemplateService {
             return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template updated.");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to update template: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public ServiceResponseDTO<FolderResponseDTO> moveFolder(Long folderId, FolderMoveRequestDTO req) {
+        try {
+            Long userId = authUtil.requireUserId();
+
+            DispatchTemplateFolderEntity f = folderRepo.findOwned(folderId, userId);
+            if (f == null) return ServiceResponseDirector.errorNotFound("Folder not found.");
+
+            Long targetParentId = (req == null ? null : req.getTargetParentId());
+            DispatchTemplateFolderEntity targetParent = null;
+
+            if (targetParentId != null) {
+                if (targetParentId.equals(folderId)) {
+                    return ServiceResponseDirector.errorBadRequest("Cannot move a folder into itself.");
+                }
+
+                targetParent = folderRepo.findOwned(targetParentId, userId);
+                if (targetParent == null) {
+                    return ServiceResponseDirector.errorBadRequest("Target folder not found.");
+                }
+
+                // prevent cycles (moving under a descendant)
+                var all = folderRepo.listForOwner(userId);
+                Map<Long, Long> parentById = new HashMap<>();
+                for (DispatchTemplateFolderEntity x : all) {
+                    if (x.getId() == null) continue;
+                    Long pid = (x.getParent() == null ? null : x.getParent().getId());
+                    parentById.put(x.getId(), pid);
+                }
+
+                Long cur = targetParentId;
+                while (cur != null) {
+                    if (cur.equals(folderId)) {
+                        return ServiceResponseDirector.errorBadRequest("Cannot move folder under its own child.");
+                    }
+                    cur = parentById.get(cur);
+                }
+            }
+
+            // ensure unique name in destination parent
+            List<String> siblingNames = folderRepo.listChildNamesExcluding(userId, targetParentId, folderId);
+            String uniqueName = makeUnique(f.getName(), siblingNames);
+            if (!Objects.equals(uniqueName, f.getName())) {
+                f.setName(uniqueName);
+            }
+
+            f.setParent(targetParent);
+            f.setUpdatedAt(OffsetDateTime.now(ZAGREB));
+
+            return ServiceResponseDirector.successOk(folderMapper.toDto(f), "Folder moved.");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to move folder: " + e.getMessage());
         }
     }
 
@@ -757,6 +825,43 @@ public class DispatchTemplateService {
     }
 
     @Transactional
+    public ServiceResponseDTO<TemplateResponseDTO> moveTemplate(Long templateId, TemplateMoveRequestDTO req) {
+        try {
+            Long userId = authUtil.requireUserId();
+
+            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
+            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
+
+            // Owner-only: shared user ne bi trebao reorganizirati tvoje foldere
+            if (t.getOwner() == null || !Objects.equals(t.getOwner().getId(), userId)) {
+                return ServiceResponseDirector.errorBadRequest("Only owner can move template.");
+            }
+
+            Long targetFolderId = (req == null ? null : req.getTargetFolderId());
+
+            DispatchTemplateFolderEntity folder = null;
+            if (targetFolderId != null) {
+                folder = folderRepo.findOwned(targetFolderId, userId);
+                if (folder == null) return ServiceResponseDirector.errorBadRequest("Folder not found.");
+            }
+
+            t.setFolder(folder);
+
+            // Uniqueness u odredišnoj mapi, ali zadrži naziv
+            if (t.getName() != null) {
+                t.setName(makeUniqueTemplateNameForFolder(userId, folder, t.getName(), t.getId()));
+            }
+
+            t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
+
+            DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
+            return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template moved.");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to move template: " + e.getMessage());
+        }
+    }
+
+    @Transactional
     public ServiceResponseDTO<TemplateResponseDTO> replaceTemplateDocItems(
             Long templateId,
             Long templateDocId,
@@ -769,28 +874,26 @@ public class DispatchTemplateService {
             if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
             if (t.getDocuments() == null) return ServiceResponseDirector.errorBadRequest("Template has no documents.");
 
-            DispatchTemplateDocEntity doc = null;
-            for (DispatchTemplateDocEntity d : t.getDocuments()) {
-                if (d.getId() != null && d.getId().equals(templateDocId)) {
-                    doc = d;
-                    break;
+            if (!templateRepo.existsOwnedDoc(templateId, templateDocId, userId)) {
+                return ServiceResponseDirector.errorBadRequest("Template document not found.");
+            }
+
+            Map<Long, BigDecimal> qtyByItemId = new LinkedHashMap<>();
+            if (items != null) {
+                for (TemplateItemUpsertRequestDTO it : items) {
+                    if (it == null || it.getItemId() == null) continue;
+                    if (it.getQuantity() == null || it.getQuantity().signum() <= 0) continue;
+                    qtyByItemId.merge(it.getItemId(), it.getQuantity(), BigDecimal::add);
                 }
             }
-            if (doc == null) return ServiceResponseDirector.errorBadRequest("Template document not found.");
 
-            if (doc.getItems() == null) doc.setItems(new ArrayList<>());
-            else doc.getItems().clear();
-
-            for (TemplateItemUpsertRequestDTO it : items) {
-                DispatchTemplateDocItemEntity ent = new DispatchTemplateDocItemEntity();
-                ent.setTemplateDoc(doc);
-                ent.setItemId(it.getItemId());
-                ent.setQuantity(it.getQuantity());
-                ent.setSortOrder(it.getSortOrder());
-                doc.getItems().add(ent);
+            if (qtyByItemId.isEmpty()) {
+                return ServiceResponseDirector.errorBadRequest("Document must contain at least one valid item.");
             }
 
-            t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
+            docItemRepo.replaceAllForDoc(templateDocId, qtyByItemId);
+
+            templateRepo.touchUpdatedAt(templateId, OffsetDateTime.now(ZAGREB));
 
             DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
             return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template items replaced.");
@@ -798,10 +901,6 @@ public class DispatchTemplateService {
             return ServiceResponseDirector.errorInternal("Failed to replace template items: " + e.getMessage());
         }
     }
-
-    // ------------------------------------------------------------
-    // BUILD REQUESTS (patches + extras)
-    // ------------------------------------------------------------
 
     private static List<DispatchRequestDTO> buildRequestsForPartner(
             Long warehouseId,

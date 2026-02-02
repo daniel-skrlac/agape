@@ -44,10 +44,4 @@ public class DispatchTemplateShareResource {
     public Response revoke(@PathParam("id") Long templateId, @PathParam("shareId") Long shareId) {
         return Responses.from(service.revokeShare(templateId, shareId));
     }
-
-    @POST
-    @Path("/{id}/copy")
-    public Response copy(@PathParam("id") Long templateId, @Valid TemplateCopyRequestDTO req) {
-        return Responses.from(service.copyTemplateIntoMyAccount(templateId, req));
-    }
 }

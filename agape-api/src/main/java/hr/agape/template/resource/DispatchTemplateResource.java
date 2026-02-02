@@ -2,9 +2,11 @@ package hr.agape.template.resource;
 
 import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
+import hr.agape.template.dto.TemplateCopyRequestDTO;
 import hr.agape.template.dto.TemplateCreateRequestDTO;
 import hr.agape.template.dto.TemplateDocUpsertRequestDTO;
 import hr.agape.template.dto.TemplateItemUpsertRequestDTO;
+import hr.agape.template.dto.TemplateMoveRequestDTO;
 import hr.agape.template.dto.TemplateUpdateRequestDTO;
 import hr.agape.template.service.DispatchTemplateService;
 import jakarta.annotation.security.RolesAllowed;
@@ -65,6 +67,18 @@ public class DispatchTemplateResource {
     @Path("/{id}")
     public Response updateTemplate(@PathParam("id") Long id, @Valid TemplateUpdateRequestDTO req) {
         return Responses.from(service.updateTemplate(id, req));
+    }
+
+    @POST
+    @Path("/{id}/copy")
+    public Response copyTemplate(@PathParam("id") Long id, @Valid TemplateCopyRequestDTO req) {
+        return Responses.from(service.copyTemplateIntoMyAccount(id, req));
+    }
+
+    @PUT
+    @Path("/{id}/move")
+    public Response moveTemplate(@PathParam("id") Long id, @Valid TemplateMoveRequestDTO req) {
+        return Responses.from(service.moveTemplate(id, req));
     }
 
     @DELETE

@@ -4,6 +4,7 @@ import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
 import hr.agape.template.dto.FolderCopyRequestDTO;
 import hr.agape.template.dto.FolderCreateRequestDTO;
+import hr.agape.template.dto.FolderMoveRequestDTO;
 import hr.agape.template.dto.FolderRenameRequestDTO;
 import hr.agape.template.service.DispatchTemplateService;
 import jakarta.annotation.security.RolesAllowed;
@@ -51,12 +52,17 @@ public class DispatchTemplateFolderResource {
         return Responses.from(service.renameFolder(id, req));
     }
 
+    @PUT
+    @Path("/{id}/move")
+    public Response moveFolder(@PathParam("id") Long id, @Valid FolderMoveRequestDTO req) {
+        return Responses.from(service.moveFolder(id, req));
+    }
+
     @POST
     @Path("/{id}/copy")
     public Response copyFolder(@PathParam("id") Long id, @Valid FolderCopyRequestDTO req) {
         return Responses.from(service.copyFolderTree(id, req));
     }
-
 
     @DELETE
     @Path("/{id}")
