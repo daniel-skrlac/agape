@@ -44,7 +44,7 @@ function accent(mode: Mode) {
   return { bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.28)", text: Colors.orange };
 }
 
-function RightActionButton({
+function SwipeActionButton({
   label,
   icon,
   danger,
@@ -60,7 +60,7 @@ function RightActionButton({
   index: number;
 }) {
   const rStyle = useAnimatedStyle(() => {
-    const t = interpolate(progress.value, [0, 1], [40 * (index + 1), 0]);
+    const t = interpolate(progress.value, [0, 1], [42 * (index + 1), 0]);
     const o = interpolate(progress.value, [0, 1], [0, 1]);
     return { transform: [{ translateX: t }], opacity: o };
   });
@@ -81,8 +81,6 @@ export default function TemplatesRoot() {
 
   const foldersQ = useTemplateFolders();
   const allFolders = foldersQ.data ?? [];
-
-  // root folderi = parentId null
   const rootFolders = useMemo(() => allFolders.filter((f: any) => f.parentId == null), [allFolders]);
 
   const includeShared = mode !== "MOJI";
@@ -95,8 +93,6 @@ export default function TemplatesRoot() {
   const deleteTplM = useDeleteTemplate();
 
   const [errMsg, setErrMsg] = useState<string | null>(null);
-
-  // ✅ refreshing samo kad user povuče
   const [refreshing, setRefreshing] = useState(false);
 
   const a = accent(mode);
@@ -124,7 +120,7 @@ export default function TemplatesRoot() {
     return [...folderEntries, ...tplEntries].sort((x, y) => x.name.localeCompare(y.name, "hr", { sensitivity: "base" }));
   }, [rootFolders, templates, q, mode]);
 
-  // modali/sheets
+  // sheets
   const [addOpen, setAddOpen] = useState(false);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -141,6 +137,10 @@ export default function TemplatesRoot() {
   const [deleteTplOpen, setDeleteTplOpen] = useState(false);
   const [deleteTplId, setDeleteTplId] = useState<number | null>(null);
   const [deleteTplLabel, setDeleteTplLabel] = useState("");
+
+  // ✅ “Više”
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreItem, setMoreItem] = useState<Entry | null>(null);
 
   const openFolder = (folderId: number, folderName: string) => {
     router.push({
@@ -159,23 +159,30 @@ export default function TemplatesRoot() {
     }
   };
 
+  const openMore = (item: Entry) => {
+    setMoreItem(item);
+    setMoreOpen(true);
+  };
+
   const renderRightActions = (item: Entry, progress: SharedValue<number>, close: () => void) => {
-    if (item.kind === "FOLDER") {
-      return (
-        <View style={sw.actions}>
-          <RightActionButton
-            label="Preimenuj"
-            icon="pencil"
-            progress={progress}
-            index={0}
-            onPress={() => {
-              close();
-              setRenameId(item.id);
-              setRenameName(item.name);
-              setRenameOpen(true);
-            }}
-          />
-          <RightActionButton
+    const canDeleteTpl = item.kind === "TPL" && canEditDeleteTemplate({ shared: item.shared, sharedPermission: item.sharedPermission });
+    const canDeleteFolder = item.kind === "FOLDER" && mode !== "DIJELJENI";
+
+    return (
+      <View style={sw.actions}>
+        <SwipeActionButton
+          label="Više"
+          icon="ellipsis-h"
+          progress={progress}
+          index={0}
+          onPress={() => {
+            close();
+            openMore(item);
+          }}
+        />
+
+        {(canDeleteFolder || canDeleteTpl) && (
+          <SwipeActionButton
             label="Obriši"
             icon="trash"
             danger
@@ -183,43 +190,18 @@ export default function TemplatesRoot() {
             index={1}
             onPress={() => {
               close();
-              setDeleteFolderId(item.id);
-              setDeleteFolderLabel(item.name);
-              setDeleteFolderOpen(true);
+              if (item.kind === "FOLDER") {
+                setDeleteFolderId(item.id);
+                setDeleteFolderLabel(item.name);
+                setDeleteFolderOpen(true);
+              } else {
+                setDeleteTplId(item.id);
+                setDeleteTplLabel(item.name);
+                setDeleteTplOpen(true);
+              }
             }}
           />
-        </View>
-      );
-    }
-
-    const can = canEditDeleteTemplate({ shared: item.shared, sharedPermission: item.sharedPermission });
-    if (!can) return <View style={sw.actions} />;
-
-    return (
-      <View style={sw.actions}>
-        <RightActionButton
-          label="Uredi"
-          icon="pencil"
-          progress={progress}
-          index={0}
-          onPress={() => {
-            close();
-            router.push({ pathname: "/(tabs)/templates/template/[id]", params: { id: String(item.id), edit: "1" } });
-          }}
-        />
-        <RightActionButton
-          label="Obriši"
-          icon="trash"
-          danger
-          progress={progress}
-          index={1}
-          onPress={() => {
-            close();
-            setDeleteTplId(item.id);
-            setDeleteTplLabel(item.name);
-            setDeleteTplOpen(true);
-          }}
-        />
+        )}
       </View>
     );
   };
@@ -256,10 +238,9 @@ export default function TemplatesRoot() {
         <FlatList
           data={entries}
           keyExtractor={(x) => `${x.kind}-${x.id}`}
-          // ✅ više ne koristimo isFetching kao refreshing → nema "polu spinnera"
           refreshing={refreshing}
           onRefresh={onRefresh}
-          removeClippedSubviews={false} // ✅ bitno za iOS + swipeable
+          removeClippedSubviews={false}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={s.listContent}
           renderItem={({ item }) => {
@@ -326,7 +307,9 @@ export default function TemplatesRoot() {
                   overshootRight={false}
                   friction={2}
                   rightThreshold={40}
-                  renderRightActions={(progress, _dragX, swipeable) => renderRightActions(item, progress, () => swipeable.close())}
+                  renderRightActions={(progress, _dragX, swipeable) =>
+                    renderRightActions(item, progress, () => swipeable.close())
+                  }
                 >
                   <Pressable onPress={onPress}>{card}</Pressable>
                 </ReanimatedSwipeable>
@@ -335,6 +318,135 @@ export default function TemplatesRoot() {
           }}
           ListEmptyComponent={<Text style={s.empty}>{foldersQ.isLoading || templatesQ.isLoading ? "Učitavam…" : "Nema podataka."}</Text>}
         />
+
+        {/* ✅ “VIŠE” ACTION SHEET */}
+        <CenterSheet
+          visible={moreOpen}
+          title={moreItem?.kind === "FOLDER" ? "Mapa" : "Predložak"}
+          onClose={() => setMoreOpen(false)}
+        >
+          <View style={{ gap: 12 }}>
+            {!!moreItem && (
+              <View style={s.moreHeader}>
+                <Text style={s.moreTitle} numberOfLines={2}>
+                  {moreItem.name}
+                </Text>
+                <Text style={s.moreSub}>Odaberi radnju</Text>
+              </View>
+            )}
+
+            {moreItem?.kind === "FOLDER" && mode !== "DIJELJENI" && (
+              <>
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    router.push({ pathname: "/(tabs)/templates/folder/premjesti", params: { folderId: String(moreItem.id) } });
+                  }}
+                >
+                  <FontAwesome name="arrow-right" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Premjesti</Text>
+                </Pressable>
+
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    router.push({ pathname: "/(tabs)/templates/folder/kopiraj", params: { folderId: String(moreItem.id) } });
+                  }}
+                >
+                  <FontAwesome name="copy" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Kopiraj</Text>
+                </Pressable>
+
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    setRenameId(moreItem.id);
+                    setRenameName(moreItem.name);
+                    setRenameOpen(true);
+                  }}
+                >
+                  <FontAwesome name="pencil" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Preimenuj</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.moreItem, { backgroundColor: Colors.dangerBg }]}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    setDeleteFolderId(moreItem.id);
+                    setDeleteFolderLabel(moreItem.name);
+                    setDeleteFolderOpen(true);
+                  }}
+                >
+                  <FontAwesome name="trash" size={16} color={Colors.dangerText} />
+                  <Text style={[s.moreItemText, { color: Colors.dangerText }]}>Obriši</Text>
+                </Pressable>
+              </>
+            )}
+
+            {moreItem?.kind === "TPL" && (
+              <>
+                {!moreItem.shared && (
+                  <Pressable
+                    style={s.moreItem}
+                    onPress={() => {
+                      setMoreOpen(false);
+                      router.push({ pathname: "/(tabs)/templates/template/[id]/premjesti", params: { id: String(moreItem.id) } });
+                    }}
+                  >
+                    <FontAwesome name="arrow-right" size={16} color={Colors.text} />
+                    <Text style={s.moreItemText}>Premjesti</Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    router.push({ pathname: "/(tabs)/templates/template/[id]/kopiraj", params: { id: String(moreItem.id) } });
+                  }}
+                >
+                  <FontAwesome name="copy" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Kopiraj</Text>
+                </Pressable>
+
+                {canEditDeleteTemplate({ shared: moreItem.shared, sharedPermission: moreItem.sharedPermission }) && (
+                  <>
+                    <Pressable
+                      style={s.moreItem}
+                      onPress={() => {
+                        setMoreOpen(false);
+                        router.push({
+                          pathname: "/(tabs)/templates/template/[id]/uredi",
+                          params: { id: String(moreItem.id), edit: "1" },
+                        });
+                      }}
+                    >
+                      <FontAwesome name="pencil" size={16} color={Colors.text} />
+                      <Text style={s.moreItemText}>Uredi</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[s.moreItem, { backgroundColor: Colors.dangerBg }]}
+                      onPress={() => {
+                        setMoreOpen(false);
+                        setDeleteTplId(moreItem.id);
+                        setDeleteTplLabel(moreItem.name);
+                        setDeleteTplOpen(true);
+                      }}
+                    >
+                      <FontAwesome name="trash" size={16} color={Colors.dangerText} />
+                      <Text style={[s.moreItemText, { color: Colors.dangerText }]}>Obriši</Text>
+                    </Pressable>
+                  </>
+                )}
+              </>
+            )}
+          </View>
+        </CenterSheet>
 
         {/* DODAJ */}
         <CenterSheet visible={addOpen} title="Dodaj" onClose={() => setAddOpen(false)}>
@@ -490,10 +602,40 @@ const s = StyleSheet.create({
 
   primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
   primaryText: { color: "#fff", fontWeight: "900" },
+
+  moreHeader: {
+    backgroundColor: Colors.bg,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    padding: 14,
+    gap: 6,
+  },
+  moreTitle: { fontWeight: "900", color: Colors.text, fontSize: 16 },
+  moreSub: { color: Colors.sub, fontWeight: "800" },
+
+  moreItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: "rgba(148,163,184,0.18)",
+  },
+  moreItemText: { fontWeight: "900", color: Colors.text },
 });
 
 const sw = StyleSheet.create({
-  actions: { height: "100%", flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingRight: 6 },
+  actions: {
+    height: "100%",
+    width: 210,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    paddingRight: 8,
+  },
   actionWrap: { height: "100%", justifyContent: "center" },
   actionBtn: { borderRadius: 16, paddingVertical: 12, paddingHorizontal: 12, minWidth: 92, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
   edit: { backgroundColor: "rgba(148,163,184,0.20)" },

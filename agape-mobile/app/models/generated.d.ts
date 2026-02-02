@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-01-31 18:59:14.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-02 20:26:01.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -191,6 +191,10 @@ export interface FolderCreateRequestDTO {
     name: string;
 }
 
+export interface FolderMoveRequestDTO {
+    targetParentId: number;
+}
+
 export interface FolderRenameRequestDTO {
     name: string;
 }
@@ -289,6 +293,10 @@ export interface TemplateItemUpsertRequestDTO {
     itemId: number;
     quantity: number;
     sortOrder: number;
+}
+
+export interface TemplateMoveRequestDTO {
+    targetFolderId: number;
 }
 
 export interface TemplateResponseDTO {

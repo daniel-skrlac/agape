@@ -25,7 +25,7 @@ export default function NewTemplateScreen() {
 
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  const [householdSize, setHouseholdSize] = useState(null);
+  const [householdSize, setHouseholdSize] = useState("");
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const targetLabel = folderId == null ? "Bez mape (root)" : folderName;

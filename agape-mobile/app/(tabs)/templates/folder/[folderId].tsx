@@ -37,7 +37,7 @@ type Entry =
     sharedPermission?: "VIEW" | "BOOK" | null;
   };
 
-function RightActionButton({
+function SwipeActionButton({
   label,
   icon,
   danger,
@@ -53,7 +53,7 @@ function RightActionButton({
   index: number;
 }) {
   const rStyle = useAnimatedStyle(() => {
-    const t = interpolate(progress.value, [0, 1], [40 * (index + 1), 0]);
+    const t = interpolate(progress.value, [0, 1], [42 * (index + 1), 0]);
     const o = interpolate(progress.value, [0, 1], [0, 1]);
     return { transform: [{ translateX: t }], opacity: o };
   });
@@ -85,7 +85,9 @@ export default function TemplatesFolderScreen() {
 
   const childFolders = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return allFolders.filter((f: any) => f.parentId === folderId && (!qq || String(f.name ?? "").toLowerCase().includes(qq)));
+    return allFolders.filter(
+      (f: any) => f.parentId === folderId && (!qq || String(f.name ?? "").toLowerCase().includes(qq))
+    );
   }, [allFolders, folderId, q]);
 
   const entries: Entry[] = useMemo(() => {
@@ -128,6 +130,10 @@ export default function TemplatesFolderScreen() {
   const [deleteTplId, setDeleteTplId] = useState<number | null>(null);
   const [deleteTplLabel, setDeleteTplLabel] = useState("");
 
+  // ✅ “Više” sheet (za folder i template)
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreItem, setMoreItem] = useState<Entry | null>(null);
+
   const openFolder = (id: number, name: string) => {
     router.push({
       pathname: "/(tabs)/templates/folder/[folderId]",
@@ -145,23 +151,32 @@ export default function TemplatesFolderScreen() {
     }
   };
 
+  const openMore = (item: Entry) => {
+    setMoreItem(item);
+    setMoreOpen(true);
+  };
+
   const renderRightActions = (item: Entry, progress: SharedValue<number>, close: () => void) => {
-    if (item.kind === "FOLDER") {
-      return (
-        <View style={sw.actions}>
-          <RightActionButton
-            label="Preimenuj"
-            icon="pencil"
-            progress={progress}
-            index={0}
-            onPress={() => {
-              close();
-              setRenameId(item.id);
-              setRenameName(item.name);
-              setRenameOpen(true);
-            }}
-          />
-          <RightActionButton
+    // ✅ max 2 gumba → nema overflowa
+    const canDeleteTpl = item.kind === "TPL" && canEditDeleteTemplate({ shared: item.shared, sharedPermission: item.sharedPermission });
+
+    const canDeleteFolder = item.kind === "FOLDER" && mode !== "DIJELJENI"; // u shared view ne radimo folder akcije
+
+    return (
+      <View style={sw.actions}>
+        <SwipeActionButton
+          label="Više"
+          icon="ellipsis-h"
+          progress={progress}
+          index={0}
+          onPress={() => {
+            close();
+            openMore(item);
+          }}
+        />
+
+        {(canDeleteFolder || canDeleteTpl) && (
+          <SwipeActionButton
             label="Obriši"
             icon="trash"
             danger
@@ -169,43 +184,18 @@ export default function TemplatesFolderScreen() {
             index={1}
             onPress={() => {
               close();
-              setDeleteFolderId(item.id);
-              setDeleteFolderLabel(item.name);
-              setDeleteFolderOpen(true);
+              if (item.kind === "FOLDER") {
+                setDeleteFolderId(item.id);
+                setDeleteFolderLabel(item.name);
+                setDeleteFolderOpen(true);
+              } else {
+                setDeleteTplId(item.id);
+                setDeleteTplLabel(item.name);
+                setDeleteTplOpen(true);
+              }
             }}
           />
-        </View>
-      );
-    }
-
-    const can = canEditDeleteTemplate({ shared: item.shared, sharedPermission: item.sharedPermission });
-    if (!can) return <View style={sw.actions} />;
-
-    return (
-      <View style={sw.actions}>
-        <RightActionButton
-          label="Uredi"
-          icon="pencil"
-          progress={progress}
-          index={0}
-          onPress={() => {
-            close();
-            router.push({ pathname: "/(tabs)/templates/template/[id]", params: { id: String(item.id), edit: "1" } });
-          }}
-        />
-        <RightActionButton
-          label="Obriši"
-          icon="trash"
-          danger
-          progress={progress}
-          index={1}
-          onPress={() => {
-            close();
-            setDeleteTplId(item.id);
-            setDeleteTplLabel(item.name);
-            setDeleteTplOpen(true);
-          }}
-        />
+        )}
       </View>
     );
   };
@@ -214,14 +204,12 @@ export default function TemplatesFolderScreen() {
 
   return (
     <Screen>
-      {/* ✅ jedan back: sakrij Stack header */}
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={s.container}>
         {!!errMsg && <Banner type="error" text={errMsg} />}
         {!!errText && <Banner type="error" text={String(errText)} />}
 
-        {/* ✅ custom header: back + naslov + Dodaj */}
         <TemplatesHeader
           title={folderName}
           subtitle="Podmape i predlošci"
@@ -268,7 +256,11 @@ export default function TemplatesFolderScreen() {
               <View style={[s.card, item.shared ? { backgroundColor: Colors.sharedBg, borderColor: Colors.sharedBorder } : null]}>
                 <View style={s.row}>
                   <View style={[s.iconCircle, item.shared ? { backgroundColor: "rgba(59,130,246,0.12)" } : null]}>
-                    <FontAwesome name={item.shared ? "share-alt" : "file-text-o"} size={16} color={item.shared ? Colors.sharedText : Colors.text} />
+                    <FontAwesome
+                      name={item.shared ? "share-alt" : "file-text-o"}
+                      size={16}
+                      color={item.shared ? Colors.sharedText : Colors.text}
+                    />
                   </View>
 
                   <View style={{ flex: 1 }}>
@@ -308,15 +300,155 @@ export default function TemplatesFolderScreen() {
                   overshootRight={false}
                   friction={2}
                   rightThreshold={40}
-                  renderRightActions={(progress, _dragX, swipeable) => renderRightActions(item, progress, () => swipeable.close())}
+                  renderRightActions={(progress, _dragX, swipeable) =>
+                    renderRightActions(item, progress, () => swipeable.close())
+                  }
                 >
                   <Pressable onPress={onPress}>{card}</Pressable>
                 </ReanimatedSwipeable>
               </View>
             );
           }}
-          ListEmptyComponent={<Text style={s.empty}>{foldersQ.isLoading || templatesQ.isLoading ? "Učitavam…" : "Nema podataka u mapi."}</Text>}
+          ListEmptyComponent={
+            <Text style={s.empty}>{foldersQ.isLoading || templatesQ.isLoading ? "Učitavam…" : "Nema podataka u mapi."}</Text>
+          }
         />
+
+        {/* ✅ “VIŠE” ACTION SHEET */}
+        <CenterSheet
+          visible={moreOpen}
+          title={moreItem?.kind === "FOLDER" ? "Mapa" : "Predložak"}
+          onClose={() => setMoreOpen(false)}
+        >
+          <View style={{ gap: 12 }}>
+            {!!moreItem && (
+              <View style={s.moreHeader}>
+                <Text style={s.moreTitle} numberOfLines={2}>
+                  {moreItem.name}
+                </Text>
+                <Text style={s.moreSub}>Odaberi radnju</Text>
+              </View>
+            )}
+
+            {/* FOLDER akcije (ne u DIJELJENI) */}
+            {moreItem?.kind === "FOLDER" && mode !== "DIJELJENI" && (
+              <>
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    const id = moreItem.id;
+                    setMoreOpen(false);
+                    router.push({ pathname: "/(tabs)/templates/folder/premjesti", params: { folderId: String(id) } });
+                  }}
+                >
+                  <FontAwesome name="arrow-right" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Premjesti</Text>
+                </Pressable>
+
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    const id = moreItem.id;
+                    setMoreOpen(false);
+                    router.push({ pathname: "/(tabs)/templates/folder/kopiraj", params: { folderId: String(id) } });
+                  }}
+                >
+                  <FontAwesome name="copy" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Kopiraj</Text>
+                </Pressable>
+
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    setRenameId(moreItem.id);
+                    setRenameName(moreItem.name);
+                    setRenameOpen(true);
+                  }}
+                >
+                  <FontAwesome name="pencil" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Preimenuj</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[s.moreItem, { backgroundColor: Colors.dangerBg }]}
+                  onPress={() => {
+                    setMoreOpen(false);
+                    setDeleteFolderId(moreItem.id);
+                    setDeleteFolderLabel(moreItem.name);
+                    setDeleteFolderOpen(true);
+                  }}
+                >
+                  <FontAwesome name="trash" size={16} color={Colors.dangerText} />
+                  <Text style={[s.moreItemText, { color: Colors.dangerText }]}>Obriši</Text>
+                </Pressable>
+              </>
+            )}
+
+            {/* TEMPLATE akcije */}
+            {moreItem?.kind === "TPL" && (
+              <>
+                {/* Premjesti samo ako nije shared */}
+                {!moreItem.shared && (
+                  <Pressable
+                    style={s.moreItem}
+                    onPress={() => {
+                      const id = moreItem.id;
+                      setMoreOpen(false);
+                      router.push({ pathname: "/(tabs)/templates/template/[id]/kopiraj", params: { id: String(id) } });
+                    }}
+                  >
+                    <FontAwesome name="arrow-right" size={16} color={Colors.text} />
+                    <Text style={s.moreItemText}>Premjesti</Text>
+                  </Pressable>
+                )}
+
+                {/* Kopiraj može i za shared */}
+                <Pressable
+                  style={s.moreItem}
+                  onPress={() => {
+                    const id = moreItem.id;
+                    setMoreOpen(false);
+                    router.push({ pathname: "/(tabs)/templates/template/[id]/kopiraj", params: { id: String(id) } });
+                  }}
+                >
+                  <FontAwesome name="copy" size={16} color={Colors.text} />
+                  <Text style={s.moreItemText}>Kopiraj</Text>
+                </Pressable>
+
+                {/* Uredi / Obriši samo ako canEditDelete */}
+                {canEditDeleteTemplate({ shared: moreItem.shared, sharedPermission: moreItem.sharedPermission }) && (
+                  <>
+                    <Pressable
+                      style={s.moreItem}
+                      onPress={() => {
+                        const id = moreItem.id;
+                        setMoreOpen(false);
+                        router.push({ pathname: "/(tabs)/templates/template/[id]", params: { id: String(id), edit: "1" } });
+                      }}
+                    >
+                      <FontAwesome name="pencil" size={16} color={Colors.text} />
+                      <Text style={s.moreItemText}>Uredi</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[s.moreItem, { backgroundColor: Colors.dangerBg }]}
+                      onPress={() => {
+                        setMoreOpen(false);
+                        setDeleteTplId(moreItem.id);
+                        setDeleteTplLabel(moreItem.name);
+                        setDeleteTplOpen(true);
+                      }}
+                    >
+                      <FontAwesome name="trash" size={16} color={Colors.dangerText} />
+                      <Text style={[s.moreItemText, { color: Colors.dangerText }]}>Obriši</Text>
+                    </Pressable>
+                  </>
+                )}
+              </>
+            )}
+          </View>
+        </CenterSheet>
 
         {/* ✅ DODAJ */}
         <CenterSheet visible={addOpen} title="Dodaj" onClose={() => setAddOpen(false)}>
@@ -348,7 +480,13 @@ export default function TemplatesFolderScreen() {
         {/* NOVA PODMAPA */}
         <CenterSheet visible={newFolderOpen} title="Nova mapa" onClose={() => setNewFolderOpen(false)}>
           <View style={{ gap: 12 }}>
-            <TextInput value={newFolderName} onChangeText={setNewFolderName} placeholder="Naziv mape" placeholderTextColor={Colors.sub} style={s.search} />
+            <TextInput
+              value={newFolderName}
+              onChangeText={setNewFolderName}
+              placeholder="Naziv mape"
+              placeholderTextColor={Colors.sub}
+              style={s.search}
+            />
             <Pressable
               style={[s.primary, createFolderM.isPending && { opacity: 0.7 }]}
               disabled={createFolderM.isPending}
@@ -373,7 +511,13 @@ export default function TemplatesFolderScreen() {
         {/* PREIMENUJ */}
         <CenterSheet visible={renameOpen} title="Preimenuj mapu" onClose={() => setRenameOpen(false)}>
           <View style={{ gap: 12 }}>
-            <TextInput value={renameName} onChangeText={setRenameName} placeholder="Naziv mape" placeholderTextColor={Colors.sub} style={s.search} />
+            <TextInput
+              value={renameName}
+              onChangeText={setRenameName}
+              placeholder="Naziv mape"
+              placeholderTextColor={Colors.sub}
+              style={s.search}
+            />
             <Pressable
               style={[s.primary, renameFolderM.isPending && { opacity: 0.7 }]}
               disabled={renameFolderM.isPending}
@@ -444,15 +588,28 @@ export default function TemplatesFolderScreen() {
 const s = StyleSheet.create({
   container: { padding: 14, gap: 12 },
 
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  backBtn: { width: 36, height: 36, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, alignItems: "center", justifyContent: "center" },
-  h1: { fontSize: 18, fontWeight: "900", color: Colors.text },
-  h2: { marginTop: 2, color: Colors.sub, fontWeight: "700" },
-
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: Colors.orange, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, flexShrink: 0 },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: Colors.orange,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexShrink: 0,
+  },
   addText: { color: "#fff", fontWeight: "900" },
 
-  search: { backgroundColor: Colors.bg, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 10, fontWeight: "800", color: Colors.text },
+  search: {
+    backgroundColor: Colors.bg,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontWeight: "800",
+    color: Colors.text,
+  },
 
   folderCard: { backgroundColor: Colors.bg, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, padding: 14 },
   card: { backgroundColor: Colors.bg, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, padding: 14 },
@@ -472,12 +629,51 @@ const s = StyleSheet.create({
 
   primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
   primaryText: { color: "#fff", fontWeight: "900" },
+
+  moreHeader: {
+    backgroundColor: Colors.bg,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    padding: 14,
+    gap: 6,
+  },
+  moreTitle: { fontWeight: "900", color: Colors.text, fontSize: 16 },
+  moreSub: { color: Colors.sub, fontWeight: "800" },
+
+  moreItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: "rgba(148,163,184,0.18)",
+  },
+  moreItemText: { fontWeight: "900", color: Colors.text },
 });
 
 const sw = StyleSheet.create({
-  actions: { height: "100%", flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingRight: 6 },
+  actions: {
+    height: "100%",
+    width: 210, // ✅ fiksno → uredno na malim ekranima
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    paddingRight: 8,
+  },
   actionWrap: { height: "100%", justifyContent: "center" },
-  actionBtn: { borderRadius: 16, paddingVertical: 12, paddingHorizontal: 12, minWidth: 92, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  actionBtn: {
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    minWidth: 92,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
   edit: { backgroundColor: "rgba(148,163,184,0.20)" },
   delete: { backgroundColor: Colors.dangerBg },
   actionText: { fontWeight: "900", color: Colors.text },

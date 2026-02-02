@@ -14,6 +14,7 @@ import type {
   TemplateBookOneRequestDTO,
   TemplateBookManyRequestDTO,
   DispatchBulkResponseDTO,
+  FolderCopyRequestDTO,
 } from "@/app/models/generated";
 
 export const dispatchTemplateService = {
@@ -93,5 +94,26 @@ export const dispatchTemplateService = {
       `/api/v1/dispatch-templates/${templateId}/documents/${templateDocId}`,
       { method: "DELETE", signal }
     );
+  },
+  copyFolderTree(folderId: number, payload: FolderCopyRequestDTO, signal?: AbortSignal) {
+    return api.request<any>(`/api/v1/dispatch-template-folders/${folderId}/copy`, {
+      method: "POST",
+      body: payload,
+      signal,
+    });
+  },
+  moveFolder(folderId: number, payload: { targetParentId: number | null }, signal?: AbortSignal) {
+    return api.request<any>(`/api/v1/dispatch-template-folders/${folderId}/move`, {
+      method: "PUT",
+      body: payload,
+      signal,
+    });
+  },
+    moveTemplate(templateId: number, payload: { targetFolderId: number | null }, signal?: AbortSignal) {
+    return api.request<any>(`/api/v1/dispatch-template/${templateId}/move`, {
+      method: "PUT",
+      body: payload,
+      signal,
+    });
   },
 };
