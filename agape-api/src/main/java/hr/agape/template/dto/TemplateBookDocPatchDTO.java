@@ -13,11 +13,4 @@ public class TemplateBookDocPatchDTO {
     private Long documentId;
 
     private List<TemplateBookItemDTO> addItems;
-
-    private List<TemplateBookItemDTO> setItems;
-
-    private List<Long> removeItemIds;
-
-    private Boolean draftOverride;
-    private String noteOverride;
 }

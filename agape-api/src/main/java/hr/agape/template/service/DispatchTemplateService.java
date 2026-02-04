@@ -24,9 +24,7 @@ import hr.agape.user.repository.UserRepository;
 import hr.agape.user.util.AuthUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
-import org.jboss.logging.Logger;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -180,14 +178,15 @@ public class DispatchTemplateService {
             ensureBookPermissionIfShared(t, userId);
 
             LocalDate docDate = req.getDocumentDate() != null ? req.getDocumentDate() : LocalDate.now(ZAGREB);
+            boolean draft = req.getDraftMode().asDraftFlag();
 
             List<DispatchRequestDTO> bulk = buildRequestsForPartner(
                     req.getWarehouseId(),
                     req.getPartnerId(),
                     docDate,
-                    req.getDraftOverride(),
+                    draft,
                     req.getDocPatches(),
-                    req.getExtraDocuments(),
+                    req.getExtraItems(),
                     t
             );
 
@@ -211,6 +210,7 @@ public class DispatchTemplateService {
             ensureBookPermissionIfShared(t, userId);
 
             LocalDate docDate = req.getDocumentDate() != null ? req.getDocumentDate() : LocalDate.now(ZAGREB);
+            boolean draft = req.getDraftMode().asDraftFlag();
 
             List<DispatchRequestDTO> all = new ArrayList<>();
             for (Long partnerId : req.getPartnerIds()) {
@@ -218,9 +218,9 @@ public class DispatchTemplateService {
                         req.getWarehouseId(),
                         partnerId,
                         docDate,
-                        req.getDraftOverride(),
+                        draft,
                         req.getDocPatches(),
-                        req.getExtraDocuments(),
+                        req.getExtraItems(),
                         t
                 ));
             }
@@ -902,21 +902,32 @@ public class DispatchTemplateService {
         }
     }
 
-    private static List<DispatchRequestDTO> buildRequestsForPartner(
+    static List<DispatchRequestDTO> buildRequestsForPartner(
             Long warehouseId,
             Long partnerId,
             LocalDate docDate,
-            Boolean globalDraftOverride,
+            boolean draft,
             List<TemplateBookDocPatchDTO> docPatches,
-            List<TemplateBookExtraDocDTO> extraDocs,
+            List<TemplateBookItemDTO> extraItems,
             DispatchTemplateEntity t
     ) {
         List<DispatchRequestDTO> out = new ArrayList<>();
 
-        Map<Long, TemplateBookDocPatchDTO> patchByDocId = (docPatches == null ? List.<TemplateBookDocPatchDTO>of() : docPatches)
-                .stream()
-                .filter(p -> p.getDocumentId() != null)
-                .collect(Collectors.toMap(TemplateBookDocPatchDTO::getDocumentId, x -> x, (a, b) -> b));
+        Map<Long, TemplateBookDocPatchDTO> patchByDocId =
+                (docPatches == null ? List.<TemplateBookDocPatchDTO>of() : docPatches)
+                        .stream()
+                        .filter(p -> p != null && p.getDocumentId() != null)
+                        .collect(Collectors.toMap(TemplateBookDocPatchDTO::getDocumentId, x -> x, (a, b) -> b));
+
+        // figure out FIRST doc for extraItems
+        DispatchTemplateDocEntity firstDoc = t.getDocuments().stream()
+                .sorted(Comparator
+                        .comparing(DispatchTemplateDocEntity::getSortOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(DispatchTemplateDocEntity::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .findFirst()
+                .orElse(null);
+
+        Long firstDocId = firstDoc == null ? null : firstDoc.getDocumentId();
 
         for (DispatchTemplateDocEntity d : t.getDocuments()) {
             if (d.getItems() == null || d.getItems().isEmpty()) {
@@ -930,21 +941,19 @@ public class DispatchTemplateService {
                 qty.put(it.getItemId(), it.getQuantity());
             }
 
-            if (patch != null && patch.getRemoveItemIds() != null) {
-                for (Long itemId : patch.getRemoveItemIds()) qty.remove(itemId);
-            }
-
-            if (patch != null && patch.getSetItems() != null) {
-                for (TemplateBookItemDTO s : patch.getSetItems()) {
-                    if (s == null || s.getItemId() == null) continue;
-                    BigDecimal v = s.getQuantity();
-                    if (v == null || v.signum() == 0) qty.remove(s.getItemId());
-                    else qty.put(s.getItemId(), v);
+            // ONLY supported operation: addItems
+            if (patch != null && patch.getAddItems() != null) {
+                for (TemplateBookItemDTO a : patch.getAddItems()) {
+                    if (a == null || a.getItemId() == null) continue;
+                    BigDecimal v = a.getQuantity();
+                    if (v == null || v.signum() == 0) continue;
+                    qty.merge(a.getItemId(), v, BigDecimal::add);
                 }
             }
 
-            if (patch != null && patch.getAddItems() != null) {
-                for (TemplateBookItemDTO a : patch.getAddItems()) {
+            // Apply extraItems ONLY to first doc
+            if (firstDocId != null && Objects.equals(d.getDocumentId(), firstDocId) && extraItems != null) {
+                for (TemplateBookItemDTO a : extraItems) {
                     if (a == null || a.getItemId() == null) continue;
                     BigDecimal v = a.getQuantity();
                     if (v == null || v.signum() == 0) continue;
@@ -961,11 +970,7 @@ public class DispatchTemplateService {
             dr.setPartnerId(partnerId);
             dr.setWarehouseId(warehouseId);
             dr.setDocumentDate(docDate);
-
-            boolean isDraft = (patch != null && patch.getDraftOverride() != null)
-                    ? patch.getDraftOverride()
-                    : (globalDraftOverride != null ? globalDraftOverride : Boolean.TRUE.equals(d.getDraft()));
-            dr.setDraft(isDraft);
+            dr.setDraft(draft);
 
             List<DispatchRequestDTO.DispatchItemRequest> items = new ArrayList<>();
             for (var e : qty.entrySet()) {
@@ -977,43 +982,6 @@ public class DispatchTemplateService {
 
             dr.setItems(items);
             out.add(dr);
-        }
-
-        if (extraDocs != null) {
-            for (TemplateBookExtraDocDTO ed : extraDocs) {
-                if (ed == null || ed.getDocumentId() == null) continue;
-                if (ed.getItems() == null || ed.getItems().isEmpty()) {
-                    throw new IllegalArgumentException("Extra document " + ed.getDocumentId() + " has no items.");
-                }
-
-                DispatchRequestDTO dr = new DispatchRequestDTO();
-                dr.setDocumentId(ed.getDocumentId());
-                dr.setPartnerId(partnerId);
-                dr.setWarehouseId(warehouseId);
-                dr.setDocumentDate(docDate);
-
-                Boolean draft = ed.getDraft();
-                if (draft == null) draft = globalDraftOverride != null ? globalDraftOverride : Boolean.TRUE;
-                dr.setDraft(draft);
-
-                List<DispatchRequestDTO.DispatchItemRequest> items = new ArrayList<>();
-                for (TemplateBookItemDTO it : ed.getItems()) {
-                    if (it == null || it.getItemId() == null || it.getQuantity() == null) continue;
-                    if (it.getQuantity().signum() == 0) continue;
-
-                    DispatchRequestDTO.DispatchItemRequest line = new DispatchRequestDTO.DispatchItemRequest();
-                    line.setItemId(it.getItemId());
-                    line.setQuantity(it.getQuantity().doubleValue());
-                    items.add(line);
-                }
-
-                if (items.isEmpty()) {
-                    throw new IllegalArgumentException("Extra document " + ed.getDocumentId() + " has no valid items.");
-                }
-
-                dr.setItems(items);
-                out.add(dr);
-            }
         }
 
         return out;

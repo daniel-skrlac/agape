@@ -10,25 +10,22 @@ import java.util.List;
 
 @Getter
 @Setter
-public class TemplateBookOneRequestDTO {
-    @NotNull
-    private Long templateId;
-
-    @NotNull
-    private Long warehouseId;
+public class BookingSessionEntryUpsertRequestDTO {
 
     @NotNull
     private Long partnerId;
 
-    private LocalDate documentDate;
-
-    private Boolean draftOverride;
+    @NotNull
+    private Long templateId;
 
     @NotNull
     private DraftMode draftMode;
 
+    private LocalDate documentDate;
+
     private List<TemplateBookDocPatchDTO> docPatches;
 
     private List<TemplateBookItemDTO> extraItems;
-}
 
+    private String note;
+}

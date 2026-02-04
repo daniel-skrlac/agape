@@ -1,5 +1,6 @@
 package hr.agape.template.dto;
 
+import hr.agape.template.enumeration.DraftMode;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -21,8 +22,10 @@ public class TemplateBookManyRequestDTO {
     private List<Long> partnerIds;
 
     private LocalDate documentDate;
-    private Boolean draftOverride;
+
+    @NotNull
+    private DraftMode draftMode;
 
     private List<TemplateBookDocPatchDTO> docPatches;
-    private List<TemplateBookExtraDocDTO> extraDocuments;
+    private List<TemplateBookItemDTO> extraItems;
 }

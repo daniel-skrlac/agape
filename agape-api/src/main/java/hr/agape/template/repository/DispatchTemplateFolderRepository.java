@@ -3,12 +3,16 @@ package hr.agape.template.repository;
 import hr.agape.template.domain.DispatchTemplateFolderEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 import java.util.List;
 
 @ApplicationScoped
 public class DispatchTemplateFolderRepository implements PanacheRepository<DispatchTemplateFolderEntity> {
 
+    @PersistenceContext
+    EntityManager em;
 
     public List<DispatchTemplateFolderEntity> listForOwner(Long ownerUserId) {
         return find("owner.id = ?1", ownerUserId).list();
@@ -24,27 +28,47 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
 
     public List<String> listChildNames(Long ownerUserId, Long parentId) {
         if (parentId == null) {
-            return find("owner.id = ?1 and parent is null", ownerUserId)
-                    .project(String.class)
-                    .list();
+            return em.createQuery(
+                            "select f.name from DispatchTemplateFolderEntity f " +
+                                    "where f.owner.id = ?1 and f.parent is null",
+                            String.class
+                    )
+                    .setParameter(1, ownerUserId)
+                    .getResultList();
         }
 
-        return find("owner.id = ?1 and parent.id = ?2", ownerUserId, parentId)
-                .project(String.class)
-                .list();
+        return em.createQuery(
+                        "select f.name from DispatchTemplateFolderEntity f " +
+                                "where f.owner.id = ?1 and f.parent.id = ?2",
+                        String.class
+                )
+                .setParameter(1, ownerUserId)
+                .setParameter(2, parentId)
+                .getResultList();
     }
 
     public List<String> listChildNamesExcluding(Long ownerUserId, Long parentId, Long excludeFolderId) {
         if (excludeFolderId == null) return listChildNames(ownerUserId, parentId);
 
         if (parentId == null) {
-            return find("owner.id = ?1 and parent is null and id <> ?2", ownerUserId, excludeFolderId)
-                    .project(String.class)
-                    .list();
+            return em.createQuery(
+                            "select f.name from DispatchTemplateFolderEntity f " +
+                                    "where f.owner.id = ?1 and f.parent is null and f.id <> ?2",
+                            String.class
+                    )
+                    .setParameter(1, ownerUserId)
+                    .setParameter(2, excludeFolderId)
+                    .getResultList();
         }
 
-        return find("owner.id = ?1 and parent.id = ?2 and id <> ?3", ownerUserId, parentId, excludeFolderId)
-                .project(String.class)
-                .list();
+        return em.createQuery(
+                        "select f.name from DispatchTemplateFolderEntity f " +
+                                "where f.owner.id = ?1 and f.parent.id = ?2 and f.id <> ?3",
+                        String.class
+                )
+                .setParameter(1, ownerUserId)
+                .setParameter(2, parentId)
+                .setParameter(3, excludeFolderId)
+                .getResultList();
     }
 }

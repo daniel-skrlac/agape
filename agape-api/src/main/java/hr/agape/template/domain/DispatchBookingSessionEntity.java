@@ -1,10 +1,13 @@
 package hr.agape.template.domain;
 
+import hr.agape.template.enumeration.BookingSessionStatus;
 import hr.agape.user.domain.UserEntity;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -12,22 +15,23 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Getter
 @Setter
-@Entity
-@Table(name = "dispatch_template")
 @NoArgsConstructor
-public class DispatchTemplateEntity extends PanacheEntityBase {
+@Entity
+@Table(name = "dispatch_booking_session")
+public class DispatchBookingSessionEntity extends PanacheEntityBase {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,29 +41,36 @@ public class DispatchTemplateEntity extends PanacheEntityBase {
     @JoinColumn(name = "owner_user_id", nullable = false)
     private UserEntity owner;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "folder_id")
-    private DispatchTemplateFolderEntity folder;
-
-    @Column(name = "household_size", nullable = false)
-    private Short householdSize;
-
     @Column(nullable = false, length = 200)
-    private String name;
+    private String title;
 
     @Column(columnDefinition = "text")
-    private String description;
+    private String note;
 
+    @Column(name = "warehouse_id", nullable = false)
+    private Long warehouseId;
+
+    @Column(name = "document_date", nullable = false)
+    private LocalDate documentDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private BookingSessionStatus status = BookingSessionStatus.DRAFT;
+
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
-    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("sortOrder ASC, id ASC")
-    private List<DispatchTemplateDocEntity> documents;
+    @Column(name = "finalized_at")
+    private OffsetDateTime finalizedAt;
 
-    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
-    public List<DispatchTemplateShareEntity> shares = new ArrayList<>();
+    @Column(name = "final_result", columnDefinition = "jsonb")
+    private String finalResultJson;
+
+    @OneToMany(mappedBy = "bookingSession", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DispatchBookingSessionEntryEntity> entries;
 }
