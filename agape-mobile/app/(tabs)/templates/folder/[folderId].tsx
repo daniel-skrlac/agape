@@ -395,7 +395,7 @@ export default function TemplatesFolderScreen() {
                     onPress={() => {
                       const id = moreItem.id;
                       setMoreOpen(false);
-                      router.push({ pathname: "/(tabs)/templates/template/[id]/kopiraj", params: { id: String(id) } });
+                      router.push({ pathname: "/(tabs)/templates/template/[id]/premjesti", params: { id: String(id) } });
                     }}
                   >
                     <FontAwesome name="arrow-right" size={16} color={Colors.text} />

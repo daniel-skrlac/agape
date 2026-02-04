@@ -109,8 +109,8 @@ export const dispatchTemplateService = {
       signal,
     });
   },
-    moveTemplate(templateId: number, payload: { targetFolderId: number | null }, signal?: AbortSignal) {
-    return api.request<any>(`/api/v1/dispatch-template/${templateId}/move`, {
+  moveTemplate(templateId: number, payload: { targetFolderId: number | null }, signal?: AbortSignal) {
+    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${templateId}/move`, {
       method: "PUT",
       body: payload,
       signal,

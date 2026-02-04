@@ -7,6 +7,7 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { getToken } from "../api/sessionStore";
 import AuthBackground from "@/components/auth/AuthBackground";
 import TopBar from "@/components/ui/TopBar";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 const ORANGE = "#F97316";
 const INACTIVE = "#94A3B8";
@@ -86,14 +87,22 @@ export default function TabLayout() {
           }}
         />
 
-
-
         <Tabs.Screen
           name="home"
           options={{
             title: "Početna",
             sceneStyle: { backgroundColor: "transparent" },
             tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
+          }}
+        />
+
+        <Tabs.Screen
+          name="sessions"
+          options={{
+            title: "Sessions",
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons name="clipboard-list-outline" size={size} color={color} />
+            ),
           }}
         />
 

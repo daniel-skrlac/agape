@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View, ViewStyle } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/Colors";
 
 type FolderLike = {
@@ -24,7 +23,6 @@ function buildPath(byId: Map<number, FolderLike>, id: number): string {
   const parts: string[] = [];
   let cur: FolderLike | undefined = byId.get(id);
   let guard = 0;
-
   while (cur && guard++ < 50) {
     const nm = (cur.name ?? "").trim();
     if (nm) parts.push(nm);
@@ -32,11 +30,8 @@ function buildPath(byId: Map<number, FolderLike>, id: number): string {
     if (pid == null) break;
     cur = byId.get(pid);
   }
-
   return parts.length ? `Root › ${parts.reverse().join(" › ")}` : "Root";
 }
-
-type Row = { id: number; name: string; depth: number; path: string };
 
 export function FolderPicker(props: {
   title: string;
@@ -48,14 +43,11 @@ export function FolderPicker(props: {
   rootLabel?: string;
   excludeIds?: Set<number> | number[];
 
-  /**
-   * Koliko px je "prekriveno" na dnu (npr. gumbi u sheet-u).
-   * Ne uključuje safe-area — to dodajemo automatski.
-   */
-  bottomInset?: number;
+  /** ✅ kada je u ekranu koji treba da lista zauzme sav prostor */
+  fill?: boolean;
 
-  /** dodatni padding (ako želiš malo zraka) */
-  extraBottomPadding?: number;
+  /** optional wrapper style */
+  style?: ViewStyle;
 }) {
   const {
     title,
@@ -65,24 +57,17 @@ export function FolderPicker(props: {
     allowRoot = false,
     rootLabel = "Root (bez mape)",
     excludeIds,
-    bottomInset = 0,
-    extraBottomPadding = 16,
+    fill = false,
+    style,
   } = props;
 
-  const insets = useSafeAreaInsets();
   const [q, setQ] = useState("");
 
-  const { rows, parentOf } = useMemo(() => {
+  const model = useMemo(() => {
     const byId = new Map<number, FolderLike>();
     for (const f of folders ?? []) if (f?.id != null) byId.set(Number(f.id), f);
 
     const excluded = asExcludeSet(excludeIds);
-
-    const parentOf = new Map<number, number | null>();
-    for (const f of folders ?? []) {
-      if (!f?.id) continue;
-      parentOf.set(Number(f.id), f.parentId == null ? null : Number(f.parentId));
-    }
 
     const children = new Map<number | null, FolderLike[]>();
     for (const f of folders ?? []) {
@@ -93,12 +78,16 @@ export function FolderPicker(props: {
       children.set(pid, arr);
     }
 
+    // sort children by name
     for (const [pid, arr] of children.entries()) {
       arr.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "hr", { sensitivity: "base" }));
       children.set(pid, arr);
     }
 
-    const out: Row[] = [];
+    const needle = norm(q);
+
+    // flatten (preorder)
+    const out: Array<{ id: number; name: string; depth: number; path: string }> = [];
     const walk = (pid: number | null, depth: number) => {
       const arr = children.get(pid) ?? [];
       for (const f of arr) {
@@ -111,46 +100,55 @@ export function FolderPicker(props: {
     };
     walk(null, 0);
 
-    return { rows: out, parentOf };
-  }, [folders, excludeIds]);
+    if (!needle) return out;
 
-  const model: Row[] = useMemo(() => {
-    const needle = norm(q);
-    if (!needle) return rows;
-
+    // when searching: keep matches + ancestors
     const keep = new Set<number>();
+    const parentOf = new Map<number, number | null>();
+    for (const f of folders ?? []) {
+      if (!f?.id) continue;
+      parentOf.set(Number(f.id), f.parentId == null ? null : Number(f.parentId));
+    }
 
-    for (const r of rows) {
-      const hit =
-        norm(r.name).includes(needle) ||
-        norm(r.path).includes(needle) ||
-        String(r.id).includes(needle);
-
-      if (!hit) continue;
-
-      keep.add(r.id);
-
-      let p = parentOf.get(r.id) ?? null;
-      let guard = 0;
-      while (p != null && guard++ < 50) {
-        keep.add(p);
-        p = parentOf.get(p) ?? null;
+    for (const row of out) {
+      if (norm(row.name).includes(needle) || norm(row.path).includes(needle) || String(row.id).includes(needle)) {
+        keep.add(row.id);
+        let p = parentOf.get(row.id) ?? null;
+        let g = 0;
+        while (p != null && g++ < 50) {
+          keep.add(p);
+          p = parentOf.get(p) ?? null;
+        }
       }
     }
 
-    return rows.filter((r) => keep.has(r.id));
-  }, [rows, q, parentOf]);
+    return out.filter((r) => keep.has(r.id));
+  }, [folders, q, excludeIds]);
 
   const showBreadcrumb = (q ?? "").trim().length > 0;
 
-  // ✅ Dinamički bottom padding:
-  // - bottomInset: visina gumba/overlaya iz parenta
-  // - insets.bottom: safe area (iPhone)
-  // - extraBottomPadding: malo zraka
-  const bottomSpace = Math.max(0, bottomInset) + (insets?.bottom ?? 0) + extraBottomPadding;
+  const RootRow = allowRoot ? (
+    <Pressable style={[s.row, selectedId == null && s.rowActive]} onPress={() => onSelect(null)}>
+      <View style={s.rowLeft}>
+        <View style={s.iconBox}>
+          <FontAwesome name="folder" size={16} color={Colors.sub} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.name} numberOfLines={1}>
+            {rootLabel}
+          </Text>
+          {showBreadcrumb && (
+            <Text style={s.path} numberOfLines={1}>
+              Root
+            </Text>
+          )}
+        </View>
+      </View>
+    </Pressable>
+  ) : null;
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={[{ gap: 10 }, fill && { flex: 1, minHeight: 0 }, style]}>
       <Text style={s.title}>{title}</Text>
 
       <TextInput
@@ -161,45 +159,23 @@ export function FolderPicker(props: {
         style={s.search}
         autoCorrect={false}
         autoCapitalize="none"
-        returnKeyType="search"
       />
 
-      {allowRoot && (
-        <Pressable style={[s.row, selectedId == null && s.rowActive]} onPress={() => onSelect(null)}>
-          <View style={s.rowLeft}>
-            <View style={s.iconBox}>
-              <FontAwesome name="folder" size={16} color={Colors.sub} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.name} numberOfLines={1}>
-                {rootLabel}
-              </Text>
-              {showBreadcrumb && (
-                <Text style={s.path} numberOfLines={1}>
-                  Root
-                </Text>
-              )}
-            </View>
-          </View>
-        </Pressable>
-      )}
-
+      {/* ✅ ROOT je sada dio liste (scroll), ne uzima fixed visinu */}
       <FlatList
+        style={[fill && { flex: 1, minHeight: 0 }]}
         data={model}
         keyExtractor={(x) => String(x.id)}
-        keyboardShouldPersistTaps="handled"
         removeClippedSubviews={false}
-        // ✅ Ovo je ključno: dovoljno paddinga da zadnja kartica bude skroz vidljiva
-        contentContainerStyle={{
-          gap: 10,
-          paddingBottom: bottomSpace,
-          flexGrow: 1,
-        }}
-        // ✅ dodatni footer (na Androidu zna pomoć više nego padding)
-        ListFooterComponent={<View style={{ height: bottomSpace }} />}
-        // ✅ iOS: contentInset + scrollIndicatorInset za “real” bottom safe area
-        contentInset={{ bottom: Platform.OS === "ios" ? bottomSpace : 0 }}
-        scrollIndicatorInsets={{ bottom: Platform.OS === "ios" ? bottomSpace : 0 }}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
+        ListHeaderComponent={
+          RootRow ? (
+            <View style={{ gap: 10 }}>
+              {RootRow}
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => {
           const active = Number(selectedId) === item.id;
           const indent = Math.min(6 + item.depth * 14, 160);
@@ -207,12 +183,10 @@ export function FolderPicker(props: {
           return (
             <Pressable style={[s.row, active && s.rowActive]} onPress={() => onSelect(item.id)}>
               <View style={[s.indentRail, { width: indent }]} />
-
               <View style={[s.rowLeft, { paddingLeft: indent }]}>
                 <View style={s.iconBox}>
                   <FontAwesome name="folder" size={16} color={Colors.text} />
                 </View>
-
                 <View style={{ flex: 1 }}>
                   <Text style={s.name} numberOfLines={1}>
                     {item.name}
@@ -223,7 +197,6 @@ export function FolderPicker(props: {
                     </Text>
                   )}
                 </View>
-
                 <Text style={s.id}>#{item.id}</Text>
               </View>
             </Pressable>
@@ -237,7 +210,6 @@ export function FolderPicker(props: {
 
 const s = StyleSheet.create({
   title: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-
   search: {
     backgroundColor: Colors.bg,
     borderRadius: 14,

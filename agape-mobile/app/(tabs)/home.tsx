@@ -51,10 +51,6 @@ const T = {
 
 const H_PADDING = 16;
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 function useDefaultWarehouseId() {
   const { session } = useCurrentUser();
   const profile = useUserProfile();

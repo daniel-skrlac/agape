@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-02 20:26:01.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-04 21:30:04.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -180,6 +180,48 @@ export interface StockStatisticsTotalsDTO {
     totalStockQty: number;
 }
 
+export interface BookingSessionCreateRequestDTO {
+    title: string;
+    note: string;
+    warehouseId: number;
+    documentDate: Date;
+}
+
+export interface BookingSessionEntryResponseDTO {
+    id: number;
+    partnerId: number;
+    templateId: number;
+    draftMode: DraftMode;
+    documentDate: Date;
+    docPatches: any;
+    extraItems: any;
+    note: string;
+}
+
+export interface BookingSessionEntryUpsertRequestDTO {
+    partnerId: number;
+    templateId: number;
+    draftMode: DraftMode;
+    documentDate: Date;
+    docPatches: TemplateBookDocPatchDTO[];
+    extraItems: TemplateBookItemDTO[];
+    note: string;
+}
+
+export interface BookingSessionResponseDTO {
+    id: number;
+    title: string;
+    note: string;
+    warehouseId: number;
+    documentDate: Date;
+    status: BookingSessionStatus;
+    createdAt: Date;
+    updatedAt: Date;
+    finalizedAt: Date;
+    finalResult: any;
+    entries: BookingSessionEntryResponseDTO[];
+}
+
 export interface FolderCopyRequestDTO {
     targetParentId: number;
     includeSubfolders: boolean;
@@ -210,10 +252,6 @@ export interface FolderResponseDTO {
 export interface TemplateBookDocPatchDTO {
     documentId: number;
     addItems: TemplateBookItemDTO[];
-    setItems: TemplateBookItemDTO[];
-    removeItemIds: number[];
-    draftOverride: boolean;
-    noteOverride: string;
 }
 
 export interface TemplateBookExtraDocDTO {
@@ -233,9 +271,9 @@ export interface TemplateBookManyRequestDTO {
     warehouseId: number;
     partnerIds: number[];
     documentDate: Date;
-    draftOverride: boolean;
+    draftMode: DraftMode;
     docPatches: TemplateBookDocPatchDTO[];
-    extraDocuments: TemplateBookExtraDocDTO[];
+    extraItems: TemplateBookItemDTO[];
 }
 
 export interface TemplateBookOneRequestDTO {
@@ -244,8 +282,9 @@ export interface TemplateBookOneRequestDTO {
     partnerId: number;
     documentDate: Date;
     draftOverride: boolean;
+    draftMode: DraftMode;
     docPatches: TemplateBookDocPatchDTO[];
-    extraDocuments: TemplateBookExtraDocDTO[];
+    extraItems: TemplateBookItemDTO[];
 }
 
 export interface TemplateCopyRequestDTO {
@@ -392,5 +431,9 @@ export interface DispatchItemPatch {
     itemId: number;
     quantity: number;
 }
+
+export type DraftMode = "DRAFT" | "FINAL";
+
+export type BookingSessionStatus = "DRAFT" | "FINALIZED" | "CANCELLED";
 
 export type DispatchTemplateSharePermission = "VIEW" | "BOOK";
