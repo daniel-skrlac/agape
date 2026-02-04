@@ -119,3 +119,62 @@ CREATE INDEX idx_dt_share_template
 
 CREATE INDEX idx_dt_share_shared_with
     ON dispatch_template_share (shared_with_user_id);
+
+CREATE TABLE dispatch_booking_session
+(
+    id            BIGSERIAL PRIMARY KEY,
+    owner_user_id BIGINT NOT NULL REFERENCES app_user (id) ON DELETE CASCADE,
+
+    title         VARCHAR(200) NOT NULL,
+    note          TEXT,
+
+    warehouse_id  BIGINT NOT NULL,
+    document_date DATE NOT NULL DEFAULT CURRENT_DATE,
+
+    status        VARCHAR(20) NOT NULL DEFAULT 'DRAFT', -- DRAFT / FINALIZED / CANCELLED
+
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finalized_at  TIMESTAMPTZ,
+
+    final_result  JSONB
+);
+
+CREATE INDEX idx_dbs_owner  ON dispatch_booking_session(owner_user_id);
+CREATE INDEX idx_dbs_status ON dispatch_booking_session(status);
+
+
+-- =========================================================
+-- DISPATCH BOOKING SESSION ENTRY
+-- =========================================================
+-- One entry per partner inside a session:
+-- - template_id (current template always used at finalize)
+-- - doc_patches JSONB: list of { documentId, addItems:[{itemId, quantity}] }
+-- - extra_items JSONB: list of { itemId, quantity } applied to first template doc
+
+CREATE TABLE dispatch_booking_session_entry
+(
+    id            BIGSERIAL PRIMARY KEY,
+    session_id    BIGINT NOT NULL REFERENCES dispatch_booking_session(id) ON DELETE CASCADE,
+
+    partner_id    BIGINT NOT NULL,
+    template_id   BIGINT NOT NULL,
+
+    draft_mode    VARCHAR(10) NOT NULL DEFAULT 'DRAFT', -- DRAFT / FINAL
+
+    document_date DATE,
+
+    doc_patches   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    extra_items   JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+    note          TEXT,
+
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_dbse_draft_mode CHECK (draft_mode IN ('DRAFT','FINAL'))
+);
+
+CREATE UNIQUE INDEX ux_dbse_session_partner ON dispatch_booking_session_entry(session_id, partner_id);
+CREATE INDEX idx_dbse_session  ON dispatch_booking_session_entry(session_id);
+CREATE INDEX idx_dbse_template ON dispatch_booking_session_entry(template_id);
