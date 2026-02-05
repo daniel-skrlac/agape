@@ -28,12 +28,13 @@ public class UserEntity extends PanacheEntityBase {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "name", nullable = false, length = 100)
     private String name;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "username", nullable = false, unique = true, length = 50)
     private String username;
 
-    @Column(name = "oib", nullable = false)
+    @Column(name = "oib", nullable = false, length = 11)
     private String oib;
 
     @Column(name = "password_hash", nullable = false)
