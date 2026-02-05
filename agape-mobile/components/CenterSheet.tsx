@@ -1,6 +1,5 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Colors from "@/constants/Colors";
 
 export function CenterSheet({
@@ -9,24 +8,54 @@ export function CenterSheet({
   onClose,
   children,
   width = 360,
+  closeOnBackdrop = false,  // ✅ NEW
+  disableClose = false,    // ✅ optional: blocks backdrop + header close + back button
 }: {
   visible: boolean;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   width?: number;
+
+  closeOnBackdrop?: boolean; // ✅ NEW
+  disableClose?: boolean;     // ✅ optional
 }) {
+  const canClose = !disableClose;
+
+  const handleClose = () => {
+    if (!canClose) return;
+    onClose();
+  };
+
+  const backdropCloses = canClose && closeOnBackdrop;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={canClose ? onClose : undefined} // ✅ Android back button
+    >
       <View style={s.backdropWrap}>
-        <Pressable style={s.backdrop} onPress={onClose} />
+        {/* ✅ Backdrop */}
+        <Pressable
+          style={s.backdrop}
+          onPress={backdropCloses ? handleClose : undefined}
+          pointerEvents={backdropCloses ? "auto" : "none"} // ✅ ignore outside taps when disabled
+        />
 
         <View style={s.centerWrap} pointerEvents="box-none">
           <View style={[s.card, { maxWidth: width }]}>
             <View style={s.header}>
               <Text style={s.title}>{title}</Text>
 
-              <Pressable style={s.closeBtn} onPress={onClose} hitSlop={10}>
+              {/* ✅ Header close */}
+              <Pressable
+                style={[s.closeBtn, !canClose && { opacity: 0.5 }]}
+                onPress={canClose ? handleClose : undefined}
+                hitSlop={10}
+                disabled={!canClose}
+              >
                 <Text style={s.closeText}>Zatvori</Text>
               </Pressable>
             </View>
@@ -41,19 +70,16 @@ export function CenterSheet({
 
 const s = StyleSheet.create({
   backdropWrap: { flex: 1 },
-  // manje “sivo”, više elegantno zatamnjenje
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(15, 23, 42, 0.35)",
   },
-
   centerWrap: {
     flex: 1,
     padding: 18,
     justifyContent: "center",
     alignItems: "center",
   },
-
   card: {
     width: "100%",
     borderRadius: 22,
@@ -67,7 +93,6 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 10,
   },
-
   header: {
     paddingHorizontal: 16,
     paddingTop: 14,
@@ -79,12 +104,7 @@ const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(2, 6, 23, 0.08)",
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: Colors.text,
-  },
-
+  title: { fontSize: 18, fontWeight: "900", color: Colors.text },
   closeBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -92,8 +112,5 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(148,163,184,0.22)",
   },
   closeText: { fontWeight: "900", color: Colors.text },
-
-  body: {
-    padding: 16,
-  },
+  body: { padding: 16 },
 });

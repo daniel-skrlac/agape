@@ -13,6 +13,7 @@ export function CenterConfirmSheet({
   loading,
   onClose,
   onConfirm,
+  closeOnBackdrop = true, // ✅ NEW
 }: {
   visible: boolean;
   title: string;
@@ -23,9 +24,15 @@ export function CenterConfirmSheet({
   loading?: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void> | void;
+  closeOnBackdrop?: boolean; // ✅ NEW
 }) {
   return (
-    <CenterSheet visible={visible} title={title} onClose={onClose}>
+    <CenterSheet
+      visible={visible}
+      title={title}
+      onClose={onClose}
+      closeOnBackdrop={closeOnBackdrop} // ✅ forward
+    >
       {!!description && <Text style={s.desc}>{description}</Text>}
 
       <View style={s.row}>
@@ -34,11 +41,7 @@ export function CenterConfirmSheet({
         </Pressable>
 
         <Pressable
-          style={[
-            s.btn,
-            danger ? s.btnDanger : s.btnPrimary,
-            loading && { opacity: 0.7 },
-          ]}
+          style={[s.btn, danger ? s.btnDanger : s.btnPrimary, loading && { opacity: 0.7 }]}
           onPress={onConfirm}
           disabled={!!loading}
         >
@@ -52,24 +55,14 @@ export function CenterConfirmSheet({
 const s = StyleSheet.create({
   desc: { marginBottom: 14, color: Colors.sub, fontWeight: "800" },
   row: { flexDirection: "row", gap: 10 },
-
-  btn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
+  btn: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   btnGhost: {
     backgroundColor: "rgba(148,163,184,0.20)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(2, 6, 23, 0.10)",
   },
   btnGhostText: { fontWeight: "900", color: Colors.text },
-
   btnPrimary: { backgroundColor: Colors.orange },
   btnDanger: { backgroundColor: Colors.dangerText },
-
   btnPrimaryText: { fontWeight: "900", color: "#fff" },
 });

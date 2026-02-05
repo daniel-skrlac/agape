@@ -47,6 +47,21 @@ type LocalDoc = Omit<TemplateDocResponseDTO, "items"> & {
   items: UiTemplateItem[];
 };
 
+function normalizeCode(code: any): string {
+  const c = (code ?? "").toString().trim();
+  return c ? c.toUpperCase() : "";
+}
+
+function buildExcludeDocumentIdsFromTemplateDocs(templateDocs: any[] | null | undefined): number[] {
+  const set = new Set<number>();
+  for (const d of templateDocs ?? []) {
+    const id = Number(d?.documentId);
+    if (Number.isFinite(id) && id > 0) set.add(id);
+  }
+  return Array.from(set);
+}
+
+
 function CenterModal(props: {
   visible: boolean;
   title: string;
@@ -120,14 +135,16 @@ export default function Dokumenti() {
 
   const t = tQ.data;
 
+  const excludeDocumentIds = useMemo(
+    () => buildExcludeDocumentIdsFromTemplateDocs(t?.documents as any),
+    [t?.documents]
+  );
+
+
   // show only OTPREMNICA docs if code exists on object
   const docs = useMemo(() => {
     const all = t?.documents ?? [];
-    return all.filter((d: any) => {
-      const code = (d?.documentCode ?? d?.code ?? "").toString().toUpperCase();
-      if (!code) return true;
-      return code === DOC_CODE;
-    });
+    return all;
   }, [t?.documents]);
 
   // global error banner (mutations + template)
@@ -337,11 +354,12 @@ export default function Dokumenti() {
     if (!warehouseId) return { items: [] as DocumentDescriptorResponseDTO[], page, size, total: 0 };
 
     try {
-      const all = await documentDirectoryService.listDocTypesByCode({
-        warehouseId,
-        documentCode: DOC_CODE,
-        q: q ?? undefined,
-      });
+const all = await documentDirectoryService.listDocTypesByCode({
+  warehouseId,
+  documentCode: DOC_CODE,
+  q: q ?? undefined,
+  excludeDocumentIds,
+});
 
       const needle = (q ?? "").trim().toLowerCase();
       const filtered = !needle
@@ -362,6 +380,7 @@ export default function Dokumenti() {
       return { items: [] as DocumentDescriptorResponseDTO[], page, size, total: 0 };
     }
   };
+
 
   return (
     <Screen>
