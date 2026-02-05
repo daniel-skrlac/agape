@@ -42,10 +42,13 @@ public class DocumentDirectoryResource {
     public Response listDocumentDescriptors(
             @QueryParam("warehouseId") Long warehouseId,
             @QueryParam("documentCode") String documentCode,
-            @QueryParam("q") String q
+            @QueryParam("q") String q,
+            @QueryParam("excludeCodes") String excludeCodes,
+            @QueryParam("excludeDocumentIds") String excludeDocumentIds
     ) {
-        return Responses.from(service.listDocumentDescriptors(warehouseId, documentCode, q));
+        return Responses.from(service.listDocumentDescriptors(warehouseId, documentCode, q, excludeCodes, excludeDocumentIds));
     }
+
 
     @GET
     @Path("/doc-types/{documentId}/warehouses")

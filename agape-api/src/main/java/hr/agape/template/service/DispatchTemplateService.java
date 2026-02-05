@@ -787,41 +787,56 @@ public class DispatchTemplateService {
 
     @Transactional
     public ServiceResponseDTO<TemplateResponseDTO> upsertTemplateDoc(Long templateId, TemplateDocUpsertRequestDTO req) {
-        try {
-            Long userId = authUtil.requireUserId();
+        Long userId = authUtil.requireUserId();
 
-            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
+        DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
+        if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
 
-            if (t.getDocuments() == null) t.setDocuments(new ArrayList<>());
-
-            DispatchTemplateDocEntity doc = null;
-            for (DispatchTemplateDocEntity d : t.getDocuments()) {
-                if (d.getDocumentId() != null && d.getDocumentId().equals(req.getDocumentId())) {
-                    doc = d;
-                    break;
-                }
-            }
-
-            if (doc == null) {
-                doc = new DispatchTemplateDocEntity();
-                doc.setTemplate(t);
-                doc.setDocumentId(req.getDocumentId());
-                doc.setItems(new ArrayList<>());
-                t.getDocuments().add(doc);
-            }
-
-            doc.setSortOrder(req.getSortOrder());
-            doc.setDraft(req.getDraft());
-            doc.setDefaultNote(req.getDefaultNote());
-
-            t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
-
-            DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
-            return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template document saved.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to save template document: " + e.getMessage());
+        if (req.getDocumentId() == null) {
+            return ServiceResponseDirector.errorBadRequest("documentId is required.");
         }
+
+        if (t.getDocuments() == null) t.setDocuments(new ArrayList<>());
+
+        // Find existing doc by documentId (your current upsert logic)
+        DispatchTemplateDocEntity doc = null;
+        for (DispatchTemplateDocEntity d : t.getDocuments()) {
+            if (d.getDocumentId() != null && d.getDocumentId().equals(req.getDocumentId())) {
+                doc = d;
+                break;
+            }
+        }
+
+        // If you ever change API to upsert by docId, you can still use this check:
+        Long excludeDocId = (doc == null ? null : doc.getId());
+
+        // PRE-CHECK uniqueness: (template_id, document_id)
+        boolean wouldViolate = templateRepo.existsDocWithDocumentId(templateId, req.getDocumentId(), excludeDocId);
+        if (wouldViolate && doc == null) {
+            // doc == null means "creating new one", and docId already exists => violation
+            return ServiceResponseDirector.errorBadRequest(
+                    "Template already contains documentId=" + req.getDocumentId() + "."
+            );
+        }
+
+        // Create if missing
+        if (doc == null) {
+            doc = new DispatchTemplateDocEntity();
+            doc.setTemplate(t);
+            doc.setDocumentId(req.getDocumentId());
+            doc.setItems(new ArrayList<>());
+            t.getDocuments().add(doc);
+        }
+
+        // Update fields
+        if (req.getSortOrder() != null) doc.setSortOrder(req.getSortOrder());
+        if (req.getDraft() != null) doc.setDraft(req.getDraft());
+        doc.setDefaultNote(req.getDefaultNote());
+
+        t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
+
+        DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
+        return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template document saved.");
     }
 
     @Transactional

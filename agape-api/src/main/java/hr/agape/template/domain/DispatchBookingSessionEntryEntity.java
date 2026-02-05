@@ -54,10 +54,10 @@ public class DispatchBookingSessionEntryEntity extends PanacheEntityBase {
     @Column(name = "document_date")
     private LocalDate documentDate;
 
-    @Column(name = "doc_patches", nullable = false)
+    @Column(name = "doc_patches", nullable = false, columnDefinition = "text")
     private String docPatchesJson; // json string
 
-    @Column(name = "extra_items", nullable = false)
+    @Column(name = "extra_items", nullable = false, columnDefinition = "text")
     private String extraItemsJson; // json string
 
     @Column(name = "note")

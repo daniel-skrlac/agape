@@ -14,7 +14,10 @@ import jakarta.inject.Inject;
 import jakarta.transaction.TransactionSynchronizationRegistry;
 import jakarta.transaction.Transactional;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
@@ -105,27 +108,35 @@ public class DocumentDirectoryService {
     public ServiceResponseDTO<List<DocumentDescriptorResponseDTO>> listDocumentDescriptors(
             Long warehouseId,
             String documentCode,
-            String q
+            String q,
+            String excludeCodes,
+            String excludeDocumentIds // ✅ NEW
     ) {
         try {
             String qq = (q == null) ? null : q.trim();
             String code = (documentCode == null) ? null : documentCode.trim();
-            boolean hasCode = code != null && !code.isBlank();
 
-            if (hasCode) {
-                return docTypeRepo.findDocumentSlotByCodeAndWarehouse(warehouseId, code)
-                        .map(v -> ServiceResponseDirector.successOk(
-                                List.of(mapper.toResponseDto(v)),
-                                "OK"
-                        ))
+            List<String> excludes = splitCsvUpper(excludeCodes);
+            Set<Long> excludeIds = splitCsvLongSet(excludeDocumentIds);
+
+            if (code != null && !code.isBlank()) {
+                String codeU = code.trim().toUpperCase();
+
+                if (excludes.contains(codeU)) {
+                    return ServiceResponseDirector.successOk(List.of(), "OK");
+                }
+
+                return docTypeRepo.findDocumentSlotByCodeAndWarehouse(warehouseId, codeU)
+                        .filter(v -> !excludeIds.contains((long) v.getDocumentId())) // ✅ exclude by docId
+                        .map(v -> ServiceResponseDirector.successOk(List.of(mapper.toResponseDto(v)), "OK"))
                         .orElseGet(() -> ServiceResponseDirector.successOk(List.of(), "OK"));
             }
 
-            List<DocumentSlotTypeView> slotViews = docTypeRepo.listDocumentSlots(warehouseId, null, qq);
+            List<DocumentSlotTypeView> slotViews = docTypeRepo.listDocumentSlots(warehouseId, qq, excludes, excludeIds);
 
             List<DocumentDescriptorResponseDTO> dtoList = slotViews.stream()
                     .map(mapper::toResponseDto)
-                    .collect(Collectors.toList());
+                    .toList();
 
             return ServiceResponseDirector.successOk(dtoList, "OK");
         } catch (Exception e) {
@@ -147,5 +158,28 @@ public class DocumentDirectoryService {
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to load warehouses: " + e.getMessage());
         }
+    }
+    private static List<String> splitCsvUpper(String csv) {
+        if (csv == null || csv.isBlank()) return List.of();
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .map(String::toUpperCase)
+                .distinct()
+                .toList();
+    }
+
+    private static Set<Long> splitCsvLongSet(String csv) {
+        if (csv == null || csv.isBlank()) return Set.of();
+        Set<Long> out = new HashSet<>();
+        for (String part : csv.split(",")) {
+            String s = part.trim();
+            if (s.isBlank()) continue;
+            try {
+                out.add(Long.parseLong(s));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return out;
     }
 }

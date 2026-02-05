@@ -6,8 +6,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @ApplicationScoped
 public class DocumentTypeRepository {
@@ -137,55 +140,93 @@ public class DocumentTypeRepository {
         return Optional.ofNullable(view);
     }
 
-    public List<DocumentSlotTypeView> listDocumentSlots(Long warehouseId, String documentCode, String q) throws SQLException {
-        final boolean hasWarehouse = warehouseId != null;
-        final boolean hasCode = documentCode != null && !documentCode.isBlank();
+    public List<DocumentSlotTypeView> listDocumentSlots(
+            Long warehouseId,
+            String q,
+            List<String> excludeCodes,
+            Set<Long> excludeDocumentIds
+    ) throws SQLException {
+
         final boolean hasQ = q != null && !q.isBlank();
 
-        final String sql = """
-                WITH dids AS (
-                    SELECT DISTINCT r.DOKUMENT_ID AS DID
-                    FROM SD_SIFREG r
-                    JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
-                    WHERE ( ? IS NULL OR r.SKLADISTE_ID = ? )
-                      AND ( ? IS NULL OR UPPER(z.DOKUMENTID) = UPPER(?) )
-                      AND (
-                           ? IS NULL OR ? = '' OR
-                           LOWER(z.NAZIVDOKUMENTA) LIKE ? OR
-                           LOWER(z.DOKUMENTID) LIKE ? OR
-                           TO_CHAR(r.DOKUMENT_ID) LIKE ?
-                      )
-                )
-                SELECT r2.DOKUMENT_ID,
-                       z.SD_SIFREZ_ID,
-                       z.DOKUMENTID,
-                       z.NAZIVDOKUMENTA,
-                       z.ULAZIZLAZ,
-                       z.MIJENJAZALIHU,
-                       z.KNJIZITINASKLADISTE,
-                       z.KNJIZITIUKPOPISA,
-                       z.KNJIZITINORMATIVE,
-                       z.KNJIZITISASTAVNICU,
-                       z.TIPPRODAJNIHCIJENA,
-                       z.TIPNABAVNECIJENE,
-                       z.TIPKNJIGEPOPISA,
-                       z.TIPKARTICE,
-                       z.TIPBAZA
-                  FROM dids x
-                  JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
-                  JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
-                 WHERE ( ? IS NULL OR r2.SKLADISTE_ID = ? )
-                   AND r2.SD_SIFREZ_ID = (
-                        SELECT MIN(r3.SD_SIFREZ_ID)
-                          FROM SD_SIFREG r3
-                         WHERE r3.DOKUMENT_ID = x.DID
-                           AND ( ? IS NULL OR r3.SKLADISTE_ID = ? )
-                   )
-                 ORDER BY LOWER(z.NAZIVDOKUMENTA), r2.DOKUMENT_ID
-                """;
+        final List<String> exCodes = (excludeCodes == null) ? List.of()
+                : excludeCodes.stream()
+                .map(s -> (s == null) ? "" : s.trim().toUpperCase())
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .toList();
 
-        String like = hasQ ? "%" + q.toLowerCase().trim() + "%" : null;
-        String code = hasCode ? documentCode.trim() : null;
+        final List<Long> exIds = (excludeDocumentIds == null) ? List.of()
+                : excludeDocumentIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        final boolean hasExcludeCodes = !exCodes.isEmpty();
+        final boolean hasExcludeIds = !exIds.isEmpty();
+
+        // helper for IN (?, ?, ?)
+        final java.util.function.IntFunction<String> placeholders = (n) -> {
+            if (n <= 0) return "";
+            return String.join(",", java.util.Collections.nCopies(n, "?"));
+        };
+
+        String sql = """
+            WITH dids AS (
+                SELECT DISTINCT r.DOKUMENT_ID AS DID
+                FROM SD_SIFREG r
+                JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                WHERE ( ? IS NULL OR r.SKLADISTE_ID = ? )
+                  AND (
+                       ? IS NULL OR ? = '' OR
+                       LOWER(z.NAZIVDOKUMENTA) LIKE ? OR
+                       LOWER(z.DOKUMENTID) LIKE ? OR
+                       TO_CHAR(r.DOKUMENT_ID) LIKE ?
+                  )
+            """;
+
+        if (hasExcludeCodes) {
+            // exclude by document code (z.DOKUMENTID)
+            sql += "\n  AND UPPER(z.DOKUMENTID) NOT IN (" + placeholders.apply(exCodes.size()) + ")\n";
+        }
+
+        if (hasExcludeIds) {
+            // exclude by documentId (r.DOKUMENT_ID)
+            sql += "\n  AND r.DOKUMENT_ID NOT IN (" + placeholders.apply(exIds.size()) + ")\n";
+        }
+
+        sql += """
+            )
+            SELECT r2.DOKUMENT_ID,
+                   z.SD_SIFREZ_ID,
+                   z.DOKUMENTID,
+                   z.NAZIVDOKUMENTA,
+                   z.ULAZIZLAZ,
+                   z.MIJENJAZALIHU,
+                   z.KNJIZITINASKLADISTE,
+                   z.KNJIZITIUKPOPISA,
+                   z.KNJIZITINORMATIVE,
+                   z.KNJIZITISASTAVNICU,
+                   z.TIPPRODAJNIHCIJENA,
+                   z.TIPNABAVNECIJENE,
+                   z.TIPKNJIGEPOPISA,
+                   z.TIPKARTICE,
+                   z.TIPBAZA
+              FROM dids x
+              JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
+              JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
+             WHERE ( ? IS NULL OR r2.SKLADISTE_ID = ? )
+               AND r2.SD_SIFREZ_ID = (
+                    SELECT MIN(r3.SD_SIFREZ_ID)
+                      FROM SD_SIFREG r3
+                     WHERE r3.DOKUMENT_ID = x.DID
+                       AND ( ? IS NULL OR r3.SKLADISTE_ID = ? )
+               )
+             ORDER BY LOWER(z.NAZIVDOKUMENTA), r2.DOKUMENT_ID
+            """;
+
+        final String like = hasQ ? "%" + q.toLowerCase().trim() + "%" : null;
+        final String qq = hasQ ? q.trim() : null;
 
         return jdbc.query(
                 sql,
@@ -196,16 +237,22 @@ public class DocumentTypeRepository {
                     ps.setObject(i++, warehouseId);
                     ps.setObject(i++, warehouseId);
 
-                    // dids WHERE: documentCode
-                    ps.setString(i++, code);
-                    ps.setString(i++, code);
-
                     // dids WHERE: q
-                    ps.setString(i++, q);
-                    ps.setString(i++, q);
+                    ps.setString(i++, qq);
+                    ps.setString(i++, qq);
                     ps.setString(i++, like);
                     ps.setString(i++, like);
                     ps.setString(i++, like);
+
+                    // dids WHERE: excludeCodes
+                    if (hasExcludeCodes) {
+                        for (String c : exCodes) ps.setString(i++, c);
+                    }
+
+                    // dids WHERE: excludeDocumentIds
+                    if (hasExcludeIds) {
+                        for (Long id : exIds) ps.setLong(i++, id);
+                    }
 
                     // outer WHERE: warehouse filter again (important because r2 join expands dids)
                     ps.setObject(i++, warehouseId);

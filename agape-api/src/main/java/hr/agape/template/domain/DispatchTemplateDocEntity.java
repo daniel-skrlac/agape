@@ -6,12 +6,18 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "dispatch_template_doc")
+@Table(
+        name = "dispatch_template_doc",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "ux_dt_doc_template_document", columnNames = {"template_id", "document_id"})
+        }
+)
 @NoArgsConstructor
 public class DispatchTemplateDocEntity extends PanacheEntityBase {
 
@@ -27,7 +33,7 @@ public class DispatchTemplateDocEntity extends PanacheEntityBase {
     private Integer sortOrder = 0;
 
     @Column(name = "document_id", nullable = false)
-    private Long documentId; // Oracle DOKUMENT_ID
+    private Long documentId;
 
     @Column(name = "draft", nullable = false)
     private Boolean draft = false;
@@ -35,7 +41,7 @@ public class DispatchTemplateDocEntity extends PanacheEntityBase {
     @Column(name = "default_note", columnDefinition = "text")
     private String defaultNote;
 
-    @OneToMany(mappedBy = "templateDoc", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "templateDoc", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("sortOrder ASC, id ASC")
     private List<DispatchTemplateDocItemEntity> items;
 }

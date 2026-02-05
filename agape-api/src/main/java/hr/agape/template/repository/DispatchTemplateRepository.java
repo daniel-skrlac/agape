@@ -1,5 +1,6 @@
 package hr.agape.template.repository;
 
+import hr.agape.template.domain.DispatchTemplateDocEntity;
 import hr.agape.template.domain.DispatchTemplateEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -171,4 +172,18 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
         String like = "%" + q.toLowerCase().trim() + "%";
         return find(base + " AND LOWER(name) LIKE ?2" + order, ownerUserId, like).list();
     }
+
+    public boolean existsDocWithDocumentId(Long templateId, Long documentId, Long excludeDocId) {
+        if (excludeDocId == null) {
+            return DispatchTemplateDocEntity.count(
+                    "template.id = ?1 and documentId = ?2",
+                    templateId, documentId
+            ) > 0;
+        }
+        return DispatchTemplateDocEntity.count(
+                "template.id = ?1 and documentId = ?2 and id <> ?3",
+                templateId, documentId, excludeDocId
+        ) > 0;
+    }
+
 }
