@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+// app/(tabs)/templates/[id]/otpremi.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,8 +11,6 @@ import {
   TextInput,
   View,
   RefreshControl,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams } from "expo-router";
@@ -25,6 +24,9 @@ import { Sheet } from "@/components/Sheet";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
 import { toLocalDateString } from "@/components/date";
+import { CenterSheet } from "@/components/CenterSheet";
+
+import ValidateImpactModal from "@/components/ValidateImpactModal";
 
 import type {
   DraftMode,
@@ -34,17 +36,46 @@ import type {
   ItemDescriptorResponseDTO,
   TemplateDocResponseDTO,
   TemplateItemResponseDTO,
+  DispatchRequestDTO,
 } from "@/app/models/generated";
 
 import { partnerService } from "@/app/api/services/partnerService";
 import { useItemsPage } from "@/app/api/hooks/useItemDirectory";
 import { useBookMany, useBookOne, useTemplate } from "@/app/api/hooks/useDispatchTemplates";
 import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
-import { CenterSheet } from "@/components/CenterSheet";
 
 const MAX_W = 560;
 const ITEMS_PAGE_SIZE = 10;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
+
+/**
+ * IMPORTANT: this endpoint must exist in your backend.
+ * Adjust URL to match your API.
+ *
+ * Expected response: ItemDescriptorResponseDTO[] where each item has { itemId, name, code, unit }
+ *
+ * NOTE: we intentionally NEVER surface server error body to UI (to avoid "Not found" flashes).
+ */
+async function fetchItemDescriptorsByIds(args: {
+  warehouseId: number;
+  itemIds: number[];
+}): Promise<ItemDescriptorResponseDTO[]> {
+  const { warehouseId, itemIds } = args;
+  const uniq = Array.from(new Set(itemIds)).filter((x) => Number(x) > 0);
+  if (!uniq.length) return [];
+
+  const res = await fetch(`/api/item-directory/descriptors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ warehouseId, itemIds: uniq }),
+  });
+
+  if (!res.ok) {
+    // ✅ don't leak response text (often "Not found")
+    throw new Error(`Failed to load item descriptors (${res.status})`);
+  }
+  return (await res.json()) as ItemDescriptorResponseDTO[];
+}
 
 function normId(x: any) {
   return Number(x);
@@ -104,7 +135,6 @@ function CenterModal(props: {
     <Modal transparent visible={visible} animationType="fade" onRequestClose={disableClose ? undefined : onClose}>
       <View style={s.modalWrap}>
         <Pressable style={s.backdrop} onPress={disableClose ? undefined : onClose} />
-
         <View style={s.modalCard}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>{title}</Text>
@@ -116,74 +146,9 @@ function CenterModal(props: {
               <FontAwesome name="close" size={18} color={Colors.text} />
             </Pressable>
           </View>
-
           <ScrollView contentContainerStyle={s.modalBody} keyboardShouldPersistTaps="handled">
             {children}
           </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function CenterConfirmSheet(props: {
-  visible: boolean;
-  title: string;
-  subtitle?: string;
-  onClose: () => void;
-  primaryText?: string;
-  onPrimary: () => void;
-  secondaryText?: string;
-  onSecondary?: () => void;
-  disableClose?: boolean;
-  children: React.ReactNode;
-}) {
-  const {
-    visible,
-    title,
-    subtitle,
-    onClose,
-    primaryText = "Spremi",
-    onPrimary,
-    secondaryText = "Zatvori",
-    onSecondary,
-    disableClose,
-    children,
-  } = props;
-
-  return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={disableClose ? undefined : onClose}>
-      <View style={s.modalWrap}>
-        <Pressable style={s.backdrop} onPress={disableClose ? undefined : onClose} />
-
-        <View style={s.modalCard}>
-          <View style={s.modalHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.modalTitle}>{title}</Text>
-              {!!subtitle && <Text style={s.modalSubTitle}>{subtitle}</Text>}
-            </View>
-            <Pressable
-              style={[s.iconBtn, disableClose && { opacity: 0.5 }]}
-              onPress={disableClose ? undefined : onClose}
-              disabled={disableClose}
-            >
-              <FontAwesome name="close" size={18} color={Colors.text} />
-            </Pressable>
-          </View>
-
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={80}>
-            <ScrollView contentContainerStyle={s.modalBody} keyboardShouldPersistTaps="handled">
-              {children}
-
-              <Pressable style={s.primary} onPress={onPrimary}>
-                <Text style={s.primaryText}>{primaryText}</Text>
-              </Pressable>
-
-              <Pressable style={s.btnWide} onPress={onSecondary ?? onClose}>
-                <Text style={s.btnText}>{secondaryText}</Text>
-              </Pressable>
-            </ScrollView>
-          </KeyboardAvoidingView>
         </View>
       </View>
     </Modal>
@@ -200,30 +165,59 @@ function upsertMetaMap(prev: Map<number, ItemDescriptorResponseDTO>, items: Item
   return next;
 }
 
-function labelForItem(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
-  const m = metaById.get(Number(itemId));
-  const name = m?.name?.trim();
-  return name ? name : "Artikl";
-}
-
-function subLabelForItem(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
-  const m = metaById.get(Number(itemId));
-  const parts = [m?.code ? `Šifra: ${m.code}` : null, m?.unit ? `JMJ: ${m.unit}` : null].filter(Boolean);
-  return parts.join(" • ");
-}
-
 type PartnerNoteMap = Record<string, string>;
-
 function sanitizeNote(v: string) {
-  const x = (v ?? "").toString().replace(/\r\n/g, "\n").trim();
-  return x;
+  return (v ?? "").toString().replace(/\r\n/g, "\n").trim();
 }
-
 function shorten(s: string, max = 40) {
   const x = (s ?? "").trim();
   if (!x) return "";
   if (x.length <= max) return x;
   return x.slice(0, max - 1) + "…";
+}
+
+function itemName(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
+  return metaById.get(Number(itemId))?.name?.trim() ?? "";
+}
+function itemMeta(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
+  const m = metaById.get(Number(itemId));
+  if (!m) return "";
+  const parts = [m.code ? `Šifra: ${m.code}` : null, m.unit ? `JMJ: ${m.unit}` : null].filter(Boolean);
+  return parts.join(" • ");
+}
+
+function buildValidatePayload(args: {
+  warehouseId: number;
+  draftMode: DraftMode;
+  templateDocs: TemplateDocResponseDTO[];
+  docPatches: TemplateBookDocPatchDTO[];
+  standaloneItems: TemplateBookItemDTO[];
+}): DispatchRequestDTO {
+  const { warehouseId, draftMode, templateDocs, docPatches, standaloneItems } = args;
+
+  const qty: Record<string, number> = {};
+  const addQty = (itemId: any, q: any) => {
+    const id = Number(itemId);
+    const n = Number(q ?? 0);
+    if (!id || !Number.isFinite(n) || n === 0) return;
+    const k = String(id);
+    qty[k] = Number(qty[k] ?? 0) + n;
+  };
+
+  (templateDocs ?? []).forEach((d: any) => ((d?.items ?? []) as any[]).forEach((it) => addQty(it?.itemId, it?.quantity)));
+  (docPatches ?? []).forEach((p: any) => ((p?.addItems ?? []) as any[]).forEach((it) => addQty(it?.itemId, it?.quantity)));
+  (standaloneItems ?? []).forEach((it: any) => addQty(it?.itemId, it?.quantity));
+
+  const items = Object.entries(qty)
+    .map(([k, v]) => ({ itemId: Number(k), quantity: Number(v) }))
+    .filter((x) => x.itemId && x.quantity > 0)
+    .sort((a, b) => a.itemId - b.itemId);
+
+  return {
+    warehouseId,
+    draft: draftMode === "DRAFT",
+    items,
+  } as any;
 }
 
 export default function Otpremi() {
@@ -248,6 +242,7 @@ export default function Otpremi() {
 
   const refreshing = tplQ.isFetching;
   const onRefresh = () => tplQ.refetch();
+  const bookingBusy = bookOneM.isPending || bookManyM.isPending;
 
   if (ready && !warehouseId) {
     return (
@@ -275,10 +270,9 @@ export default function Otpremi() {
     setSelectedPartners(exists ? selectedPartners.filter((x) => normId(x.id) !== pid) : [...selectedPartners, p]);
   };
 
-  // ✅ per-partner note
+  // per-partner note
   const [noteByPartnerId, setNoteByPartnerId] = useState<PartnerNoteMap>({});
   useEffect(() => {
-    // cleanup notes for removed partners
     const ids = new Set(selectedPartners.map((p) => String(normId(p.id))));
     setNoteByPartnerId((prev) => {
       const next: PartnerNoteMap = {};
@@ -318,20 +312,12 @@ export default function Otpremi() {
     setNoteDraft("");
   };
 
-  const clearPartnerNote = () => {
-    if (!noteTarget) return;
-    const pid = String(normId(noteTarget.id));
-    setNoteByPartnerId((prev) => {
-      const { [pid]: _, ...rest } = prev;
-      return rest;
-    });
-    setNoteDraft("");
-  };
+  const clearPartnerNote = () => setNoteDraft("");
 
   // Draft/Final
   const [draftMode, setDraftMode] = useState<DraftMode>("DRAFT");
 
-  // doc patches (added per doc)
+  // doc patches
   const [docPatches, setDocPatches] = useState<TemplateBookDocPatchDTO[]>([]);
   const patchByDocId = useMemo(() => {
     const m = new Map<number, TemplateBookDocPatchDTO>();
@@ -339,7 +325,7 @@ export default function Otpremi() {
     return m;
   }, [docPatches]);
 
-  // standalone (outside docs)
+  // standalone items
   const [standaloneItems, setStandaloneItems] = useState<TemplateBookItemDTO[]>([]);
 
   // result
@@ -375,13 +361,27 @@ export default function Otpremi() {
   const canPrev = itemsPage > 0;
   const canNext = itemsPage + 1 < itemsTotalPages;
 
-  // meta cache for name rendering
+  // meta cache
   const [metaById, setMetaById] = useState<Map<number, ItemDescriptorResponseDTO>>(new Map());
+
+  // cache from directory page results (free)
   useEffect(() => {
     if (itemsQ.data?.items?.length) setMetaById((prev) => upsertMetaMap(prev, itemsQ.data!.items as any));
   }, [itemsQ.data?.items]);
 
   const [qtyDraft, setQtyDraft] = useState<QtyMap>({});
+
+  const openDocItems = (documentId: number) => {
+    const patch = patchByDocId.get(Number(documentId));
+    setQtyDraft(itemsToQty((patch?.addItems ?? []) as any));
+    setItemsTarget({ kind: "DOC", documentId });
+    setItemsOpen(true);
+
+    setItemsTab("results");
+    setSearchQ("");
+    setDebouncedQ("");
+    setItemsPage(0);
+  };
 
   const openStandalone = () => {
     setQtyDraft(itemsToQty(standaloneItems as any));
@@ -440,7 +440,7 @@ export default function Otpremi() {
     setItemsTarget(null);
   };
 
-  // DEFAULT items by doc (names via meta cache)
+  // default rows by doc
   const defaultRowsByDoc = useMemo(() => {
     return (templateDocs ?? [])
       .map((d) => {
@@ -457,7 +457,106 @@ export default function Otpremi() {
       .filter((x) => x.docId);
   }, [templateDocs]);
 
-  const submit = async () => {
+  // itemIds we must have NAMES for before rendering ANY rows
+  const requiredItemIds = useMemo(() => {
+    const ids: number[] = [];
+
+    for (const d of templateDocs ?? []) {
+      for (const it of ((d as any)?.items ?? []) as any[]) {
+        const id = Number(it?.itemId);
+        if (id) ids.push(id);
+      }
+    }
+
+    for (const p of docPatches ?? []) {
+      for (const it of ((p as any)?.addItems ?? []) as any[]) {
+        const id = Number(it?.itemId);
+        if (id) ids.push(id);
+      }
+    }
+
+    for (const it of standaloneItems ?? []) {
+      const id = Number((it as any)?.itemId);
+      if (id) ids.push(id);
+    }
+
+    return Array.from(new Set(ids)).sort((a, b) => a - b);
+  }, [templateDocs, docPatches, standaloneItems]);
+
+  // preload names (NO ERROR TEXT, EVER)
+  const [namesLoading, setNamesLoading] = useState(false);
+  const preloadKeyRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!warehouseId) return;
+    if (!requiredItemIds.length) return;
+
+    const missing = requiredItemIds.filter((id) => {
+      const nm = metaById.get(id)?.name?.trim();
+      return !nm;
+    });
+
+    const key = `${warehouseId}:${missing.join(",")}`;
+    if (!missing.length) {
+      setNamesLoading(false);
+      preloadKeyRef.current = "";
+      return;
+    }
+    if (preloadKeyRef.current === key) return;
+
+    preloadKeyRef.current = key;
+    setNamesLoading(true);
+
+    (async () => {
+      try {
+        const list = await fetchItemDescriptorsByIds({ warehouseId: Number(warehouseId), itemIds: missing });
+        setMetaById((prev) => upsertMetaMap(prev, list));
+      } catch {
+        // ✅ silent: never show "Not found" or any transient errors
+        // If backend route doesn't exist, names will still be filled gradually from item search results.
+      } finally {
+        setNamesLoading(false);
+      }
+    })();
+  }, [warehouseId, requiredItemIds, metaById]);
+
+  const namesReady = useMemo(() => {
+    if (!requiredItemIds.length) return true;
+    for (const id of requiredItemIds) {
+      const nm = metaById.get(id)?.name?.trim();
+      if (!nm) return false;
+    }
+    return true;
+  }, [requiredItemIds, metaById]);
+
+  // ------------------ VALIDATE FLOW ------------------
+  const [validateOpen, setValidateOpen] = useState(false);
+  const [validatePayload, setValidatePayload] = useState<DispatchRequestDTO | null>(null);
+
+  const openValidate = () => {
+    if (!warehouseId) return;
+    if (selectedPartners.length === 0) return;
+    if (!templateDocs || templateDocs.length === 0) return;
+
+    const payload = buildValidatePayload({
+      warehouseId: Number(warehouseId),
+      draftMode,
+      templateDocs,
+      docPatches,
+      standaloneItems,
+    });
+
+    if (!payload.items || (payload.items as any[]).length === 0) {
+      setResultText("Nema stavki za validaciju.");
+      setResultOpen(true);
+      return;
+    }
+
+    setValidatePayload(payload);
+    setValidateOpen(true);
+  };
+
+  const doSubmitBooking = async () => {
     if (!warehouseId) return;
     if (selectedPartners.length === 0) return;
 
@@ -469,7 +568,6 @@ export default function Otpremi() {
 
     const documentDate = toLocalDateString(new Date());
 
-    // ✅ ONE partner: pass note directly (backend can map req.note -> SD_GLAVA.NAPOMENA)
     if (selectedPartners.length === 1) {
       const p = selectedPartners[0];
       const note = noteByPartnerId[String(normId(p.id))] ?? null;
@@ -491,15 +589,11 @@ export default function Otpremi() {
       return;
     }
 
-    // ✅ MANY partners: if backend DOES NOT support notes-per-partner in one call,
-    // we do sequential bookOne calls (still uses template endpoint).
-    // (If you later add a backend map partnerId->note, you can switch back to bookMany.)
     const total = selectedPartners.length;
     let ok = 0;
     let fail = 0;
 
-    for (let i = 0; i < selectedPartners.length; i++) {
-      const p = selectedPartners[i];
+    for (const p of selectedPartners) {
       const note = noteByPartnerId[String(normId(p.id))] ?? null;
 
       try {
@@ -515,11 +609,9 @@ export default function Otpremi() {
           note: note as any,
         } as any);
 
-        // bookOne returns bulk response too (in your backend it does bookBulk even for one)
-        // assume succeeded>0 means ok
         if ((r as any)?.succeeded > 0) ok++;
         else fail++;
-      } catch (e) {
+      } catch {
         fail++;
       }
     }
@@ -528,6 +620,12 @@ export default function Otpremi() {
     setResultOpen(true);
   };
 
+  const confirmValidateAndSubmit = async () => {
+    setValidateOpen(false);
+    await doSubmitBooking();
+  };
+
+  // ------------------ RENDER ------------------
   return (
     <Screen>
       <TemplatesHeader title="Otpremi" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
@@ -557,7 +655,13 @@ export default function Otpremi() {
         </Pressable>
 
         <Text style={s.label}>Stavke po dokumentu (default iz predloška)</Text>
-        {tplQ.isLoading ? (
+
+        {/* ✅ NO "Not found": only spinner while waiting */}
+        {!namesReady ? (
+          <View style={s.loadingBox}>
+            <ActivityIndicator />
+          </View>
+        ) : tplQ.isLoading ? (
           <Text style={s.helper}>Učitavam predložak…</Text>
         ) : defaultRowsByDoc.length === 0 ? (
           <Text style={s.helper}>Nema dokumenata / stavki u predlošku.</Text>
@@ -576,21 +680,26 @@ export default function Otpremi() {
                   <Text style={s.muted}>Nema stavki.</Text>
                 ) : (
                   <View style={{ gap: 8, marginTop: 8 }}>
-                    {block.rows.map((r) => (
-                      <View key={String(r.itemId)} style={s.simpleRow}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.itemNameStrong} numberOfLines={2}>
-                            {labelForItem(r.itemId, metaById)}
-                          </Text>
-                          {!!subLabelForItem(r.itemId, metaById) && (
-                            <Text style={s.itemMeta} numberOfLines={1}>
-                              {subLabelForItem(r.itemId, metaById)}
+                    {block.rows.map((r) => {
+                      const nm = itemName(r.itemId, metaById);
+                      const meta = itemMeta(r.itemId, metaById);
+
+                      return (
+                        <View key={String(r.itemId)} style={s.simpleRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.itemNameStrong} numberOfLines={2}>
+                              {nm}
                             </Text>
-                          )}
+                            {!!meta && (
+                              <Text style={s.itemMeta} numberOfLines={1}>
+                                {meta}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={s.simpleRight}>x{r.quantity}</Text>
                         </View>
-                        <Text style={s.simpleRight}>x{r.quantity}</Text>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
 
@@ -609,47 +718,58 @@ export default function Otpremi() {
           </Pressable>
         </View>
 
-        <View style={s.cardCol}>
-          <Text style={s.title}>Dodano van dokumenta</Text>
-          <Text style={s.sub}>Stavki: {standaloneItems.length}</Text>
+        {!namesReady ? null : (
+          <View style={s.cardCol}>
+            <Text style={s.title}>Dodano van dokumenta</Text>
+            <Text style={s.sub}>Stavki: {standaloneItems.length}</Text>
 
-          {standaloneItems.length === 0 ? (
-            <Text style={s.muted}>Nema dodanih stavki.</Text>
-          ) : (
-            <View style={{ gap: 8, marginTop: 8 }}>
-              {standaloneItems
-                .slice()
-                .sort((a, b) => Number(a.itemId) - Number(b.itemId))
-                .map((r) => (
-                  <View key={String(r.itemId)} style={s.simpleRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.itemNameStrong} numberOfLines={2}>
-                        {labelForItem(Number(r.itemId), metaById)}
-                      </Text>
-                      {!!subLabelForItem(Number(r.itemId), metaById) && (
-                        <Text style={s.itemMeta} numberOfLines={1}>
-                          {subLabelForItem(Number(r.itemId), metaById)}
-                        </Text>
-                      )}
-                    </View>
-                    <Text style={s.simpleRight}>x{Number(r.quantity ?? 0)}</Text>
-                  </View>
-                ))}
-            </View>
-          )}
+            {standaloneItems.length === 0 ? (
+              <Text style={s.muted}>Nema dodanih stavki.</Text>
+            ) : (
+              <View style={{ gap: 8, marginTop: 8 }}>
+                {standaloneItems
+                  .slice()
+                  .sort((a, b) => Number(a.itemId) - Number(b.itemId))
+                  .map((r) => {
+                    const nm = itemName(Number(r.itemId), metaById);
+                    const meta = itemMeta(Number(r.itemId), metaById);
 
-          <Text style={[s.helper, { marginTop: 8 }]}>
-            Ove stavke nisu vezane uz određeni dokument. Aplikacija će ih primijeniti na prvi dokument predloška.
-          </Text>
-        </View>
+                    return (
+                      <View key={String(r.itemId)} style={s.simpleRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.itemNameStrong} numberOfLines={2}>
+                            {nm}
+                          </Text>
+                          {!!meta && (
+                            <Text style={s.itemMeta} numberOfLines={1}>
+                              {meta}
+                            </Text>
+                          )}
+                        </View>
+                        <Text style={s.simpleRight}>x{Number(r.quantity ?? 0)}</Text>
+                      </View>
+                    );
+                  })}
+              </View>
+            )}
+
+            <Text style={[s.helper, { marginTop: 8 }]}>
+              Ove stavke nisu vezane uz određeni dokument. Aplikacija će ih primijeniti na prvi dokument predloška.
+            </Text>
+          </View>
+        )}
 
         <Pressable
-          style={[s.primary, (selectedPartners.length === 0 || !warehouseId) && { opacity: 0.5 }]}
-          disabled={selectedPartners.length === 0 || !warehouseId}
-          onPress={submit}
+          style={[s.primary, (selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading) && { opacity: 0.5 }]}
+          disabled={selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading}
+          onPress={openValidate}
         >
           <Text style={s.primaryText}>
-            {bookOneM.isPending || bookManyM.isPending ? "Radim…" : selectedPartners.length <= 1 ? "Kreiraj" : `Kreiraj (${selectedPartners.length})`}
+            {bookingBusy
+              ? "Radim…"
+              : selectedPartners.length <= 1
+              ? "Validiraj i kreiraj"
+              : `Validiraj i kreiraj (${selectedPartners.length})`}
           </Text>
         </Pressable>
 
@@ -739,14 +859,10 @@ export default function Otpremi() {
         {/* Items modal */}
         <CenterModal
           visible={itemsOpen}
-          title={
-            itemsTarget?.kind === "DOC"
-              ? `Dodaj stavke • Dokument #${itemsTarget.documentId}`
-              : "Dodaj stavke van dokumenta"
-          }
-          disableClose={bookOneM.isPending || bookManyM.isPending}
+          title={itemsTarget?.kind === "DOC" ? `Dodaj stavke • Dokument #${itemsTarget.documentId}` : "Dodaj stavke van dokumenta"}
+          disableClose={bookingBusy}
           onClose={() => {
-            if (bookOneM.isPending || bookManyM.isPending) return;
+            if (bookingBusy) return;
             setItemsOpen(false);
             setItemsTarget(null);
           }}
@@ -756,16 +872,11 @@ export default function Otpremi() {
           ) : (
             <View style={s.centerBlock}>
               <View style={s.tabs}>
-                <Pressable
-                  style={[s.tabBtn, itemsTab === "results" && s.tabBtnActive]}
-                  onPress={() => setItemsTab("results")}
-                >
+                <Pressable style={[s.tabBtn, itemsTab === "results" && s.tabBtnActive]} onPress={() => setItemsTab("results")}>
                   <Text style={[s.tabText, itemsTab === "results" && s.tabTextActive]}>Rezultati</Text>
                 </Pressable>
                 <Pressable style={[s.tabBtn, itemsTab === "added" && s.tabBtnActive]} onPress={() => setItemsTab("added")}>
-                  <Text style={[s.tabText, itemsTab === "added" && s.tabTextActive]}>
-                    Dodano ({qtyToItems(qtyDraft).length})
-                  </Text>
+                  <Text style={[s.tabText, itemsTab === "added" && s.tabTextActive]}>Dodano ({qtyToItems(qtyDraft).length})</Text>
                 </Pressable>
               </View>
 
@@ -781,9 +892,7 @@ export default function Otpremi() {
                     autoCapitalize="none"
                   />
 
-                  {!!itemsQ.error && (
-                    <Banner type="error" text={(itemsQ.error as any)?.message ?? "Greška pri dohvaćanju artikala."} />
-                  )}
+                  {!!itemsQ.error && <Banner type="error" text={(itemsQ.error as any)?.message ?? "Greška pri dohvaćanju artikala."} />}
 
                   <View style={s.block}>
                     <Text style={s.blockTitle}>Rezultati</Text>
@@ -800,16 +909,16 @@ export default function Otpremi() {
                           <View key={String(it.itemId)} style={s.resultRow}>
                             <View style={{ flex: 1 }}>
                               <Text style={s.itemNameStrong} numberOfLines={2}>
-                                {it.name?.trim() ? it.name : "Artikl"}
+                                {it.name}
                               </Text>
-                              <Text style={s.itemMeta} numberOfLines={1}>
-                                {[it.code ? `Šifra: ${it.code}` : null, it.unit ? `JMJ: ${it.unit}` : null]
-                                  .filter(Boolean)
-                                  .join(" • ")}
-                              </Text>
+                              {!![it.code, it.unit].filter(Boolean).length && (
+                                <Text style={s.itemMeta} numberOfLines={1}>
+                                  {[it.code ? `Šifra: ${it.code}` : null, it.unit ? `JMJ: ${it.unit}` : null].filter(Boolean).join(" • ")}
+                                </Text>
+                              )}
                             </View>
 
-                            <Pressable style={s.addBtn} onPress={() => addOne(it)}>
+                            <Pressable style={s.addBtn} onPress={() => addOne(it as any)}>
                               <Text style={s.addBtnText}>+1</Text>
                             </Pressable>
                           </View>
@@ -830,11 +939,7 @@ export default function Otpremi() {
                         Str. {itemsPage + 1} / {itemsTotalPages}
                       </Text>
 
-                      <Pressable
-                        style={[s.pagerBtn, !canNext && { opacity: 0.4 }]}
-                        disabled={!canNext}
-                        onPress={() => setItemsPage((p) => p + 1)}
-                      >
+                      <Pressable style={[s.pagerBtn, !canNext && { opacity: 0.4 }]} disabled={!canNext} onPress={() => setItemsPage((p) => p + 1)}>
                         <FontAwesome name="chevron-right" size={14} color={Colors.text} />
                       </Pressable>
                     </View>
@@ -851,47 +956,52 @@ export default function Otpremi() {
                       {qtyToItems(qtyDraft)
                         .slice()
                         .sort((a, b) => Number(a.itemId) - Number(b.itemId))
-                        .map((x) => (
-                          <View key={String(x.itemId)} style={s.itemRow}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={s.itemNameStrong} numberOfLines={2}>
-                                {labelForItem(Number(x.itemId), metaById)}
-                              </Text>
-                              {!!subLabelForItem(Number(x.itemId), metaById) && (
-                                <Text style={s.itemMeta} numberOfLines={1}>
-                                  {subLabelForItem(Number(x.itemId), metaById)}
+                        .map((x) => {
+                          const nm = itemName(Number(x.itemId), metaById);
+                          const meta = itemMeta(Number(x.itemId), metaById);
+
+                          return (
+                            <View key={String(x.itemId)} style={s.itemRow}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={s.itemNameStrong} numberOfLines={2}>
+                                  {nm}
                                 </Text>
-                              )}
-                            </View>
+                                {!!meta && (
+                                  <Text style={s.itemMeta} numberOfLines={1}>
+                                    {meta}
+                                  </Text>
+                                )}
+                              </View>
 
-                            <View style={s.qtyBox}>
-                              <Pressable style={s.qtyBtn} onPress={() => bumpQty(x.itemId, -1)}>
-                                <Text style={s.qtyBtnText}>−</Text>
+                              <View style={s.qtyBox}>
+                                <Pressable style={s.qtyBtn} onPress={() => bumpQty(x.itemId, -1)}>
+                                  <Text style={s.qtyBtnText}>−</Text>
+                                </Pressable>
+
+                                <TextInput
+                                  value={String(x.quantity)}
+                                  onChangeText={(v) => {
+                                    const n = Number(String(v).replace(",", "."));
+                                    if (!Number.isFinite(n)) return;
+                                    setQtyFor(x.itemId, n);
+                                  }}
+                                  keyboardType="numeric"
+                                  placeholder="1"
+                                  placeholderTextColor={PLACEHOLDER}
+                                  style={s.qtyInput}
+                                />
+
+                                <Pressable style={s.qtyBtn} onPress={() => bumpQty(x.itemId, +1)}>
+                                  <Text style={s.qtyBtnText}>+</Text>
+                                </Pressable>
+                              </View>
+
+                              <Pressable style={s.smallDangerBtn} onPress={() => removeItem(x.itemId)}>
+                                <Text style={s.smallDangerText}>X</Text>
                               </Pressable>
-
-                              <TextInput
-                                value={String(x.quantity)}
-                                onChangeText={(v) => {
-                                  const n = Number(String(v).replace(",", "."));
-                                  if (!Number.isFinite(n)) return;
-                                  setQtyFor(x.itemId, n);
-                                }}
-                                keyboardType="numeric"
-                                placeholder="1"
-                                placeholderTextColor={PLACEHOLDER}
-                                style={s.qtyInput}
-                              />
-
-                              <Pressable style={s.qtyBtn} onPress={() => bumpQty(x.itemId, +1)}>
-                                <Text style={s.qtyBtnText}>+</Text>
-                              </Pressable>
                             </View>
-
-                            <Pressable style={s.smallDangerBtn} onPress={() => removeItem(x.itemId)}>
-                              <Text style={s.smallDangerText}>X</Text>
-                            </Pressable>
-                          </View>
-                        ))}
+                          );
+                        })}
                     </View>
                   )}
                 </View>
@@ -914,17 +1024,16 @@ export default function Otpremi() {
           )}
         </CenterModal>
 
-        {/* Partner note sheet */}
         <CenterSheet
           visible={noteSheetOpen}
           title="Note za partnera"
           onClose={() => {
-            if (bookOneM.isPending || bookManyM.isPending) return;
+            if (bookingBusy) return;
             setNoteSheetOpen(false);
             setNoteTarget(null);
           }}
           closeOnBackdrop={false}
-          disableClose={bookOneM.isPending || bookManyM.isPending}
+          disableClose={bookingBusy}
           width={MAX_W}
         >
           {!!noteTarget && (
@@ -945,26 +1054,25 @@ export default function Otpremi() {
           />
 
           <View style={{ gap: 12 }}>
-            <Pressable style={s.primary} onPress={applyPartnerNote}>
+            <Pressable style={s.primary} onPress={applyPartnerNote} disabled={bookingBusy}>
               <Text style={s.primaryText}>Spremi note</Text>
             </Pressable>
 
             <Pressable
               style={s.btnWide}
               onPress={() => {
-                if (bookOneM.isPending || bookManyM.isPending) return;
+                if (bookingBusy) return;
                 setNoteSheetOpen(false);
                 setNoteTarget(null);
               }}
+              disabled={bookingBusy}
             >
               <Text style={s.btnText}>Zatvori</Text>
             </Pressable>
 
-            <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
-              <Pressable style={[s.secondaryBtn, { flex: 1 }]} onPress={clearPartnerNote}>
-                <Text style={s.secondaryText}>Obriši</Text>
-              </Pressable>
-            </View>
+            <Pressable style={s.secondaryBtn} onPress={clearPartnerNote} disabled={bookingBusy}>
+              <Text style={s.secondaryText}>Obriši unos</Text>
+            </Pressable>
           </View>
         </CenterSheet>
 
@@ -975,6 +1083,18 @@ export default function Otpremi() {
           </Pressable>
         </Sheet>
       </ScrollView>
+
+      {/* <ValidateImpactModal
+        visible={validateOpen}
+        onClose={() => {
+          if (bookingBusy) return;
+          setValidateOpen(false);
+        }}
+        payload={validatePayload}
+        onConfirm={confirmValidateAndSubmit}
+        confirmText={selectedPartners.length <= 1 ? "Kreiraj" : `Kreiraj (${selectedPartners.length})`}
+        disableClose={bookingBusy}
+      /> */}
     </Screen>
   );
 }
@@ -1001,6 +1121,18 @@ const s = StyleSheet.create({
   secondaryText: { fontWeight: "900", color: Colors.text },
 
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+
+  loadingBox: {
+    width: "100%",
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
 
   cardCol: {
     backgroundColor: Colors.bg,
@@ -1041,7 +1173,6 @@ const s = StyleSheet.create({
   },
   simpleRight: { fontWeight: "900", color: Colors.sub },
 
-  // Selected partners
   cardSelected: {
     backgroundColor: "rgba(249,115,22,0.10)",
     borderRadius: 18,
@@ -1129,7 +1260,6 @@ const s = StyleSheet.create({
   },
   pillText: { fontWeight: "900", color: Colors.text },
 
-  // modal
   modalWrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   modalCard: {
@@ -1153,7 +1283,6 @@ const s = StyleSheet.create({
     gap: 10,
   },
   modalTitle: { fontWeight: "900", color: Colors.text, fontSize: 16, flex: 1 },
-  modalSubTitle: { marginTop: 2, fontWeight: "800", color: Colors.sub },
   iconBtn: {
     width: 34,
     height: 34,

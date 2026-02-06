@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-05 17:36:48.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-06 21:05:57.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -179,6 +179,23 @@ export interface StockStatisticsTotalsDTO {
     overstockedCount: number;
     reservedCount: number;
     totalStockQty: number;
+}
+
+export interface BookingImpactItemDTO {
+    itemId: number;
+    itemCode: string;
+    name: string;
+    unit: string;
+    currentQty: number;
+    pendingOutQty: number;
+    pendingInQty: number;
+    effectiveQty: number;
+    deltaPendingOutQty: number;
+    deltaPendingInQty: number;
+    afterPendingOutQty: number;
+    afterPendingInQty: number;
+    afterEffectiveQty: number;
+    missingInWarehouse: boolean;
 }
 
 export interface BookingSessionCreateRequestDTO {
@@ -372,6 +389,17 @@ export interface TemplateUpdateRequestDTO {
     householdSize: number;
     name: string;
     description: string;
+}
+
+export interface WarehouseBookingImpactDTO {
+    warehouseId: number;
+    documentId: number;
+    documentCode: string;
+    inOutFlag: number;
+    changesStock: number;
+    draft: boolean;
+    willAffectPending: boolean;
+    items: BookingImpactItemDTO[];
 }
 
 export interface AuthResponseDTO {
