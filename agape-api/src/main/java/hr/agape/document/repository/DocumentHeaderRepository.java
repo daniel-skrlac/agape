@@ -46,30 +46,31 @@ public class DocumentHeaderRepository {
     private DocumentHeaderEntity doInsertHeader(Connection c, DocumentHeaderEntity h) throws SQLException {
 
         final String sql = """
-                INSERT INTO SD_GLAVA
-                  (DOKUMENT_ID,
-                   DATUM_DOKUMENTA,
-                   PARTNER_ID,
-                   IZRADIO,
-                   SIFRATEKSTA,
-                   BROJSTAVAKA,
-                   DOKUMENTBR,
-                   KNJIZENO,
-                   KNJIZIO,
-                   DATUM_KNJIZENJA,
-                   DATUM_IZRADE)
-                VALUES (?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, SYSDATE)
-                                RETURNING ID,
-                                          DOKUMENTBR,
-                                          DATUM_DOKUMENTA,
-                                          DATUM_IZRADE,
-                                          KNJIZENO,
-                                          KNJIZIO,
-                                          DATUM_KNJIZENJA,
-                                          STORNIRAO,
-                                          DATUM_STORNO,
-                                          NAPOMENA
-                                INTO ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    INSERT INTO SD_GLAVA
+                      (DOKUMENT_ID,
+                       DATUM_DOKUMENTA,
+                       PARTNER_ID,
+                       IZRADIO,
+                       SIFRATEKSTA,
+                       BROJSTAVAKA,
+                       DOKUMENTBR,
+                       KNJIZENO,
+                       KNJIZIO,
+                       DATUM_KNJIZENJA,
+                       DATUM_IZRADE,
+                       NAPOMENA)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, SYSDATE, ?)
+                    RETURNING ID,
+                              DOKUMENTBR,
+                              DATUM_DOKUMENTA,
+                              DATUM_IZRADE,
+                              KNJIZENO,
+                              KNJIZIO,
+                              DATUM_KNJIZENJA,
+                              STORNIRAO,
+                              DATUM_STORNO,
+                              NAPOMENA
+                    INTO ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 """;
 
         return jdbc.updateReturning(
@@ -81,21 +82,24 @@ public class DocumentHeaderRepository {
                     Jdbc.setLong(ps, 3, h.getPartnerId());
                     Jdbc.setLong(ps, 4, h.getCreatedBy());
                     Jdbc.setString(ps, 5, h.getTextType() != null ? h.getTextType().dbValue() : null);
+
                     if (h.getItemCount() != null) ps.setInt(6, h.getItemCount());
                     else ps.setNull(6, Types.NUMERIC);
 
+                    Jdbc.setClobString(ps, 7, h.getNote());
+
                     OraclePreparedStatement ops = ps.unwrap(OraclePreparedStatement.class);
 
-                    ops.registerReturnParameter(7, OracleTypes.NUMBER);     // ID
-                    ops.registerReturnParameter(8, OracleTypes.NUMBER);     // DOKUMENTBR
-                    ops.registerReturnParameter(9, OracleTypes.DATE);       // DATUM_DOKUMENTA
-                    ops.registerReturnParameter(10, OracleTypes.TIMESTAMP);  // DATUM_IZRADE
-                    ops.registerReturnParameter(11, OracleTypes.NUMBER);     // KNJIZENO
-                    ops.registerReturnParameter(12, OracleTypes.NUMBER);     // KNJIZIO
-                    ops.registerReturnParameter(13, OracleTypes.TIMESTAMP);  // DATUM_KNJIZENJA
-                    ops.registerReturnParameter(14, OracleTypes.NUMBER);     // STORNIRAO
-                    ops.registerReturnParameter(15, OracleTypes.TIMESTAMP);  // DATUM_STORNO
-                    ops.registerReturnParameter(16, OracleTypes.CLOB);       // NAPOMENA
+                    ops.registerReturnParameter(8, OracleTypes.NUMBER);      // ID
+                    ops.registerReturnParameter(9, OracleTypes.NUMBER);      // DOKUMENTBR
+                    ops.registerReturnParameter(10, OracleTypes.DATE);       // DATUM_DOKUMENTA
+                    ops.registerReturnParameter(11, OracleTypes.TIMESTAMP);  // DATUM_IZRADE
+                    ops.registerReturnParameter(12, OracleTypes.NUMBER);     // KNJIZENO
+                    ops.registerReturnParameter(13, OracleTypes.NUMBER);     // KNJIZIO
+                    ops.registerReturnParameter(14, OracleTypes.TIMESTAMP);  // DATUM_KNJIZENJA
+                    ops.registerReturnParameter(15, OracleTypes.NUMBER);     // STORNIRAO
+                    ops.registerReturnParameter(16, OracleTypes.TIMESTAMP);  // DATUM_STORNO
+                    ops.registerReturnParameter(17, OracleTypes.CLOB);       // NAPOMENA
                 },
                 rs -> mapReturningInsertRow(h, rs)
         );
@@ -142,7 +146,7 @@ public class DocumentHeaderRepository {
                 .postedAt(postedAt)
                 .cancelledBy(cancelledBy)
                 .cancelledAt(cancelledAt)
-                .cancelNote(note)
+                .note(note)
                 .build();
     }
 
@@ -413,7 +417,7 @@ public class DocumentHeaderRepository {
                 .postedAt(postedAt)
                 .cancelledBy(cancelledBy)
                 .cancelledAt(cancelledAt)
-                .cancelNote(napomena)
+                .note(napomena)
                 .build();
     }
 }

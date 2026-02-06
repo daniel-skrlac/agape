@@ -12,5 +12,7 @@ public class TemplateBookDocPatchDTO {
     @NotNull
     private Long documentId;
 
+    private String noteOverride;
+
     private List<TemplateBookItemDTO> addItems;
 }

@@ -77,7 +77,7 @@ public class DocumentHeaderEntity {
 
     private Long cancelledBy;       // SD_GLAVA.STORNIRAO
     private OffsetDateTime cancelledAt;// SD_GLAVA.DATUM_STORNO
-    private String cancelNote;         // SD_GLAVA.NAPOMENA
+    private String note;         // SD_GLAVA.NAPOMENA
 
     private DocumentTextType textType; // -> SD_GLAVA.SIFRATEKSTA
     private Integer itemCount;         // -> SD_GLAVA.BROJSTAVAKA

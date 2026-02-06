@@ -97,4 +97,7 @@ public class DocumentSlotTypeView {
 
     // SD_SIFREZ.TIPBAZA (informativno)
     private Integer tipBaza;
+
+    // SD_SIFREZ.REZERVACIJE
+    private Integer rezervacije;
 }

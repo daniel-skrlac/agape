@@ -33,6 +33,7 @@ public class DocumentTypeRepository {
                             z.NAZIVDOKUMENTA,
                             z.ULAZIZLAZ,
                             z.MIJENJAZALIHU,
+                            z.REZERVACIJE,
                             z.KNJIZITINASKLADISTE,
                             z.KNJIZITIUKPOPISA,
                             z.KNJIZITINORMATIVE,
@@ -59,6 +60,7 @@ public class DocumentTypeRepository {
                         .displayName(rs.getString("NAZIVDOKUMENTA"))
                         .inOutFlag(rs.getInt("ULAZIZLAZ"))
                         .changesStock(rs.getInt("MIJENJAZALIHU"))
+                        .rezervacije(rs.getInt("REZERVACIJE"))
                         .knjizitiNaSkladiste(rs.getInt("KNJIZITINASKLADISTE"))
                         .knjizitiUkPopisa(rs.getInt("KNJIZITIUKPOPISA"))
                         .knjizitiNormative(rs.getInt("KNJIZITINORMATIVE"))

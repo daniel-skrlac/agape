@@ -951,6 +951,11 @@ public class DispatchTemplateService {
 
             TemplateBookDocPatchDTO patch = patchByDocId.get(d.getDocumentId());
 
+            String note = null;
+            if (patch != null && patch.getNoteOverride() != null) {
+                note = patch.getNoteOverride();
+            }
+
             Map<Long, BigDecimal> qty = new LinkedHashMap<>();
             for (DispatchTemplateDocItemEntity it : d.getItems()) {
                 qty.put(it.getItemId(), it.getQuantity());
@@ -986,6 +991,7 @@ public class DispatchTemplateService {
             dr.setWarehouseId(warehouseId);
             dr.setDocumentDate(docDate);
             dr.setDraft(draft);
+            dr.setNote(note);
 
             List<DispatchRequestDTO.DispatchItemRequest> items = new ArrayList<>();
             for (var e : qty.entrySet()) {

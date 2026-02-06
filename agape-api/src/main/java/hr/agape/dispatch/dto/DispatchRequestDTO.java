@@ -71,6 +71,9 @@ public class DispatchRequestDTO {
     // if false, we create and POST immediately.
     private boolean draft;
 
+    @Size(max = 2000)
+    private String note;
+
     /**
      * One line on the dispatch note.
      */

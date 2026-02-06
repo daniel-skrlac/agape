@@ -26,7 +26,6 @@ public interface DispatchApiMapper {
     @Mapping(target = "posted", ignore = true)
     @Mapping(target = "cancelledBy", ignore = true)
     @Mapping(target = "cancelledAt", ignore = true)
-    @Mapping(target = "cancelNote", ignore = true)
     @Mapping(target = "textType", ignore = true)
     @Mapping(target = "itemCount", ignore = true)
     DocumentHeaderEntity toHeader(DispatchRequestDTO req);
@@ -67,7 +66,6 @@ public interface DispatchApiMapper {
     @Mapping(target = "cancelled", source = "cancelledBy", qualifiedByName = "isCancelled")
     @Mapping(source = "cancelledBy", target = "cancelledBy")
     @Mapping(source = "cancelledAt", target = "cancelledAt")
-    @Mapping(source = "cancelNote", target = "cancelNote")
     @Mapping(target = "status", source = "header", qualifiedByName = "statusFromEntity")
     DispatchResponseDTO toResponse(DocumentHeaderEntity header);
 

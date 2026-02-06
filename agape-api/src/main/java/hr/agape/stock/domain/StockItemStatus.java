@@ -16,8 +16,11 @@ public class StockItemStatus {
     private String name;
     private String unit;
 
-    private BigDecimal currentQty;
+    private BigDecimal currentQty;     // ZALIHATRENUTNA
+    private BigDecimal pendingOutQty;  // ZALIHANEPROKNJIZENA
+    private BigDecimal pendingInQty;   // ZALIHAKALKULACIJA
+
+    private BigDecimal reservedQty;
     private BigDecimal minimalQty;
     private BigDecimal recommendedQty;
-    private BigDecimal reservedQty;
 }
