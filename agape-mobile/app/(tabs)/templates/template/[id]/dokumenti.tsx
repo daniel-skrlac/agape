@@ -354,12 +354,12 @@ export default function Dokumenti() {
     if (!warehouseId) return { items: [] as DocumentDescriptorResponseDTO[], page, size, total: 0 };
 
     try {
-const all = await documentDirectoryService.listDocTypesByCode({
-  warehouseId,
-  documentCode: DOC_CODE,
-  q: q ?? undefined,
-  excludeDocumentIds,
-});
+      const all = await documentDirectoryService.listDocTypesByCode({
+        warehouseId,
+        documentCode: DOC_CODE,
+        q: q ?? undefined,
+        excludeDocumentIds,
+      });
 
       const needle = (q ?? "").trim().toLowerCase();
       const filtered = !needle

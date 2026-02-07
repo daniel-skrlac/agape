@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-07 14:16:01.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-07 20:18:19.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -14,6 +14,59 @@ export interface ServiceResponseDTO<T> {
     message: string;
     statusCode: number;
     data: T;
+}
+
+export interface DispatchBookingDetailDTO {
+    headerId: number;
+    documentId: number;
+    documentCode: string;
+    documentName: string;
+    documentBr: number;
+    documentDate: Date;
+    bookedAt: Date;
+    partnerId: number;
+    partnerName: string;
+    posted: boolean;
+    cancelled: boolean;
+    createdBy: number;
+    createdAt: Date;
+    postedBy: number;
+    postedAt: Date;
+    cancelledBy: number;
+    cancelledAt: Date;
+    items: DispatchBookingItemDTO[];
+}
+
+export interface DispatchBookingItemDTO {
+    itemRowId: number;
+    itemId: number;
+    nazivId: number;
+    itemCode: string;
+    name: string;
+    unit: string;
+    quantity: number;
+}
+
+export interface DispatchBookingListItemDTO {
+    headerId: number;
+    documentId: number;
+    documentCode: string;
+    documentName: string;
+    documentBr: number;
+    partnerId: number;
+    partnerName: string;
+    bookedAt: Date;
+    posted: boolean;
+    cancelled: boolean;
+}
+
+export interface DispatchBookingsQueryDTO extends BaseSearchFilter {
+    warehouseId: number;
+    q: string;
+    documentCode: string;
+    status: DispatchBookingStatus;
+    dateFrom: Date;
+    dateTo: Date;
 }
 
 export interface DispatchBulkItemResultDTO {
@@ -172,6 +225,8 @@ export interface StockItemSummaryDTO {
     minimalQty: number;
     recommendedQty: number;
     reservedQty: number;
+    inQty: number;
+    outQty: number;
 }
 
 export interface StockStatisticsResponseDTO {
@@ -195,16 +250,23 @@ export interface BookingImpactItemDTO {
     itemCode: string;
     name: string;
     unit: string;
-    currentQty: number;
-    pendingOutQty: number;
-    pendingInQty: number;
-    effectiveQty: number;
-    deltaPendingOutQty: number;
-    deltaPendingInQty: number;
+    changedFields: string[];
+    beforeCurrentQty: number;
     deltaCurrentQty: number;
     afterCurrentQty: number;
+    beforePendingOutQty: number;
+    deltaPendingOutQty: number;
     afterPendingOutQty: number;
+    beforePendingInQty: number;
+    deltaPendingInQty: number;
     afterPendingInQty: number;
+    beforeInQty: number;
+    deltaInQty: number;
+    afterInQty: number;
+    beforeOutQty: number;
+    deltaOutQty: number;
+    afterOutQty: number;
+    beforeEffectiveQty: number;
     afterEffectiveQty: number;
     missingInWarehouse: boolean;
 }
@@ -407,9 +469,7 @@ export interface WarehouseBookingImpactDTO {
     documentId: number;
     documentCode: string;
     inOutFlag: number;
-    changesStock: number;
     draft: boolean;
-    willAffectPending: boolean;
     items: BookingImpactItemDTO[];
 }
 
@@ -463,6 +523,11 @@ export interface UserResponseDTO {
     defaultWarehouseId: number;
 }
 
+export interface BaseSearchFilter {
+    page: number;
+    size: number;
+}
+
 export interface DispatchItemRequest {
     itemId: number;
     quantity: number;
@@ -477,6 +542,8 @@ export interface DispatchItemPatch {
     itemId: number;
     quantity: number;
 }
+
+export type DispatchBookingStatus = "ALL" | "DRAFT" | "FINAL";
 
 export type DraftMode = "DRAFT" | "FINAL";
 

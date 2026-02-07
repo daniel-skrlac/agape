@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Tabs, useRouter } from "expo-router";
 
@@ -15,6 +15,46 @@ const INACTIVE = "#94A3B8";
 function TabBarIcon(props: { name: React.ComponentProps<typeof FontAwesome>["name"]; color: string }) {
   return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
 }
+
+function HomeTabButton({ children, onPress, accessibilityState }: any) {
+  const selected = !!accessibilityState?.selected;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          top: -10,
+        },
+        pressed && { opacity: 0.85 },
+      ]}
+    >
+      <View
+        style={{
+          width: 62,
+          height: 62,
+          borderRadius: 31,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "rgba(255,255,255,0.95)",
+          borderWidth: 1,
+          borderColor: selected ? ORANGE : "rgba(2, 6, 23, 0.10)",
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }}
+      >
+        {children}
+      </View>
+    </Pressable>
+  );
+}
+
 
 export default function TabLayout() {
   const router = useRouter();
@@ -87,21 +127,34 @@ export default function TabLayout() {
           }}
         />
 
+
+        <Tabs.Screen
+          name="sessions"
+          options={{
+            title: "Evidencija",
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons name="clipboard-list-outline" size={size} color={color} />
+            ),
+          }}
+        />
+
         <Tabs.Screen
           name="home"
           options={{
             title: "Početna",
             sceneStyle: { backgroundColor: "transparent" },
+            tabBarLabelStyle: { marginBottom: 6 },
             tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
+            tabBarButton: (props) => <HomeTabButton {...props} />,
           }}
         />
 
         <Tabs.Screen
-          name="sessions"
+          name="dispatch-bookings"
           options={{
-            title: "Sessions",
+            title: "Pregled",
             tabBarIcon: ({ color, size }) => (
-              <MaterialCommunityIcons name="clipboard-list-outline" size={size} color={color} />
+              <MaterialCommunityIcons name="clipboard-check-outline" size={size} color={color} />
             ),
           }}
         />
