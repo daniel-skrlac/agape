@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-06 21:05:57.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-07 14:16:01.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -51,6 +51,15 @@ export interface DispatchRequestDTO {
     documentDate: Date;
     partnerId: number;
     items: DispatchItemRequest[];
+    draft: boolean;
+    note: string;
+}
+
+export interface DispatchRequestValidationDTO {
+    warehouseId: number;
+    documentDate: Date;
+    partnerId: number;
+    items: DispatchItemValidationRequest[];
     draft: boolean;
     note: string;
 }
@@ -192,6 +201,8 @@ export interface BookingImpactItemDTO {
     effectiveQty: number;
     deltaPendingOutQty: number;
     deltaPendingInQty: number;
+    deltaCurrentQty: number;
+    afterCurrentQty: number;
     afterPendingOutQty: number;
     afterPendingInQty: number;
     afterEffectiveQty: number;
@@ -453,6 +464,11 @@ export interface UserResponseDTO {
 }
 
 export interface DispatchItemRequest {
+    itemId: number;
+    quantity: number;
+}
+
+export interface DispatchItemValidationRequest {
     itemId: number;
     quantity: number;
 }

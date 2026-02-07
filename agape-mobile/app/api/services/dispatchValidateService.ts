@@ -1,8 +1,8 @@
-import type { WarehouseBookingImpactDTO, DispatchRequestDTO } from "@/app/models/generated";
+import type { WarehouseBookingImpactDTO, DispatchRequestValidationDTO } from "@/app/models/generated";
 import { api } from "../api";
 
 export const dispatchValidateService = {
-    validate(payload: DispatchRequestDTO, signal?: AbortSignal) {
+    validate(payload: DispatchRequestValidationDTO, signal?: AbortSignal) {
         return api.request<WarehouseBookingImpactDTO>("/api/v1/dispatch/validate", {
             method: "POST",
             body: payload,

@@ -5,12 +5,12 @@ import {
   FlatList,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
-  RefreshControl,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams } from "expo-router";
@@ -30,32 +30,26 @@ import ValidateImpactModal from "@/components/ValidateImpactModal";
 
 import type {
   DraftMode,
+  DispatchRequestValidationDTO,
+  ItemDescriptorResponseDTO,
   PartnerResponseDTO,
   TemplateBookDocPatchDTO,
   TemplateBookItemDTO,
-  ItemDescriptorResponseDTO,
   TemplateDocResponseDTO,
   TemplateItemResponseDTO,
-  DispatchRequestDTO,
 } from "@/app/models/generated";
 
 import { partnerService } from "@/app/api/services/partnerService";
 import { useItemsPage } from "@/app/api/hooks/useItemDirectory";
 import { useBookMany, useBookOne, useTemplate } from "@/app/api/hooks/useDispatchTemplates";
 import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
+import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
+import { ApiError } from "@/app/api/apiClient";
 
 const MAX_W = 560;
 const ITEMS_PAGE_SIZE = 10;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
 
-/**
- * IMPORTANT: this endpoint must exist in your backend.
- * Adjust URL to match your API.
- *
- * Expected response: ItemDescriptorResponseDTO[] where each item has { itemId, name, code, unit }
- *
- * NOTE: we intentionally NEVER surface server error body to UI (to avoid "Not found" flashes).
- */
 async function fetchItemDescriptorsByIds(args: {
   warehouseId: number;
   itemIds: number[];
@@ -70,10 +64,7 @@ async function fetchItemDescriptorsByIds(args: {
     body: JSON.stringify({ warehouseId, itemIds: uniq }),
   });
 
-  if (!res.ok) {
-    // ✅ don't leak response text (often "Not found")
-    throw new Error(`Failed to load item descriptors (${res.status})`);
-  }
+  if (!res.ok) throw new Error(`Failed to load item descriptors (${res.status})`);
   return (await res.json()) as ItemDescriptorResponseDTO[];
 }
 
@@ -182,18 +173,41 @@ function itemName(itemId: number, metaById: Map<number, ItemDescriptorResponseDT
 function itemMeta(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
   const m = metaById.get(Number(itemId));
   if (!m) return "";
-  const parts = [m.code ? `Šifra: ${m.code}` : null, m.unit ? `JMJ: ${m.unit}` : null].filter(Boolean);
+  const parts = [
+    m.code ? `Šifra: ${m.code}` : null,
+    m.unit ? `JMJ: ${m.unit}` : null,
+    (m as any)?.barcode ? `BC: ${(m as any).barcode}` : null,
+  ].filter(Boolean);
   return parts.join(" • ");
 }
 
+/**
+ * Only show backend "message" (no JSON dump).
+ * Matches your login hook behavior.
+ */
+function getBackendMessage(e: unknown): string {
+  if (e instanceof ApiError) {
+    const body = e.body as any;
+    return (body?.message as string) || e.message || "Request failed";
+  }
+  if (e instanceof Error) return e.message || "Request failed";
+  return "Request failed";
+}
+
+/**
+ * Build payload for /api/v1/dispatch/validate
+ * New backend DTO requires partnerId now.
+ */
 function buildValidatePayload(args: {
   warehouseId: number;
+  partnerId: number;
   draftMode: DraftMode;
   templateDocs: TemplateDocResponseDTO[];
   docPatches: TemplateBookDocPatchDTO[];
   standaloneItems: TemplateBookItemDTO[];
-}): DispatchRequestDTO {
-  const { warehouseId, draftMode, templateDocs, docPatches, standaloneItems } = args;
+  note?: string | null;
+}): DispatchRequestValidationDTO {
+  const { warehouseId, partnerId, draftMode, templateDocs, docPatches, standaloneItems, note } = args;
 
   const qty: Record<string, number> = {};
   const addQty = (itemId: any, q: any) => {
@@ -214,9 +228,12 @@ function buildValidatePayload(args: {
     .sort((a, b) => a.itemId - b.itemId);
 
   return {
-    warehouseId,
+    warehouseId: Number(warehouseId),
+    partnerId: Number(partnerId),
+    documentDate: undefined as any, // optional; backend can default/normalize
     draft: draftMode === "DRAFT",
-    items,
+    note: note ?? undefined,
+    items: items as any,
   } as any;
 }
 
@@ -233,6 +250,7 @@ export default function Otpremi() {
 
   const bookOneM = useBookOne();
   const bookManyM = useBookMany();
+  const validateM = useDispatchValidate();
 
   const err =
     (tplQ.error as any)?.message ||
@@ -259,7 +277,7 @@ export default function Otpremi() {
     );
   }
 
-  // Partners
+  // ------------------ PARTNERS ------------------
   const [partnerPickerOpen, setPartnerPickerOpen] = useState(false);
   const [selectedPartners, setSelectedPartners] = useState<PartnerResponseDTO[]>([]);
   const selectedPartnerIds = useMemo(() => new Set(selectedPartners.map((p) => normId(p.id))), [selectedPartners]);
@@ -271,11 +289,11 @@ export default function Otpremi() {
   };
 
   // per-partner note
-  const [noteByPartnerId, setNoteByPartnerId] = useState<PartnerNoteMap>({});
+  const [noteByPartnerId, setNoteByPartnerId] = useState<Record<string, string>>({});
   useEffect(() => {
     const ids = new Set(selectedPartners.map((p) => String(normId(p.id))));
     setNoteByPartnerId((prev) => {
-      const next: PartnerNoteMap = {};
+      const next: Record<string, string> = {};
       Object.entries(prev).forEach(([k, v]) => {
         if (ids.has(k)) next[k] = v;
       });
@@ -314,10 +332,10 @@ export default function Otpremi() {
 
   const clearPartnerNote = () => setNoteDraft("");
 
-  // Draft/Final
+  // ------------------ DRAFT/FINAL ------------------
   const [draftMode, setDraftMode] = useState<DraftMode>("DRAFT");
 
-  // doc patches
+  // ------------------ DOC PATCHES + STANDALONE ------------------
   const [docPatches, setDocPatches] = useState<TemplateBookDocPatchDTO[]>([]);
   const patchByDocId = useMemo(() => {
     const m = new Map<number, TemplateBookDocPatchDTO>();
@@ -325,14 +343,13 @@ export default function Otpremi() {
     return m;
   }, [docPatches]);
 
-  // standalone items
   const [standaloneItems, setStandaloneItems] = useState<TemplateBookItemDTO[]>([]);
 
-  // result
+  // ------------------ RESULT SHEET ------------------
   const [resultOpen, setResultOpen] = useState(false);
   const [resultText, setResultText] = useState("");
 
-  // item picker
+  // ------------------ ITEM PICKER ------------------
   const [itemsOpen, setItemsOpen] = useState(false);
   const [itemsTarget, setItemsTarget] = useState<{ kind: "DOC"; documentId: number } | { kind: "STANDALONE" } | null>(
     null
@@ -361,10 +378,8 @@ export default function Otpremi() {
   const canPrev = itemsPage > 0;
   const canNext = itemsPage + 1 < itemsTotalPages;
 
-  // meta cache
   const [metaById, setMetaById] = useState<Map<number, ItemDescriptorResponseDTO>>(new Map());
 
-  // cache from directory page results (free)
   useEffect(() => {
     if (itemsQ.data?.items?.length) setMetaById((prev) => upsertMetaMap(prev, itemsQ.data!.items as any));
   }, [itemsQ.data?.items]);
@@ -440,7 +455,7 @@ export default function Otpremi() {
     setItemsTarget(null);
   };
 
-  // default rows by doc
+  // ------------------ TEMPLATE ROWS ------------------
   const defaultRowsByDoc = useMemo(() => {
     return (templateDocs ?? [])
       .map((d) => {
@@ -457,33 +472,14 @@ export default function Otpremi() {
       .filter((x) => x.docId);
   }, [templateDocs]);
 
-  // itemIds we must have NAMES for before rendering ANY rows
   const requiredItemIds = useMemo(() => {
     const ids: number[] = [];
-
-    for (const d of templateDocs ?? []) {
-      for (const it of ((d as any)?.items ?? []) as any[]) {
-        const id = Number(it?.itemId);
-        if (id) ids.push(id);
-      }
-    }
-
-    for (const p of docPatches ?? []) {
-      for (const it of ((p as any)?.addItems ?? []) as any[]) {
-        const id = Number(it?.itemId);
-        if (id) ids.push(id);
-      }
-    }
-
-    for (const it of standaloneItems ?? []) {
-      const id = Number((it as any)?.itemId);
-      if (id) ids.push(id);
-    }
-
+    for (const d of templateDocs ?? []) for (const it of (((d as any)?.items ?? []) as any[])) if (Number(it?.itemId)) ids.push(Number(it.itemId));
+    for (const p of docPatches ?? []) for (const it of (((p as any)?.addItems ?? []) as any[])) if (Number(it?.itemId)) ids.push(Number(it.itemId));
+    for (const it of standaloneItems ?? []) if (Number((it as any)?.itemId)) ids.push(Number((it as any).itemId));
     return Array.from(new Set(ids)).sort((a, b) => a - b);
   }, [templateDocs, docPatches, standaloneItems]);
 
-  // preload names (NO ERROR TEXT, EVER)
   const [namesLoading, setNamesLoading] = useState(false);
   const preloadKeyRef = useRef<string>("");
 
@@ -491,12 +487,9 @@ export default function Otpremi() {
     if (!warehouseId) return;
     if (!requiredItemIds.length) return;
 
-    const missing = requiredItemIds.filter((id) => {
-      const nm = metaById.get(id)?.name?.trim();
-      return !nm;
-    });
-
+    const missing = requiredItemIds.filter((id) => !metaById.get(id)?.name?.trim());
     const key = `${warehouseId}:${missing.join(",")}`;
+
     if (!missing.length) {
       setNamesLoading(false);
       preloadKeyRef.current = "";
@@ -512,8 +505,7 @@ export default function Otpremi() {
         const list = await fetchItemDescriptorsByIds({ warehouseId: Number(warehouseId), itemIds: missing });
         setMetaById((prev) => upsertMetaMap(prev, list));
       } catch {
-        // ✅ silent: never show "Not found" or any transient errors
-        // If backend route doesn't exist, names will still be filled gradually from item search results.
+        // silent
       } finally {
         setNamesLoading(false);
       }
@@ -522,28 +514,52 @@ export default function Otpremi() {
 
   const namesReady = useMemo(() => {
     if (!requiredItemIds.length) return true;
-    for (const id of requiredItemIds) {
-      const nm = metaById.get(id)?.name?.trim();
-      if (!nm) return false;
-    }
+    for (const id of requiredItemIds) if (!metaById.get(id)?.name?.trim()) return false;
     return true;
   }, [requiredItemIds, metaById]);
 
-  // ------------------ VALIDATE FLOW ------------------
+  // ------------------ VALIDATE MODAL ------------------
   const [validateOpen, setValidateOpen] = useState(false);
-  const [validatePayload, setValidatePayload] = useState<DispatchRequestDTO | null>(null);
 
-  const openValidate = () => {
-    if (!warehouseId) return;
-    if (selectedPartners.length === 0) return;
-    if (!templateDocs || templateDocs.length === 0) return;
+  const validateLoading = validateM.isPending;
+  const validateData = validateM.data ?? null;
+  const validateError = validateM.error ? getBackendMessage(validateM.error) : null;
+
+  const openValidate = async () => {
+    if (!warehouseId) {
+      setResultText("Nema skladišta.");
+      setResultOpen(true);
+      return;
+    }
+    if (selectedPartners.length === 0) {
+      setResultText("Odaberi barem jednog partnera.");
+      setResultOpen(true);
+      return;
+    }
+    if (!templateDocs || templateDocs.length === 0) {
+      setResultText("Predložak nema dokumenata.");
+      setResultOpen(true);
+      return;
+    }
+
+    // backend DTO requires partnerId, so validate can only run for one partner
+    if (selectedPartners.length !== 1) {
+      setResultText("Validacija trenutno radi samo za 1 partnera (backend traži partnerId). Odaberi točno jednog partnera.");
+      setResultOpen(true);
+      return;
+    }
+
+    const p = selectedPartners[0];
+    const note = noteByPartnerId[String(normId(p.id))] ?? null;
 
     const payload = buildValidatePayload({
       warehouseId: Number(warehouseId),
+      partnerId: Number(p.id),
       draftMode,
       templateDocs,
       docPatches,
       standaloneItems,
+      note,
     });
 
     if (!payload.items || (payload.items as any[]).length === 0) {
@@ -552,10 +568,17 @@ export default function Otpremi() {
       return;
     }
 
-    setValidatePayload(payload);
     setValidateOpen(true);
+    validateM.reset();
+
+    try {
+      await validateM.mutateAsync(payload as any);
+    } catch {
+      // shown in modal as validateError
+    }
   };
 
+  // ------------------ BOOKING ------------------
   const doSubmitBooking = async () => {
     if (!warehouseId) return;
     if (selectedPartners.length === 0) return;
@@ -656,7 +679,6 @@ export default function Otpremi() {
 
         <Text style={s.label}>Stavke po dokumentu (default iz predloška)</Text>
 
-        {/* ✅ NO "Not found": only spinner while waiting */}
         {!namesReady ? (
           <View style={s.loadingBox}>
             <ActivityIndicator />
@@ -702,10 +724,6 @@ export default function Otpremi() {
                     })}
                   </View>
                 )}
-
-                <Text style={[s.helper, { marginTop: 6 }]}>
-                  Dodano na ovaj dokument: {patchByDocId.get(block.docId)?.addItems?.length ?? 0}
-                </Text>
               </View>
             ))}
           </View>
@@ -760,16 +778,15 @@ export default function Otpremi() {
         )}
 
         <Pressable
-          style={[s.primary, (selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading) && { opacity: 0.5 }]}
-          disabled={selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading}
+          style={[
+            s.primary,
+            (selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading || validateLoading) && { opacity: 0.5 },
+          ]}
+          disabled={selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading || validateLoading}
           onPress={openValidate}
         >
           <Text style={s.primaryText}>
-            {bookingBusy
-              ? "Radim…"
-              : selectedPartners.length <= 1
-              ? "Validiraj i kreiraj"
-              : `Validiraj i kreiraj (${selectedPartners.length})`}
+            {bookingBusy || validateLoading ? "Radim…" : "Validiraj i kreiraj"}
           </Text>
         </Pressable>
 
@@ -1084,17 +1101,19 @@ export default function Otpremi() {
         </Sheet>
       </ScrollView>
 
-      {/* <ValidateImpactModal
+      <ValidateImpactModal
         visible={validateOpen}
         onClose={() => {
-          if (bookingBusy) return;
+          if (bookingBusy || validateLoading) return;
           setValidateOpen(false);
         }}
-        payload={validatePayload}
+        disableClose={bookingBusy || validateLoading}
+        loading={validateLoading}
+        error={validateError}
+        data={validateData}
         onConfirm={confirmValidateAndSubmit}
-        confirmText={selectedPartners.length <= 1 ? "Kreiraj" : `Kreiraj (${selectedPartners.length})`}
-        disableClose={bookingBusy}
-      /> */}
+        confirmText="Kreiraj"
+      />
     </Screen>
   );
 }
@@ -1140,24 +1159,12 @@ const s = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
     padding: 14,
-    gap: 8,
+    gap: 10,
   },
 
   title: { fontWeight: "900", color: Colors.text, fontSize: 15 },
   sub: { color: Colors.sub, fontWeight: "800" },
   muted: { color: Colors.sub, fontWeight: "700" },
-
-  smallBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: "rgba(249,115,22,0.12)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(249,115,22,0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  smallBtnText: { fontWeight: "900", color: Colors.text },
 
   simpleRow: {
     flexDirection: "row",
