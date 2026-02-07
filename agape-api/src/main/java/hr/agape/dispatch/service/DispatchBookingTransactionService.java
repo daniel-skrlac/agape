@@ -155,6 +155,45 @@ public class DispatchBookingTransactionService {
         }
     }
 
+    public boolean deleteDraft(Long headerId) throws SQLException {
+        return jdbc.withConnection(c -> {
+            boolean prevAuto = c.getAutoCommit();
+            c.setAutoCommit(false);
+
+            try {
+                final String lockSql = "SELECT 1 FROM SD_GLAVA WHERE ID = ? FOR UPDATE";
+                try (var ps = c.prepareStatement(lockSql)) {
+                    ps.setLong(1, headerId);
+                    try (var rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            c.rollback();
+                            return false;
+                        }
+                    }
+                }
+
+                lineRepo.deleteByHeader(c, headerId);
+
+                int deleted = headerRepo.deleteDraftHeader(c, headerId);
+
+                if (deleted == 0) {
+                    c.rollback();
+                    return false;
+                }
+
+                c.commit();
+                return true;
+
+            } catch (SQLException e) {
+                try { c.rollback(); } catch (SQLException ignored) {}
+                throw e;
+            } finally {
+                try { c.setAutoCommit(prevAuto); } catch (SQLException ignored) {}
+            }
+        });
+    }
+
+
     /**
      * REQUIRED:
      * Cancel already posted document (simple UPDATE).

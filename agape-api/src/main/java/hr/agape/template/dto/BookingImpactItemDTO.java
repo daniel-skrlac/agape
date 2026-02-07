@@ -6,33 +6,43 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class BookingImpactItemDTO {
-    private Long itemId;       // ARTIKL_ID (warehouse-specific)
-    private String itemCode;   // SKL_ARTIKLIZ.ARTIKLID
-    private String name;       // SKL_ANAZIVI.NAZIV
-    private String unit;       // SIFRE_JMJ.JEDINICAMJERE
+    private Long itemId;
+    private String itemCode;
+    private String name;
+    private String unit;
 
-    // Snapshot
-    private BigDecimal currentQty;     // SKL_APROMETI.ZALIHATRENUTNA
-    private BigDecimal pendingOutQty;  // SKL_APROMETI.ZALIHANEPROKNJIZENA
-    private BigDecimal pendingInQty;   // SKL_APROMETI.ZALIHAKALKULACIJA
+    // Which fields actually changed
+    private List<String> changedFields;
 
-    // Legacy effective availability (what KNJIZI_MK uses conceptually)
-    // effective = current - pendingOut + pendingIn
-    private BigDecimal effectiveQty;
+    // Only populated when changed
+    private BigDecimal beforeCurrentQty;
+    private BigDecimal deltaCurrentQty;
+    private BigDecimal afterCurrentQty;
 
-    // Diff for THIS request
+    private BigDecimal beforePendingOutQty;
     private BigDecimal deltaPendingOutQty;
-    private BigDecimal deltaPendingInQty;
-
-    // After state
     private BigDecimal afterPendingOutQty;
+
+    private BigDecimal beforePendingInQty;
+    private BigDecimal deltaPendingInQty;
     private BigDecimal afterPendingInQty;
+
+    private BigDecimal beforeInQty;
+    private BigDecimal deltaInQty;
+    private BigDecimal afterInQty;
+
+    private BigDecimal beforeOutQty;
+    private BigDecimal deltaOutQty;
+    private BigDecimal afterOutQty;
+
+    private BigDecimal beforeEffectiveQty;
     private BigDecimal afterEffectiveQty;
 
     private boolean missingInWarehouse;

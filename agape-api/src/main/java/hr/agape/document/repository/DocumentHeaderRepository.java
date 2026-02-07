@@ -150,6 +150,17 @@ public class DocumentHeaderRepository {
                 .build();
     }
 
+    public int deleteDraftHeader(Connection c, Long headerId) throws SQLException {
+        final String sql = """
+            DELETE FROM SD_GLAVA
+             WHERE ID = ?
+               AND KNJIZENO = 0
+               AND STORNIRAO IS NULL
+            """;
+
+        return jdbc.update(c, sql, ps -> Jdbc.setLong(ps, 1, headerId));
+    }
+
     public void setCancelNote(Long headerId, String reason) throws SQLException {
         final String sql = """
                 UPDATE SD_GLAVA

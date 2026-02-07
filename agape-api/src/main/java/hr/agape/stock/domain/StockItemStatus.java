@@ -16,10 +16,16 @@ public class StockItemStatus {
     private String name;
     private String unit;
 
+    // SKL_APROMETI
     private BigDecimal currentQty;     // ZALIHATRENUTNA
     private BigDecimal pendingOutQty;  // ZALIHANEPROKNJIZENA
     private BigDecimal pendingInQty;   // ZALIHAKALKULACIJA
 
+    // SKL_APROMETI counters (what you selected)
+    private BigDecimal inQty;          // INPKOLICINA
+    private BigDecimal outQty;         // OUTKOLICINA
+
+    // optional (if you use them elsewhere)
     private BigDecimal reservedQty;
     private BigDecimal minimalQty;
     private BigDecimal recommendedQty;

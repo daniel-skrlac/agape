@@ -20,4 +20,7 @@ public class StockItemSummaryDTO {
     private BigDecimal minimalQty;
     private BigDecimal recommendedQty;
     private BigDecimal reservedQty;
+
+    private BigDecimal inQty;
+    private BigDecimal outQty;
 }

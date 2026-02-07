@@ -381,23 +381,36 @@ public class DispatchBookingService {
             }
 
             if (body.isCancel()) {
-                if (!Boolean.TRUE.equals(existing.getPosted())) {
-                    return ServiceResponseDirector.errorBadRequest("Cannot cancel: dispatch is not POSTED.");
-                }
+
+                // already cancelled -> keep same behavior
                 if (existing.getCancelledBy() != null) {
                     return ServiceResponseDirector.errorBadRequest("Cannot cancel: already CANCELLED.");
                 }
 
-                tx.cancelViaProcedure(headerId, body.getCancelReason());
+                // POSTED -> storno procedure (existing behavior)
+                if (Boolean.TRUE.equals(existing.getPosted())) {
+                    tx.cancelViaProcedure(headerId, body.getCancelReason());
 
-                DocumentHeaderEntity cancelled = headerRepo.findHeader(headerId);
-                if (cancelled == null || cancelled.getCancelledBy() == null) {
-                    return ServiceResponseDirector.errorBadRequest("Cancel procedure did not mark document as cancelled. Check Oracle logs.");
+                    DocumentHeaderEntity cancelled = headerRepo.findHeader(headerId);
+                    if (cancelled == null || cancelled.getCancelledBy() == null) {
+                        return ServiceResponseDirector.errorBadRequest("Cancel procedure did not mark document as cancelled. Check Oracle logs.");
+                    }
+
+                    DispatchResponseDTO dto = mapper.toResponse(cancelled);
+                    dto.setStatus(DispatchStatusEnum.CANCELLED.name());
+                    return ServiceResponseDirector.successOk(dto, "Dispatch cancelled (storno).");
                 }
 
-                DispatchResponseDTO dto = mapper.toResponse(cancelled);
-                dto.setStatus(DispatchStatusEnum.CANCELLED.name());
-                return ServiceResponseDirector.successOk(dto, "Dispatch cancelled (storno).");
+                // DRAFT -> delete records (no procedure)
+                boolean deleted = tx.deleteDraft(headerId);
+                if (!deleted) {
+                    // can happen if concurrently posted/cancelled or already removed
+                    return ServiceResponseDirector.errorBadRequest("Cannot cancel: dispatch is not a deletable DRAFT anymore.");
+                }
+
+                DispatchResponseDTO dto = mapper.toResponse(existing);
+                dto.setStatus(DispatchStatusEnum.CANCELLED.name()); // or DRAFT if you don't have DELETED
+                return ServiceResponseDirector.successOk(dto, "Draft dispatch deleted.");
             }
 
             if (body.isPostNow()) {

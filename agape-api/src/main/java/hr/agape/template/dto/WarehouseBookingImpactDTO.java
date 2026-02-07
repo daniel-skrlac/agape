@@ -13,17 +13,18 @@ import java.util.List;
 @Builder
 public class WarehouseBookingImpactDTO {
     private Long warehouseId;
-
     private Long documentId;
     private String documentCode;
 
-    private Integer inOutFlag;      // SD_SIFREZ.ULAZIZLAZ (OTPREMNICA = 4)
-    private Integer changesStock;   // SD_SIFREZ.MIJENJAZALIHU
+    /**
+     * inOutFlag is needed to explain direction (OTPREMNICA = 4 = OUT).
+     */
+    private Integer inOutFlag;
 
     private boolean draft;
 
-    // Draft affects pending only when MIJENJAZALIHU > 0 (legacy ZBROJI_NEPROK_ZALIHU filter)
-    private boolean willAffectPending;
-
+    /**
+     * Only items with real changes (non-zero deltas) are returned.
+     */
     private List<BookingImpactItemDTO> items;
 }

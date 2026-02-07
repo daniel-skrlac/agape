@@ -2,7 +2,7 @@ package hr.agape.dispatch.service;
 
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
-import hr.agape.dispatch.dto.DispatchRequestDTO;
+import hr.agape.dispatch.dto.DispatchRequestValidationDTO;
 import hr.agape.document.lookup.view.DocumentSlotTypeView;
 import hr.agape.document.repository.DocumentSlotRepository;
 import hr.agape.document.repository.DocumentTypeRepository;
@@ -14,10 +14,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @ApplicationScoped
 public class DispatchBookingValidateService {
@@ -38,117 +35,152 @@ public class DispatchBookingValidateService {
     }
 
     /**
-     * Legacy-accurate validate for booking impact in ONE warehouse (current warehouse).
-     * This system currently supports booking only OTPREMNICA (dispatch).
-     * IMPORTANT: Legacy draft does NOT necessarily use "reservations".
-     * Draft/unposted documents affect availability via SKL_APROMETI:
-     * - ZALIHANEPROKNJIZENA (pending OUT)
-     * - ZALIHAKALKULACIJA   (pending IN)
-     * Effective availability shown to the user:
+     * Preview (validate) BEFORE booking.
+     * This method does NOT use SD_SIFREZ.MIJENJAZALIHU.
+     * Rules applied:
+     * - draft=true:
+     *     OUT (inOutFlag=4): pendingOut += qty
+     *     IN  (otherwise):   pendingIn  += qty
+     *     current/inQty/outQty unchanged
+     * - draft=false (final/posted):
+     *     OUT (inOutFlag=4): current -= qty, outQty += qty
+     *     IN  (otherwise):   current += qty, inQty  += qty
+     *     pending unchanged
      * effective = current - pendingOut + pendingIn
-     * Draft behavior (matches legacy ZBROJI_NEPROK_ZALIHU filter):
-     * Applies only when SD_SIFREZ.MIJENJAZALIHU > 0.
-     * OUT (ULAZIZLAZ=4): pendingOut += qty
-     * IN  (else):        pendingIn  += qty
-     * Posting is done by PL/SQL procedure (KNJIZI_MK) and is NOT simulated here.
+     * Output is frontend-focused:
+     * - Only fields that actually change are populated (before/delta/after)
+     * - changedFields lists what changed for each item
      */
-    public ServiceResponseDTO<WarehouseBookingImpactDTO> validate(DispatchRequestDTO req) {
+    public ServiceResponseDTO<WarehouseBookingImpactDTO> validate(DispatchRequestValidationDTO req) {
         try {
             if (req == null) return ServiceResponseDirector.errorBadRequest("request is null");
             if (req.getWarehouseId() == null) return ServiceResponseDirector.errorBadRequest("warehouseId missing");
             if (req.getItems() == null || req.getItems().isEmpty())
                 return ServiceResponseDirector.errorBadRequest("items missing");
 
-            Long whId = req.getWarehouseId();
+            final Long whId = req.getWarehouseId();
 
             // Resolve OTPREMNICA doc for this warehouse
-            Long documentId = slotRepo.resolveDispatchDocumentIdForWarehouse(whId);
+            final Long documentId = slotRepo.resolveDispatchDocumentIdForWarehouse(whId);
             if (documentId == null) {
                 return ServiceResponseDirector.errorBadRequest("Cannot resolve DOKUMENT_ID for warehouseId=" + whId);
             }
 
-            DocumentSlotTypeView slot = docTypeRepo.findDocumentSlot(documentId).orElse(null);
+            final DocumentSlotTypeView slot = docTypeRepo.findDocumentSlot(documentId).orElse(null);
             if (slot == null) return ServiceResponseDirector.errorBadRequest("Unknown documentId=" + documentId);
 
-            int inOut = nz(slot.getInOutFlag());           // OTPREMNICA expected 4
-            int changesStock = nz(slot.getChangesStock()); // MIJENJAZALIHU (controls draft pending)
+            final int inOut = nz(slot.getInOutFlag()); // OTPREMNICA expected 4
+            final boolean draft = req.isDraft();
 
-            boolean draft = req.isDraft();
-            boolean willAffectPending = draft && changesStock > 0;
-
-            // Sum quantities per ARTIKL_ID
-            Map<Long, BigDecimal> qtyByArtiklId = new LinkedHashMap<>();
-            for (DispatchRequestDTO.DispatchItemRequest it : req.getItems()) {
+            // Sum quantities per item (merge duplicates)
+            final Map<Long, BigDecimal> qtyByItemId = new LinkedHashMap<>();
+            for (DispatchRequestValidationDTO.DispatchItemValidationRequest it : req.getItems()) {
                 if (it == null || it.getItemId() == null || it.getQuantity() == null) continue;
                 BigDecimal q = BigDecimal.valueOf(it.getQuantity());
                 if (q.signum() <= 0) continue;
-                qtyByArtiklId.merge(it.getItemId(), q, BigDecimal::add);
+                qtyByItemId.merge(it.getItemId(), q, BigDecimal::add);
             }
-            if (qtyByArtiklId.isEmpty()) {
+            if (qtyByItemId.isEmpty()) {
                 return ServiceResponseDirector.errorBadRequest("No valid quantities > 0");
             }
 
-            // Load snapshot for this warehouse (joins SKL_ARTIKLIG and SKL_APROMETI)
-            Map<Long, StockItemStatus> snap = stockRepo.loadForWarehouse(whId, qtyByArtiklId.keySet());
+            // Load snapshot (current + pending + in/out counters)
+            final Map<Long, StockItemStatus> snap = stockRepo.loadForWarehouse(whId, qtyByItemId.keySet());
 
-            List<BookingImpactItemDTO> items = new ArrayList<>(qtyByArtiklId.size());
+            final List<BookingImpactItemDTO> outItems = new ArrayList<>(qtyByItemId.size());
 
-            for (var e : qtyByArtiklId.entrySet()) {
-                Long artiklId = e.getKey();
-                BigDecimal qty = bd(e.getValue());
+            for (var e : qtyByItemId.entrySet()) {
+                final Long itemId = e.getKey();
+                final BigDecimal qty = bd(e.getValue());
 
-                StockItemStatus s = snap.get(artiklId);
+                final StockItemStatus s = snap.get(itemId);
 
-                BigDecimal cur = bd(s == null ? null : s.getCurrentQty());
-                BigDecimal pendOut = bd(s == null ? null : s.getPendingOutQty());
-                BigDecimal pendIn = bd(s == null ? null : s.getPendingInQty());
+                final BigDecimal cur0      = bd(s == null ? null : s.getCurrentQty());
+                final BigDecimal pendOut0  = bd(s == null ? null : s.getPendingOutQty());
+                final BigDecimal pendIn0   = bd(s == null ? null : s.getPendingInQty());
+                final BigDecimal in0       = bd(s == null ? null : s.getInQty());
+                final BigDecimal out0      = bd(s == null ? null : s.getOutQty());
 
-                BigDecimal effective = cur.subtract(pendOut).add(pendIn);
+                final BigDecimal eff0 = cur0.subtract(pendOut0).add(pendIn0);
 
-                BigDecimal deltaPendOut = BigDecimal.ZERO;
-                BigDecimal deltaPendIn = BigDecimal.ZERO;
+                // deltas from this request
+                BigDecimal dCur = BigDecimal.ZERO;
+                BigDecimal dPendOut = BigDecimal.ZERO;
+                BigDecimal dPendIn = BigDecimal.ZERO;
+                BigDecimal dIn = BigDecimal.ZERO;
+                BigDecimal dOut = BigDecimal.ZERO;
 
-                if (willAffectPending) {
-                    if (inOut == 4) {
-                        // OUT => pending OUT increases
-                        deltaPendOut = qty;
+                final boolean isOut = (inOut == 4);
+
+                if (draft) {
+                    // draft touches pending only
+                    if (isOut) dPendOut = qty;
+                    else dPendIn = qty;
+                } else {
+                    // posted touches current + IN/OUT counters
+                    if (isOut) {
+                        dCur = qty.negate();
+                        dOut = qty;
                     } else {
-                        // IN => pending IN increases
-                        deltaPendIn = qty;
+                        dCur = qty;
+                        dIn = qty;
                     }
                 }
 
-                BigDecimal afterPendOut = pendOut.add(deltaPendOut);
-                BigDecimal afterPendIn = pendIn.add(deltaPendIn);
-                BigDecimal afterEffective = cur.subtract(afterPendOut).add(afterPendIn);
+                final BigDecimal cur1     = cur0.add(dCur);
+                final BigDecimal pendOut1 = pendOut0.add(dPendOut);
+                final BigDecimal pendIn1  = pendIn0.add(dPendIn);
+                final BigDecimal in1      = in0.add(dIn);
+                final BigDecimal out1     = out0.add(dOut);
 
-                items.add(BookingImpactItemDTO.builder()
-                        .itemId(artiklId)
+                final BigDecimal eff1 = cur1.subtract(pendOut1).add(pendIn1);
+
+                // Only send what actually changed
+                List<String> changed = new ArrayList<>(6);
+
+                BookingImpactItemDTO.BookingImpactItemDTOBuilder b = BookingImpactItemDTO.builder()
+                        .itemId(itemId)
                         .itemCode(s == null ? null : s.getItemCode())
                         .name(s == null ? null : s.getName())
                         .unit(s == null ? null : s.getUnit())
-                        .currentQty(cur)
-                        .pendingOutQty(pendOut)
-                        .pendingInQty(pendIn)
-                        .effectiveQty(effective)
-                        .deltaPendingOutQty(deltaPendOut)
-                        .deltaPendingInQty(deltaPendIn)
-                        .afterPendingOutQty(afterPendOut)
-                        .afterPendingInQty(afterPendIn)
-                        .afterEffectiveQty(afterEffective)
                         .missingInWarehouse(s == null)
-                        .build());
+                        .beforeEffectiveQty(eff0)
+                        .afterEffectiveQty(eff1);
+
+                if (neq(cur0, cur1)) {
+                    changed.add("currentQty");
+                    b.beforeCurrentQty(cur0).deltaCurrentQty(dCur).afterCurrentQty(cur1);
+                }
+                if (neq(pendOut0, pendOut1)) {
+                    changed.add("pendingOutQty");
+                    b.beforePendingOutQty(pendOut0).deltaPendingOutQty(dPendOut).afterPendingOutQty(pendOut1);
+                }
+                if (neq(pendIn0, pendIn1)) {
+                    changed.add("pendingInQty");
+                    b.beforePendingInQty(pendIn0).deltaPendingInQty(dPendIn).afterPendingInQty(pendIn1);
+                }
+                if (neq(in0, in1)) {
+                    changed.add("inQty");
+                    b.beforeInQty(in0).deltaInQty(dIn).afterInQty(in1);
+                }
+                if (neq(out0, out1)) {
+                    changed.add("outQty");
+                    b.beforeOutQty(out0).deltaOutQty(dOut).afterOutQty(out1);
+                }
+
+                b.changedFields(changed);
+                outItems.add(b.build());
             }
 
+            // You said: “only return values what really need frontend”
+            // -> keep this header minimal too.
             WarehouseBookingImpactDTO out = WarehouseBookingImpactDTO.builder()
                     .warehouseId(whId)
                     .documentId(documentId)
                     .documentCode(slot.getDocumentCode())
                     .inOutFlag(inOut)
-                    .changesStock(changesStock)
                     .draft(draft)
-                    .willAffectPending(willAffectPending)
-                    .items(items)
+                    .items(outItems)
                     .build();
 
             return ServiceResponseDirector.successOk(out, "OK");
@@ -165,8 +197,12 @@ public class DispatchBookingValidateService {
         return v == null ? BigDecimal.ZERO : v;
     }
 
+    private static boolean neq(BigDecimal a, BigDecimal b) {
+        return a.compareTo(b) != 0;
+    }
+
     private static String safeMsg(Throwable t) {
         if (t == null) return "";
-        return t.getMessage() != null ? t.getMessage() : t.toString();
+        return (t.getMessage() != null) ? t.getMessage() : t.toString();
     }
 }

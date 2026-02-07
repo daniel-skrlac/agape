@@ -2,7 +2,7 @@ package hr.agape.dispatch.rest.v1;
 
 import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
-import hr.agape.dispatch.dto.DispatchRequestDTO;
+import hr.agape.dispatch.dto.DispatchRequestValidationDTO;
 import hr.agape.dispatch.service.DispatchBookingValidateService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
@@ -30,7 +30,7 @@ public class DispatchBookingValidateResource {
     }
 
     @POST
-    public Response validate(@Valid DispatchRequestDTO req) {
+    public Response validate(@Valid DispatchRequestValidationDTO req) {
         return Responses.from(service.validate(req));
     }
 }
