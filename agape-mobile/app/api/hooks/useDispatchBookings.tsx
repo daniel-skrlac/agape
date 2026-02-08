@@ -3,11 +3,11 @@ import { ApiError } from "@/app/api/apiClient";
 import type { DispatchBookingListItemDTO, PagedResultDTO } from "@/app/models/generated";
 import { dispatchBookingService } from "../services/dispatchBookingService";
 
-export type DispatchBookingStatusFilter = "ALL" | "DRAFT" | "FINAL";
+export type DispatchBookingStatusFilter = "ALL" | "DRAFT" | "FINAL" | "CANCELLED";
 
 type Args = {
-  warehouseId: number | null;
-  documentCode?: string; // default OTPREMNICA
+  warehouseId: number | null;     // null => ALL
+  documentCode?: string;          // default OTPREMNICA
   status?: DispatchBookingStatusFilter;
   q?: string;
   dateFrom?: string;
@@ -26,15 +26,14 @@ export function useDispatchBookings(args: Args) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canLoad = useMemo(() => !!warehouseId, [warehouseId]);
+  // ✅ ALWAYS can load (warehouseId can be null => ALL)
+  const canLoad = useMemo(() => true, []);
   const canLoadMore = useMemo(() => items.length < total, [items.length, total]);
 
   const mountedRef = useRef(true);
   const reqIdRef = useRef(0);
 
   const loadPage = async (p: number, append: boolean) => {
-    if (!warehouseId) return;
-
     const rid = ++reqIdRef.current;
     const ctrl = new AbortController();
 
@@ -47,7 +46,7 @@ export function useDispatchBookings(args: Args) {
 
       const res: PagedResultDTO<DispatchBookingListItemDTO> = await dispatchBookingService.page(
         {
-          warehouseId,
+          warehouseId, // ✅ can be null -> service omits param
           page: p,
           size,
           documentCode,
@@ -83,7 +82,6 @@ export function useDispatchBookings(args: Args) {
     setItems([]);
     setPage(0);
     setTotal(0);
-    if (!warehouseId) return;
     await loadPage(0, false);
   };
 
@@ -101,15 +99,7 @@ export function useDispatchBookings(args: Args) {
   }, []);
 
   useEffect(() => {
-    if (!canLoad) {
-      setItems([]);
-      setPage(0);
-      setTotal(0);
-      setLoading(false);
-      setLoadingMore(false);
-      setError(null);
-      return;
-    }
+    if (!canLoad) return;
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warehouseId, documentCode, status, q, dateFrom, dateTo, size]);

@@ -1,4 +1,3 @@
-// app/dispatch-bookings/[id].tsx
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -10,24 +9,47 @@ import { Banner } from "@/components/Banner";
 import { useCancelDispatch } from "@/app/api/hooks/useCancelDispatch";
 import { useDispatchDetails } from "@/app/api/hooks/useDispatchDetails";
 
+import type { DispatchBookingDetailDTO, DispatchBookingItemDTO } from "@/app/models/generated";
+import AuthBackground from "@/components/auth/AuthBackground";
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
-function fmtHrDate(x: any): string {
-  if (!x) return "";
-  const d = x instanceof Date ? x : new Date(String(x));
-  if (Number.isNaN(d.getTime())) return "";
-  return `${pad2(d.getDate())}-${pad2(d.getMonth() + 1)}-${d.getFullYear()}`;
+
+function toDateSafe(x: any): Date | null {
+  if (!x) return null;
+  if (x instanceof Date && !Number.isNaN(x.getTime())) return x;
+  const d = new Date(String(x));
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
 }
 
-function statusOfRow(d: any): "DRAFT" | "FINAL" | "CANCELLED" {
-  const s = String(d?.status ?? "").toUpperCase();
-  if (s.includes("CANCEL")) return "CANCELLED";
-  if (s.includes("POST") || s.includes("FINAL")) return "FINAL";
-  if (s.includes("DRAFT")) return "DRAFT";
-  if (d?.cancelled === true || d?.storno === 1) return "CANCELLED";
-  if (d?.posted === true || d?.knjizeno === 1) return "FINAL";
+function fmtHrDateTime(x: any): string {
+  const d = toDateSafe(x);
+  if (!d) return "—";
+  const dd = pad2(d.getDate());
+  const mm = pad2(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  const hh = pad2(d.getHours());
+  const mi = pad2(d.getMinutes());
+  return `${dd}.${mm}.${yyyy} ${hh}:${mi}`;
+}
+
+function statusOf(dto: DispatchBookingDetailDTO): "DRAFT" | "FINAL" | "CANCELLED" {
+  if (dto.cancelled) return "CANCELLED";
+  if (dto.posted) return "FINAL";
   return "DRAFT";
+}
+
+function statusTone(st: "DRAFT" | "FINAL" | "CANCELLED") {
+  if (st === "CANCELLED") return { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.28)", tx: Colors.dangerText ?? "#ef4444" };
+  if (st === "FINAL") return { bg: "rgba(34,197,94,0.14)", bd: "rgba(34,197,94,0.30)", tx: Colors.text };
+  return { bg: "rgba(59,130,246,0.10)", bd: "rgba(59,130,246,0.22)", tx: Colors.text };
+}
+
+function kv(label: string, value: any) {
+  const v = value == null || String(value).trim() === "" ? "—" : String(value);
+  return { label, value: v };
 }
 
 export default function DispatchBookingDetails() {
@@ -37,22 +59,63 @@ export default function DispatchBookingDetails() {
 
   const q = useDispatchDetails(validId);
   const cancelM = useCancelDispatch();
-
   const [cancelReason, setCancelReason] = useState("");
 
-  const header = q.data as any;
+  const dto = q.data as DispatchBookingDetailDTO | null;
 
-  const st = useMemo(() => statusOfRow(header), [header]);
-  const canCancel = useMemo(() => !!header && st !== "CANCELLED" && !cancelM.loading, [header, st, cancelM.loading]);
+  const st = useMemo(() => (dto ? statusOf(dto) : null), [dto]);
+  const tone = useMemo(() => (st ? statusTone(st) : null), [st]);
 
-  const lines: any[] = useMemo(() => {
-    const a = header?.items ?? header?.lines ?? header?.stavke ?? [];
-    return Array.isArray(a) ? a : [];
-  }, [header]);
+  const partnerLabel = useMemo(() => {
+    if (!dto) return "—";
+    const name = dto.partnerName ? String(dto.partnerName) : "";
+    const pid = dto.partnerId != null ? String(dto.partnerId) : "";
+    if (!name && !pid) return "—";
+    return `${name || "Partner"}${pid ? ` (#${pid})` : ""}`;
+  }, [dto]);
+
+  const warehouseLabel = useMemo(() => {
+    if (!dto) return "—";
+    return dto.warehouseId != null ? `Skladište #${dto.warehouseId}` : "—";
+  }, [dto]);
+
+  const canCancel = useMemo(() => {
+    if (!dto) return false;
+    if (cancelM.loading) return false;
+    if (dto.cancelled) return false;
+    return true;
+  }, [dto, cancelM.loading]);
+
+  const items: DispatchBookingItemDTO[] = useMemo(() => {
+    const a = (dto as any)?.items ?? [];
+    return Array.isArray(a) ? (a as DispatchBookingItemDTO[]) : [];
+  }, [dto]);
+
+  const TopBar = ({ subtitle }: { subtitle: string }) => (
+    <View style={s.topBar}>
+      <Pressable style={s.iconBtn} onPress={() => router.back()}>
+        <FontAwesome name="chevron-left" size={16} color={Colors.text} />
+      </Pressable>
+
+      <View style={{ flex: 1 }}>
+        <Text style={s.h1} numberOfLines={1}>
+          Dispatch #{String(validId ?? "")}
+        </Text>
+        <Text style={s.h2} numberOfLines={2}>
+          {subtitle}
+        </Text>
+      </View>
+
+      <Pressable style={s.iconBtn} onPress={q.refetch}>
+        <FontAwesome name="refresh" size={16} color={Colors.text} />
+      </Pressable>
+    </View>
+  );
 
   if (!validId) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
+        <TopBar subtitle="Neispravan ID" />
         <View style={s.pad}>
           <Banner type="error" text="Neispravan ID." />
           <Pressable style={s.secondary} onPress={() => router.back()}>
@@ -63,154 +126,202 @@ export default function DispatchBookingDetails() {
     );
   }
 
-  const partnerName = String(header?.partnerName ?? "");
-  const partnerId = header?.partnerId != null ? String(header?.partnerId) : "";
-
-  return (
-    // IMPORTANT: no TOP safe-area padding
-    <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <View style={s.topBar}>
-        <Pressable style={s.iconBtn} onPress={() => router.back()}>
-          <FontAwesome name="chevron-left" size={16} color={Colors.text} />
-        </Pressable>
-
-        <View style={{ flex: 1 }}>
-          <Text style={s.h1} numberOfLines={1}>
-            Dispatch #{String(validId)}
-          </Text>
-          <Text style={s.h2} numberOfLines={2}>
-            {st} • {String(header?.documentCode ?? "")}
-            {partnerName || partnerId ? ` • ${partnerName || "Partner"}${partnerId ? ` (#${partnerId})` : ""}` : ""}
-          </Text>
-        </View>
-
-        <Pressable style={s.iconBtn} onPress={q.refetch}>
-          <FontAwesome name="refresh" size={16} color={Colors.text} />
-        </Pressable>
-      </View>
-
-      {q.loading ? (
+  if (q.loading) {
+    return (
+      <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
+        <TopBar subtitle="Učitavam…" />
         <View style={s.center}>
           <ActivityIndicator />
           <Text style={s.muted}>Učitavam…</Text>
         </View>
-      ) : q.error ? (
+      </Screen>
+    );
+  }
+
+  if (q.error) {
+    return (
+      <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
+        <TopBar subtitle="Greška" />
         <View style={s.pad}>
           <Banner type="error" text={q.error} />
           <Pressable style={s.secondary} onPress={q.refetch}>
             <Text style={s.secondaryText}>Pokušaj ponovno</Text>
           </Pressable>
         </View>
-      ) : !q.data ? (
+      </Screen>
+    );
+  }
+
+  if (!dto) {
+    return (
+      <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
+        <TopBar subtitle="Nema podataka" />
         <View style={s.pad}>
           <Banner type="info" text="Nema podataka." />
         </View>
-      ) : (
-        <ScrollView contentContainerStyle={s.pad}>
-          {!!cancelM.error && <Banner type="error" text={cancelM.error} />}
+      </Screen>
+    );
+  }
 
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Podaci</Text>
+  const stLabel = st ?? "DRAFT";
+  const stHuman = stLabel === "CANCELLED" ? "STORNO" : stLabel;
 
-            <View style={s.kvRow}>
-              <Text style={s.k}>Dokument</Text>
-              <Text style={s.v}>{String(header?.documentName ?? header?.displayName ?? header?.documentCode ?? "")}</Text>
+  const headerSubtitle = [stHuman, dto.documentCode ? dto.documentCode : null, partnerLabel !== "—" ? partnerLabel : null, warehouseLabel !== "—" ? warehouseLabel : null]
+    .filter(Boolean)
+    .join(" • ");
+
+  const metaRows = [
+    kv("Header ID", dto.headerId),
+    kv("Skladište ID", dto.warehouseId), // ✅ prikaz skladišta
+    kv("Dokument ID", dto.documentId),
+    kv("Šifra", dto.documentCode),
+    kv("Naziv", dto.documentName),
+    kv("Broj", dto.documentBr),
+    kv("Partner", partnerLabel),
+  ];
+
+  const timeRows = [
+    kv("Datum dokumenta", fmtHrDateTime(dto.documentDate)),
+    kv("Knjigovano/izrađeno", fmtHrDateTime(dto.bookedAt)),
+    kv("Kreirano", fmtHrDateTime(dto.createdAt)),
+    kv("Kreirao", dto.createdBy),
+    kv("Knjigovao", dto.postedBy),
+    kv("Knjigovano", fmtHrDateTime(dto.postedAt)),
+    kv("Stornirao", dto.cancelledBy),
+    kv("Stornirano", fmtHrDateTime(dto.cancelledAt)),
+  ];
+
+  return (
+    <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
+      <TopBar subtitle={headerSubtitle} />
+
+      <ScrollView contentContainerStyle={s.pad}>
+        {!!cancelM.error && <Banner type="error" text={cancelM.error} />}
+
+        <View style={s.statusRow}>
+          <View style={[s.statusPill, { backgroundColor: tone?.bg, borderColor: tone?.bd }]}>
+            <Text style={[s.statusText, { color: tone?.tx }]}>{stHuman}</Text>
+          </View>
+
+          <View style={{ flex: 1 }} />
+
+          {!!dto.cancelled && (
+            <View style={[s.miniPill, { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.25)" }]}>
+              <Text style={s.miniText}>STORNO</Text>
             </View>
-
-            <View style={s.kvRow}>
-              <Text style={s.k}>Broj</Text>
-              <Text style={s.v}>{String(header?.documentBr ?? "")}</Text>
+          )}
+          {!!dto.posted && !dto.cancelled && (
+            <View style={[s.miniPill, { backgroundColor: "rgba(34,197,94,0.12)", borderColor: "rgba(34,197,94,0.25)" }]}>
+              <Text style={s.miniText}>KNJIŽENO</Text>
             </View>
-
-            <View style={s.kvRow}>
-              <Text style={s.k}>Datum</Text>
-              <Text style={s.v}>{fmtHrDate(header?.documentDate ?? header?.bookedAt)}</Text>
+          )}
+          {!dto.posted && !dto.cancelled && (
+            <View style={[s.miniPill, { backgroundColor: "rgba(59,130,246,0.10)", borderColor: "rgba(59,130,246,0.22)" }]}>
+              <Text style={s.miniText}>DRAFT</Text>
             </View>
+          )}
+        </View>
 
-            <View style={s.kvRow}>
-              <Text style={s.k}>Partner</Text>
-              <Text style={s.v}>{partnerName || partnerId ? `${partnerName || "Partner"}${partnerId ? ` (#${partnerId})` : ""}` : "—"}</Text>
-            </View>
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Podaci</Text>
+          <View style={s.kvGrid}>
+            {metaRows.map((r) => (
+              <View key={r.label} style={s.kvCell}>
+                <Text style={s.k}>{r.label}</Text>
+                <Text style={s.v}>{r.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
 
-            <View style={s.kvRow}>
-              <Text style={s.k}>Status</Text>
-              <Text style={s.v}>{st}</Text>
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Vremena / korisnici</Text>
+          <View style={s.kvGrid}>
+            {timeRows.map((r) => (
+              <View key={r.label} style={s.kvCell}>
+                <Text style={s.k}>{r.label}</Text>
+                <Text style={s.v}>{r.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={s.card}>
+          <View style={s.sectionHeader}>
+            <Text style={s.cardTitle}>Stavke</Text>
+            <View style={s.countPill}>
+              <Text style={s.countText}>{items.length}</Text>
             </View>
           </View>
 
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Stavke ({lines.length})</Text>
+          {items.length === 0 ? (
+            <Text style={s.empty}>Nema stavki.</Text>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {items.map((ln: any, idx: number) => {
+                const key = String(ln?.id ?? ln?.itemRowId ?? ln?.itemId ?? `${idx}`);
+                const name = String(ln?.name ?? ln?.itemName ?? "");
+                const code = String(ln?.itemCode ?? "");
+                const qty = ln?.quantity != null ? String(ln.quantity) : "";
+                const unit = String(ln?.unit ?? ln?.unitOfMeasure ?? ln?.jmj ?? "");
 
-            {lines.length === 0 ? (
-              <Text style={s.empty}>Nema stavki.</Text>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {lines.map((ln: any, idx: number) => {
-                  const key = String(ln?.itemRowId ?? ln?.id ?? ln?.itemId ?? `${idx}`);
-                  const name = String(ln?.name ?? "");
-                  const code = String(ln?.itemCode ?? "");
-                  const qty = String(ln?.quantity ?? "");
-                  const unit = String(ln?.unit ?? "");
-
-                  return (
-                    <View key={key} style={s.lineRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.lineTitle} numberOfLines={2}>
-                          {name || "Stavka"}
-                        </Text>
+                return (
+                  <View key={key} style={s.lineRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.lineTitle} numberOfLines={2}>
+                        {name || "Stavka"}
+                      </Text>
+                      {(code || unit) && (
                         <Text style={s.lineSub} numberOfLines={2}>
                           {code ? `Šifra: ${code}` : ""}
                           {code && unit ? " • " : ""}
                           {unit ? `JMJ: ${unit}` : ""}
                         </Text>
-                      </View>
-                      <Text style={s.qty}>{qty}</Text>
+                      )}
                     </View>
-                  );
-                })}
-              </View>
-            )}
-          </View>
 
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Storno / Cancel</Text>
+                    <View style={s.qtyBox}>
+                      <Text style={s.qty}>{qty || "—"}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
 
-            <Text style={s.note}>
-              Backend će:
-              {"\n"}• ako je FINAL (posted) → pozvati storno proceduru
-              {"\n"}• ako je DRAFT → obrisati draft (delete)
-            </Text>
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Storno</Text>
 
-            <Text style={s.lbl}>Razlog (opcionalno)</Text>
-            <TextInput
-              value={cancelReason}
-              onChangeText={setCancelReason}
-              placeholder="Upiši razlog…"
-              placeholderTextColor={Colors.sub}
-              style={s.input}
-              multiline
-              textAlignVertical="top"
-              autoCorrect={false}
-            />
+          <Text style={s.lbl}>Razlog (opcionalno)</Text>
+          <TextInput
+            value={cancelReason}
+            onChangeText={setCancelReason}
+            placeholder="Upiši razlog…"
+            placeholderTextColor={Colors.sub}
+            style={s.input}
+            multiline
+            textAlignVertical="top"
+            autoCorrect={false}
+          />
 
-            <Pressable
-              style={[s.danger, !canCancel && { opacity: 0.5 }]}
-              disabled={!canCancel}
-              onPress={async () => {
-                cancelM.setError(null);
-                const res = await cancelM.cancel(validId, cancelReason);
-                if (res) q.setData(res as any);
-              }}
-            >
-              {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>{st === "DRAFT" ? "Obriši draft" : "Storniraj dokument"}</Text>}
-            </Pressable>
-          </View>
-
-          <Pressable style={s.secondary} onPress={() => router.back()}>
-            <Text style={s.secondaryText}>Nazad</Text>
+          <Pressable
+            style={[s.danger, !canCancel && { opacity: 0.5 }]}
+            disabled={!canCancel}
+            onPress={async () => {
+              cancelM.setError(null);
+              const res = await cancelM.cancel(validId, cancelReason);
+              if (res) q.setData(res as any);
+            }}
+          >
+            {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>{stLabel === "DRAFT" ? "Obriši draft" : "Storniraj dokument"}</Text>}
           </Pressable>
-        </ScrollView>
-      )}
+        </View>
+
+        <Pressable style={s.secondary} onPress={() => router.back()}>
+          <Text style={s.secondaryText}>Nazad</Text>
+        </Pressable>
+      </ScrollView>
     </Screen>
   );
 }
@@ -241,6 +352,13 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 16 },
   muted: { color: Colors.sub, fontWeight: "800" },
 
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statusPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
+  statusText: { fontWeight: "900", fontSize: 12 },
+
+  miniPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
+  miniText: { fontWeight: "900", color: Colors.text, fontSize: 11 },
+
   card: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
@@ -251,9 +369,32 @@ const s = StyleSheet.create({
   },
   cardTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
 
-  kvRow: { flexDirection: "row", gap: 10 },
-  k: { width: 90, color: Colors.sub, fontWeight: "900", fontSize: 12 },
-  v: { flex: 1, color: Colors.text, fontWeight: "900", fontSize: 12 },
+  kvGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  kvCell: {
+    width: "48%",
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: "rgba(148,163,184,0.08)",
+    padding: 10,
+    gap: 4,
+  },
+  k: { color: Colors.sub, fontWeight: "900", fontSize: 11 },
+  v: { color: Colors.text, fontWeight: "900", fontSize: 12 },
+
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  countPill: {
+    minWidth: 34,
+    height: 26,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(249,115,22,0.12)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.30)",
+  },
+  countText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
 
   empty: { color: Colors.sub, fontWeight: "800", paddingVertical: 6 },
 
@@ -264,14 +405,14 @@ const s = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 10,
   },
   lineTitle: { fontWeight: "900", color: Colors.text, fontSize: 13, lineHeight: 17 },
   lineSub: { marginTop: 2, fontWeight: "800", color: Colors.sub, fontSize: 12 },
-  qty: { fontWeight: "900", color: Colors.text, fontSize: 14 },
 
-  note: { color: Colors.sub, fontWeight: "800", lineHeight: 18 },
+  qtyBox: { minWidth: 52, alignItems: "flex-end", justifyContent: "center" },
+  qty: { fontWeight: "900", color: Colors.text, fontSize: 14, textAlign: "right" },
 
   lbl: { color: Colors.sub, fontWeight: "900", fontSize: 12, marginTop: 4 },
   input: {
@@ -288,11 +429,6 @@ const s = StyleSheet.create({
   danger: { padding: 12, borderRadius: 14, backgroundColor: "rgba(239,68,68,0.95)", alignItems: "center" },
   dangerTextBtn: { color: "#fff", fontWeight: "900" },
 
-  secondary: {
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(148,163,184,0.18)",
-    alignItems: "center",
-  },
+  secondary: { padding: 12, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center" },
   secondaryText: { fontWeight: "900", color: Colors.text },
 });

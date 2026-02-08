@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-07 20:18:19.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-08 14:53:49.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -18,6 +18,7 @@ export interface ServiceResponseDTO<T> {
 
 export interface DispatchBookingDetailDTO {
     headerId: number;
+    warehouseId: number;
     documentId: number;
     documentCode: string;
     documentName: string;
@@ -49,6 +50,7 @@ export interface DispatchBookingItemDTO {
 
 export interface DispatchBookingListItemDTO {
     headerId: number;
+    warehouseId: number;
     documentId: number;
     documentCode: string;
     documentName: string;

@@ -1,4 +1,3 @@
-// app/dispatch-bookings/index.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -11,18 +10,15 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
 
 import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
-import { useDispatchBookings, type DispatchBookingStatusFilter } from "@/app/api/hooks/useDispatchBookings";
+import { useDispatchBookings } from "@/app/api/hooks/useDispatchBookings";
 import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
+import { useWarehouses } from "@/app/api/hooks/useWarehouses";
+import { ApiError } from "@/app/api/apiClient";
 
 import type { DocumentDescriptorResponseDTO, DispatchBookingListItemDTO } from "@/app/models/generated";
 
-function isBlank(s?: string | null) {
-  return !s || !String(s).trim();
-}
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
+type DispatchBookingStatusFilter = "ALL" | "FINAL" | "DRAFT" | "CANCELLED";
+type WarehousePick = { id: number | null; label: string };
 
 function fmtHrDateFromIso(iso?: string | null): string {
   if (!iso) return "";
@@ -33,10 +29,6 @@ function fmtHrDateFromIso(iso?: string | null): string {
 }
 
 function statusOfRow(d: any): "DRAFT" | "FINAL" | "CANCELLED" {
-  const s = String(d?.status ?? "").toUpperCase();
-  if (s.includes("CANCEL")) return "CANCELLED";
-  if (s.includes("POST") || s.includes("FINAL")) return "FINAL";
-  if (s.includes("DRAFT")) return "DRAFT";
   if (d?.cancelled === true || d?.storno === 1) return "CANCELLED";
   if (d?.posted === true || d?.knjizeno === 1) return "FINAL";
   return "DRAFT";
@@ -48,9 +40,39 @@ function statusPillStyle(st: ReturnType<typeof statusOfRow>) {
   return { bg: "rgba(59,130,246,0.10)", bd: "rgba(59,130,246,0.22)", tx: Colors.text };
 }
 
+/**
+ * Treat 404 / Not found from LIST as "empty list" for this screen.
+ * (Useful while backend might respond 404 for status=CANCELLED or other edge-cases.)
+ */
+function isNoResultsError(err: any): boolean {
+  if (!err) return false;
+
+  // If your api layer throws ApiError with HTTP status:
+  if (err instanceof ApiError) {
+    if (err.status === 404) return true;
+    const msg = String((err.body as any)?.message ?? err.message ?? "").toLowerCase();
+    if (msg.includes("not found") || msg.includes("nema")) return true;
+    return false;
+  }
+
+  // Fallback string checks
+  const s = String(err).toLowerCase();
+  if (s.includes("404")) return true;
+  if (s.includes("not found")) return true;
+  if (s.includes("nema")) return true;
+  return false;
+}
+
 export default function DispatchBookingsIndex() {
   const { session, ready } = useCurrentUser();
-  const warehouseId = session?.defaultWarehouseId ?? null;
+  const defaultWhId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
+
+  const whQ = useWarehouses();
+  const warehouses: number[] = (whQ.data ?? []) as any;
+
+  // null => "Sva skladišta"
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  const [warehouseOpen, setWarehouseOpen] = useState(false);
 
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -61,7 +83,6 @@ export default function DispatchBookingsIndex() {
   const [pickedDoc, setPickedDoc] = useState<DocumentDescriptorResponseDTO | null>(null);
   const [docPickerOpen, setDocPickerOpen] = useState(false);
 
-  // ✅ DEFAULT: NO date filter
   const [dateFromIso, setDateFromIso] = useState<string | null>(null);
   const [dateToIso, setDateToIso] = useState<string | null>(null);
   const [dateOpen, setDateOpen] = useState(false);
@@ -72,26 +93,50 @@ export default function DispatchBookingsIndex() {
   }, [q]);
 
   const listQ = useDispatchBookings({
-    warehouseId: warehouseId ? Number(warehouseId) : null,
+    warehouseId, // null => all
     documentCode: pickedDoc?.documentCode ?? documentCode,
-    status,
+    status: status as any, // hook might be typed narrower; runtime OK
     q: debouncedQ || undefined,
     dateFrom: dateFromIso || undefined,
     dateTo: dateToIso || undefined,
     size: 20,
   });
 
-  const topInfo = useMemo(() => {
-    const dc = pickedDoc?.documentCode ?? documentCode;
-    const dn = pickedDoc?.displayName ?? (dc === "OTPREMNICA" ? "Otpremnica" : dc);
-    return { dc, dn };
-  }, [pickedDoc, documentCode]);
+  const noResults = useMemo(() => isNoResultsError(listQ.error), [listQ.error]);
+  const showErrorBanner = !!listQ.error && !noResults;
+
+  const dateActive = !!dateFromIso && !!dateToIso;
+
+  const dateLabel = useMemo(() => {
+    if (!dateActive) return "Period";
+    return `${fmtHrDateFromIso(dateFromIso)} → ${fmtHrDateFromIso(dateToIso)}`;
+  }, [dateActive, dateFromIso, dateToIso]);
+
+  const warehouseLabel = useMemo(() => {
+    if (warehouseId == null) return "Sva skladišta";
+    return `Skladište #${warehouseId}`;
+  }, [warehouseId]);
+
+  const fetchWarehousesPage = async ({ page, size, q }: { page: number; size: number; q?: string }) => {
+    const needle = (q ?? "").trim().toLowerCase();
+    const base: WarehousePick[] = [{ id: null, label: "Sva skladišta" }];
+
+    const list: WarehousePick[] = (warehouses ?? []).map((id) => ({ id: Number(id), label: `Skladište #${id}` }));
+    const filtered = !needle ? list : list.filter((w) => w.label.toLowerCase().includes(needle) || String(w.id ?? "").includes(needle));
+
+    const items = base.concat(filtered);
+    const start = page * size;
+    const end = start + size;
+
+    return { items: items.slice(start, end), page, size, total: items.length };
+  };
 
   const fetchDocTypesPage = async ({ page, size, q }: { page: number; size: number; q?: string }) => {
-    if (!warehouseId) return { items: [] as DocumentDescriptorResponseDTO[], page, size, total: 0 };
+    const whForDocs = warehouseId ?? defaultWhId;
+    if (!whForDocs) return { items: [] as DocumentDescriptorResponseDTO[], page, size, total: 0 };
 
     const all = await documentDirectoryService.listDocTypesByCode(
-      { warehouseId: Number(warehouseId), documentCode: "OTPREMNICA", q: q ?? undefined },
+      { warehouseId: Number(whForDocs), documentCode: "OTPREMNICA", q: q ?? undefined },
       undefined
     );
 
@@ -109,14 +154,9 @@ export default function DispatchBookingsIndex() {
 
     const start = page * size;
     const end = start + size;
+
     return { items: filtered.slice(start, end), page, size, total: filtered.length };
   };
-
-  const dateActive = !!dateFromIso && !!dateToIso;
-  const dateLabel = useMemo(() => {
-    if (!dateActive) return "Period";
-    return `${fmtHrDateFromIso(dateFromIso)} → ${fmtHrDateFromIso(dateToIso)}`;
-  }, [dateActive, dateFromIso, dateToIso]);
 
   if (!ready) {
     return (
@@ -128,22 +168,14 @@ export default function DispatchBookingsIndex() {
     );
   }
 
-  if (!warehouseId) {
-    return (
-      <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-        <View style={s.pad}>
-          <Banner type="error" text="Nema defaultWarehouseId u sesiji. Postavi glavno skladište u postavkama." />
-        </View>
-      </Screen>
-    );
-  }
+  const listData = noResults ? [] : ((listQ.items as DispatchBookingListItemDTO[]) ?? []);
 
   return (
-    // no TOP safe-area padding
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
       <View style={s.pad}>
         <Text style={s.h1}>Knjigovanja</Text>
 
+        {/* Search */}
         <View style={s.searchWrap}>
           <FontAwesome name="search" size={14} color={Colors.sub} />
           <TextInput
@@ -163,7 +195,16 @@ export default function DispatchBookingsIndex() {
           )}
         </View>
 
+        {/* Filters */}
         <View style={s.filtersRow}>
+          <Pressable style={s.filterPill} onPress={() => setWarehouseOpen(true)}>
+            <FontAwesome name="building" size={14} color={Colors.text} />
+            <Text style={s.filterText} numberOfLines={1}>
+              {warehouseLabel}
+            </Text>
+            <FontAwesome name="chevron-down" size={12} color={Colors.sub} />
+          </Pressable>
+
           <Pressable style={s.filterPill} onPress={() => setDocPickerOpen(true)}>
             <FontAwesome name="file-text-o" size={14} color={Colors.text} />
             <Text style={s.filterText} numberOfLines={1}>
@@ -172,21 +213,20 @@ export default function DispatchBookingsIndex() {
             <FontAwesome name="chevron-down" size={12} color={Colors.sub} />
           </Pressable>
 
-          <Pressable
-            style={[s.filterPill, dateActive && s.filterPillActive]}
-            onPress={() => setDateOpen(true)}
-          >
+          <Pressable style={[s.filterPill, dateActive && s.filterPillActive]} onPress={() => setDateOpen(true)}>
             <FontAwesome name="calendar" size={14} color={Colors.text} />
-            <Text style={s.filterText}>{dateLabel}</Text>
+            <Text style={s.filterText} numberOfLines={1}>
+              {dateLabel}
+            </Text>
+
             {dateActive && (
               <Pressable
-                onPress={(e: any) => {
-                  // stop row press
-                  e?.stopPropagation?.();
+                onPressIn={(e) => e.stopPropagation?.()}
+                onPress={() => {
                   setDateFromIso(null);
                   setDateToIso(null);
                 }}
-                hitSlop={8}
+                hitSlop={10}
               >
                 <FontAwesome name="times-circle" size={16} color={Colors.sub} />
               </Pressable>
@@ -194,10 +234,11 @@ export default function DispatchBookingsIndex() {
           </Pressable>
         </View>
 
+        {/* Status segmented */}
         <View style={s.segment}>
-          {(["ALL", "FINAL", "DRAFT"] as DispatchBookingStatusFilter[]).map((k) => {
+          {(["ALL", "FINAL", "DRAFT", "CANCELLED"] as DispatchBookingStatusFilter[]).map((k) => {
             const active = status === k;
-            const label = k === "ALL" ? "Sve" : k === "FINAL" ? "Final" : "Draft";
+            const label = k === "ALL" ? "Sve" : k === "FINAL" ? "Final" : k === "DRAFT" ? "Draft" : "Storno";
             return (
               <Pressable key={k} style={[s.segBtn, active && s.segBtnActive]} onPress={() => setStatus(k)}>
                 <Text style={[s.segText, active && s.segTextActive]}>{label}</Text>
@@ -206,9 +247,12 @@ export default function DispatchBookingsIndex() {
           })}
         </View>
 
-        {!!listQ.error && <Banner type="error" text={listQ.error} />}
+        {/* ✅ real errors only; suppress 404/not found => show empty */}
+        {showErrorBanner && <Banner type="error" text={String(listQ.error)} />}
+        {!!whQ.error && <Banner type="error" text={String(whQ.error)} />}
       </View>
 
+      {/* List */}
       {listQ.loading ? (
         <View style={s.center}>
           <ActivityIndicator />
@@ -216,11 +260,14 @@ export default function DispatchBookingsIndex() {
         </View>
       ) : (
         <FlatList
-          data={listQ.items as DispatchBookingListItemDTO[]}
-          keyExtractor={(it) => String((it as any)?.headerId ?? (it as any)?.id ?? Math.random())}
+          data={listData}
+          keyExtractor={(it) => String((it as any)?.headerId ?? (it as any)?.id)}
           contentContainerStyle={s.list}
           onEndReachedThreshold={0.35}
-          onEndReached={listQ.loadMore}
+          onEndReached={() => {
+            if (noResults) return;
+            listQ.loadMore?.();
+          }}
           renderItem={({ item }) => {
             const st = statusOfRow(item as any);
             const tone = statusPillStyle(st);
@@ -265,14 +312,14 @@ export default function DispatchBookingsIndex() {
                 </View>
 
                 <View style={[s.badge, { backgroundColor: tone.bg, borderColor: tone.bd }]}>
-                  <Text style={[s.badgeText, { color: tone.tx }]}>{st}</Text>
+                  <Text style={[s.badgeText, { color: tone.tx }]}>{st === "CANCELLED" ? "STORNO" : st}</Text>
                 </View>
               </Pressable>
             );
           }}
           ListEmptyComponent={<Text style={s.empty}>Nema rezultata.</Text>}
           ListFooterComponent={
-            listQ.loadingMore ? (
+            !noResults && listQ.loadingMore ? (
               <View style={{ paddingVertical: 14 }}>
                 <ActivityIndicator />
               </View>
@@ -281,6 +328,28 @@ export default function DispatchBookingsIndex() {
         />
       )}
 
+      {/* Warehouse picker */}
+      <SearchPickerSheet<WarehousePick>
+        visible={warehouseOpen}
+        title="Skladište"
+        onClose={() => setWarehouseOpen(false)}
+        keyOf={(x) => String(x.id ?? "ALL")}
+        fetchPage={fetchWarehousesPage}
+        renderRow={(w, close) => (
+          <Pressable
+            style={s.pickRow}
+            onPress={() => {
+              setWarehouseId(w.id);
+              close();
+            }}
+          >
+            <Text style={s.pickTitle}>{w.label}</Text>
+            <Text style={s.pickSub}>{w.id == null ? "Prikaz svih skladišta" : `ID: ${w.id}`}</Text>
+          </Pressable>
+        )}
+      />
+
+      {/* Document picker */}
       <SearchPickerSheet<DocumentDescriptorResponseDTO>
         visible={docPickerOpen}
         title="Odaberi dokument"
@@ -297,13 +366,12 @@ export default function DispatchBookingsIndex() {
             }}
           >
             <Text style={s.pickTitle}>{d.displayName}</Text>
-            <Text style={s.pickSub}>
-              Šifra: {d.documentCode} • ID: {d.documentId} • Skladište: {String(warehouseId)}
-            </Text>
+            <Text style={s.pickSub}>Šifra: {d.documentCode} • ID: {d.documentId}</Text>
           </Pressable>
         )}
       />
 
+      {/* Date range */}
       <DateRangeSheet
         visible={dateOpen}
         onClose={() => setDateOpen(false)}
@@ -321,7 +389,6 @@ export default function DispatchBookingsIndex() {
 const s = StyleSheet.create({
   pad: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12, gap: 10 },
   h1: { fontWeight: "900", color: Colors.text, fontSize: 18 },
-  h2: { fontWeight: "800", color: Colors.sub, fontSize: 12 },
 
   searchWrap: {
     paddingHorizontal: 12,
