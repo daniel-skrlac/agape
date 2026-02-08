@@ -13,6 +13,7 @@ import java.time.OffsetDateTime;
 @Builder
 public class DispatchBookingListItemDTO {
     private Long headerId;          // SD_GLAVA.ID
+    private long warehouseId;
     private Long documentId;        // SD_GLAVA.DOKUMENT_ID
     private String documentCode;    // SD_SIFREZ.DOKUMENTID
     private String documentName;    // SD_SIFREZ.NAZIVDOKUMENTA

@@ -18,7 +18,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -54,11 +56,13 @@ public class DispatchBookingSessionEntryEntity extends PanacheEntityBase {
     @Column(name = "document_date")
     private LocalDate documentDate;
 
-    @Column(name = "doc_patches", nullable = false, columnDefinition = "text")
-    private String docPatchesJson; // json string
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "doc_patches", nullable = false, columnDefinition = "jsonb")
+    private String docPatchesJson;
 
-    @Column(name = "extra_items", nullable = false, columnDefinition = "text")
-    private String extraItemsJson; // json string
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "extra_items", nullable = false, columnDefinition = "jsonb")
+    private String extraItemsJson;
 
     @Column(name = "note")
     private String note;

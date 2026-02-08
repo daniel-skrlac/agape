@@ -20,7 +20,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -68,6 +70,7 @@ public class DispatchBookingSessionEntity extends PanacheEntityBase {
     @Column(name = "finalized_at")
     private OffsetDateTime finalizedAt;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "final_result", columnDefinition = "jsonb")
     private String finalResultJson;
 

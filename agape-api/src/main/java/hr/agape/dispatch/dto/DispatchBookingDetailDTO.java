@@ -14,6 +14,7 @@ import java.util.List;
 @Builder
 public class DispatchBookingDetailDTO {
     private Long headerId;
+    private Long warehouseId;
     private Long documentId;
     private String documentCode;
     private String documentName;

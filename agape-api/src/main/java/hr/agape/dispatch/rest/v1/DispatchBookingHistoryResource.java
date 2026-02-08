@@ -13,7 +13,7 @@ import jakarta.ws.rs.core.MediaType;
 
 import java.time.LocalDate;
 
-@Path("/dispatch/bookings")
+@Path("/api/v1/dispatch/bookings")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 @RolesAllowed(Roles.USER)
