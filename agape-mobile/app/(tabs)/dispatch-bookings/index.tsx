@@ -144,11 +144,11 @@ export default function DispatchBookingsIndex() {
     const filtered = !needle
       ? all
       : all.filter((d) => {
-          const a = (d.displayName ?? "").toLowerCase();
-          const b = (d.documentCode ?? "").toLowerCase();
-          const c = String(d.documentId ?? "");
-          return a.includes(needle) || b.includes(needle) || c.includes(needle);
-        });
+        const a = (d.displayName ?? "").toLowerCase();
+        const b = (d.documentCode ?? "").toLowerCase();
+        const c = String(d.documentId ?? "");
+        return a.includes(needle) || b.includes(needle) || c.includes(needle);
+      });
 
     filtered.sort((a, b) => (a.displayName ?? "").localeCompare(b.displayName ?? "", "hr", { sensitivity: "base" }));
 
@@ -173,8 +173,6 @@ export default function DispatchBookingsIndex() {
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
       <View style={s.pad}>
-        <Text style={s.h1}>Knjigovanja</Text>
-
         {/* Search */}
         <View style={s.searchWrap}>
           <FontAwesome name="search" size={14} color={Colors.sub} />
@@ -391,9 +389,9 @@ const s = StyleSheet.create({
   h1: { fontWeight: "900", color: Colors.text, fontSize: 18 },
 
   searchWrap: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
     backgroundColor: "rgba(148,163,184,0.14)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
@@ -401,7 +399,15 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  search: { flex: 1, fontWeight: "800", color: Colors.text },
+
+  search: {
+    flex: 1,
+    height: 25,
+    paddingVertical: 0,
+    fontWeight: "800",
+    color: Colors.text,
+    fontSize: 14,
+  },
 
   filtersRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
   filterPill: {

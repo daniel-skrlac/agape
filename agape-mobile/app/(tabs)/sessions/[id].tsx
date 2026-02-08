@@ -1,13 +1,14 @@
-import React, { useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
-import { Sheet } from "@/components/Sheet";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
+import { CenterSheet } from "@/components/CenterSheet";
 
 import type {
   BookingSessionEntryResponseDTO,
@@ -33,11 +34,10 @@ import {
 
 import { useTemplateList } from "@/app/api/hooks/useDispatchTemplates";
 
-function normId(x: any) {
-  return Number(x);
-}
+const MAX_W = 560;
 
 type QtyMap = Record<string, number>;
+
 function upsertQty(qty: QtyMap, itemId: number, delta: number) {
   const k = String(itemId);
   const cur = Number(qty[k] ?? 0);
@@ -48,11 +48,13 @@ function upsertQty(qty: QtyMap, itemId: number, delta: number) {
   }
   return { ...qty, [k]: next };
 }
+
 function qtyToItems(qty: QtyMap): TemplateBookItemDTO[] {
   return Object.entries(qty)
     .map(([k, v]) => ({ itemId: Number(k), quantity: Number(v) }))
     .filter((x) => x.itemId && x.quantity > 0);
 }
+
 function mkPatch(docId: number, addItems: TemplateBookItemDTO[]): TemplateBookDocPatchDTO {
   return {
     documentId: docId,
@@ -63,12 +65,34 @@ function mkPatch(docId: number, addItems: TemplateBookItemDTO[]): TemplateBookDo
     noteOverride: null as any,
   } as any;
 }
+
 function badgeStyle(status: any) {
-  if (status === "FINALIZED")
-    return { backgroundColor: "rgba(34,197,94,0.18)", borderColor: "rgba(34,197,94,0.35)" };
-  if (status === "CANCELLED")
-    return { backgroundColor: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.35)" };
+  if (status === "FINALIZED") return { backgroundColor: "rgba(34,197,94,0.18)", borderColor: "rgba(34,197,94,0.35)" };
+  if (status === "CANCELLED") return { backgroundColor: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.35)" };
   return { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.35)" };
+}
+
+function statusHr(status: any) {
+  if (status === "DRAFT") return "DRAFT";
+  if (status === "FINALIZED") return "FINAL";
+  if (status === "CANCELLED") return "STORNO";
+  return String(status ?? "");
+}
+
+function Header({ title }: { title: string }) {
+  return (
+    <View style={s.header}>
+      <Pressable style={s.iconBtn} onPress={() => router.back()} hitSlop={10}>
+        <FontAwesome name="chevron-left" size={18} color={Colors.text} />
+      </Pressable>
+
+      <Text style={s.headerTitle} numberOfLines={1}>
+        {title}
+      </Text>
+
+      <View style={{ width: 38 }} />
+    </View>
+  );
 }
 
 export default function SessionDetail() {
@@ -89,32 +113,42 @@ export default function SessionDetail() {
     (finalizeM.error as any)?.message ||
     null;
 
-  // ------------ Add entry (pick partner) ------------
+  // partner picker
   const [partnerPickerOpen, setPartnerPickerOpen] = useState(false);
 
-  // ------------ Editor ------------
+  // editor (CenterSheet)
   const [editOpen, setEditOpen] = useState(false);
   const [entry, setEntry] = useState<BookingSessionEntryResponseDTO | null>(null);
 
-  // local editor state
   const [draftMode, setDraftMode] = useState<DraftMode>("DRAFT");
   const [templateId, setTemplateId] = useState<number | null>(null);
 
-  // doc patches + standalone items (assigned to a chosen docId)
   const [docPatches, setDocPatches] = useState<TemplateBookDocPatchDTO[]>([]);
   const [standaloneDocId, setStandaloneDocId] = useState<number | null>(null);
   const [standaloneQty, setStandaloneQty] = useState<QtyMap>({});
 
-  // template picker
+  // template picker (CenterSheet)
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [templateQ, setTemplateQ] = useState("");
   const tplListQ = useTemplateList({ folderId: null, q: templateQ, includeShared: true, rootOnly: true });
+
+  // items picker (CenterSheet)
+  const [itemPickerOpen, setItemPickerOpen] = useState(false);
+  const [itemTarget, setItemTarget] = useState<{ kind: "DOC"; documentId: number } | { kind: "STANDALONE" } | null>(null);
+  const [qtyDraft, setQtyDraft] = useState<QtyMap>({});
 
   const patchByDocId = useMemo(() => {
     const m = new Map<number, TemplateBookDocPatchDTO>();
     (docPatches ?? []).forEach((p) => m.set(Number(p.documentId), p));
     return m;
   }, [docPatches]);
+
+  // debounce search
+  const [templateQDeb, setTemplateQDeb] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setTemplateQDeb(templateQ.trim()), 200);
+    return () => clearTimeout(t);
+  }, [templateQ]);
 
   const selectedTemplate: TemplateResponseDTO | null = useMemo(() => {
     const list = (tplListQ.data ?? []) as any as TemplateResponseDTO[];
@@ -125,10 +159,43 @@ export default function SessionDetail() {
 
   const templateDocs = (selectedTemplate?.documents ?? []) as any[];
 
-  // ------------ Items picker ------------
-  const [itemPickerOpen, setItemPickerOpen] = useState(false);
-  const [itemTarget, setItemTarget] = useState<{ kind: "DOC"; documentId: number } | { kind: "STANDALONE" } | null>(null);
-  const [qtyDraft, setQtyDraft] = useState<QtyMap>({});
+  const startCreateForPartner = (p: PartnerResponseDTO) => {
+    if (!session || session.status !== "DRAFT") return;
+
+    const e: BookingSessionEntryResponseDTO = {
+      id: 0 as any,
+      partnerId: p.id,
+      templateId: 0 as any,
+      draftMode: "DRAFT",
+      documentDate: null as any,
+      docPatches: [] as any,
+      extraDocuments: [] as any,
+      note: null as any,
+    } as any;
+
+    setEntry(e);
+    setDraftMode("DRAFT");
+    setTemplateId(null);
+    setDocPatches([]);
+    setStandaloneDocId(null);
+    setStandaloneQty({});
+    setEditOpen(true);
+  };
+
+  const startEdit = (e: BookingSessionEntryResponseDTO) => {
+    if (!session || session.status !== "DRAFT") return;
+
+    setEntry(e);
+    setDraftMode(e.draftMode ?? "DRAFT");
+    setTemplateId(Number(e.templateId) || null);
+
+    const patches = (e.docPatches ?? []) as any;
+    setDocPatches(Array.isArray(patches) ? (patches as any) : []);
+
+    setStandaloneDocId(null);
+    setStandaloneQty({});
+    setEditOpen(true);
+  };
 
   const openDocItems = (documentId: number) => {
     const p = patchByDocId.get(Number(documentId));
@@ -177,61 +244,24 @@ export default function SessionDetail() {
 
     const next = [...docPatches];
     const idx = next.findIndex((p) => Number(p.documentId) === docId);
-    if (idx === -1) next.push(mkPatch(docId, standaloneItems));
-    else {
-      const cur = next[idx]?.addItems ?? [];
-      const by = new Map<number, number>();
-      [...cur, ...standaloneItems].forEach((x: any) => {
-        const id = Number(x.itemId);
-        const q = Number(x.quantity ?? 0);
-        if (!id || q <= 0) return;
-        by.set(id, (by.get(id) ?? 0) + q);
-      });
-      next[idx] = {
-        ...next[idx],
-        addItems: Array.from(by.entries()).map(([itemId, quantity]) => ({ itemId, quantity })) as any,
-      };
-    }
+
+    if (idx === -1) return [...next, mkPatch(docId, standaloneItems)];
+
+    const cur = next[idx]?.addItems ?? [];
+    const by = new Map<number, number>();
+    [...cur, ...standaloneItems].forEach((x: any) => {
+      const id = Number(x.itemId);
+      const q = Number(x.quantity ?? 0);
+      if (!id || q <= 0) return;
+      by.set(id, (by.get(id) ?? 0) + q);
+    });
+
+    next[idx] = {
+      ...next[idx],
+      addItems: Array.from(by.entries()).map(([itemId, quantity]) => ({ itemId, quantity })) as any,
+    };
+
     return next;
-  };
-
-  // ------------ Actions ------------
-  const startCreateForPartner = (p: PartnerResponseDTO) => {
-    if (!session || session.status !== "DRAFT") return;
-
-    const e: BookingSessionEntryResponseDTO = {
-      id: 0 as any,
-      partnerId: p.id,
-      templateId: 0 as any,
-      draftMode: "DRAFT",
-      documentDate: null as any,
-      docPatches: [] as any,
-      extraDocuments: [] as any,
-      note: null as any,
-    } as any;
-
-    setEntry(e);
-    setDraftMode("DRAFT");
-    setTemplateId(null);
-    setDocPatches([]);
-    setStandaloneDocId(null);
-    setStandaloneQty({});
-    setEditOpen(true);
-  };
-
-  const startEdit = (e: BookingSessionEntryResponseDTO) => {
-    if (!session || session.status !== "DRAFT") return;
-
-    setEntry(e);
-    setDraftMode(e.draftMode ?? "DRAFT");
-    setTemplateId(Number(e.templateId) || null);
-
-    const patches = (e.docPatches ?? []) as any;
-    setDocPatches(Array.isArray(patches) ? (patches as any) : []);
-
-    setStandaloneDocId(null);
-    setStandaloneQty({});
-    setEditOpen(true);
   };
 
   const save = async () => {
@@ -245,7 +275,7 @@ export default function SessionDetail() {
       draftMode: draftMode as any,
       documentDate: entry.documentDate ?? null,
       docPatches: buildDocPatchesWithStandalone() as any,
-      extraDocuments: [] as any, // ignored by backend after your change
+      extraDocuments: [] as any,
       note: entry.note ?? null,
     } as any;
 
@@ -266,73 +296,79 @@ export default function SessionDetail() {
   };
 
   return (
-    <Screen>
+    <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
       <View style={s.container}>
-        {!!err && <Banner type="error" text={err} />}
+        <Header title="Evidencija" />
+
+        {!!err && <Banner type="error" text={String(err)} />}
 
         {!session ? (
-          <Text style={s.helper}>{sQ.isLoading ? "Loading…" : "Session not found."}</Text>
+          <View style={s.center}>
+            {sQ.isLoading ? <ActivityIndicator /> : null}
+            <Text style={s.helper}>{sQ.isLoading ? "Učitavam…" : "Evidencija nije pronađena."}</Text>
+          </View>
         ) : (
           <>
-            <View style={s.headerCard}>
+            <View style={s.heroCard}>
               <Text style={s.h1}>{session.title}</Text>
               {!!session.note && <Text style={s.sub}>{session.note}</Text>}
 
-              <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginTop: 10 }}>
+              <View style={s.metaLine}>
                 <View style={[s.badge, badgeStyle(session.status)]}>
-                  <Text style={s.badgeText}>{session.status}</Text>
+                  <Text style={s.badgeText}>{statusHr(session.status)}</Text>
                 </View>
-                <Text style={s.sub}>Warehouse #{session.warehouseId}</Text>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <FontAwesome name="home" size={14} color={Colors.sub} />
+                  <Text style={s.sub}>Skladište #{session.warehouseId}</Text>
+                </View>
               </View>
 
-              {session.status === "DRAFT" && (
+              {session.status === "DRAFT" ? (
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-                  <Pressable style={s.primary} onPress={() => setPartnerPickerOpen(true)}>
-                    <Text style={s.primaryText}>+ Add partner</Text>
+                  <Pressable style={s.addBtnWide} onPress={() => setPartnerPickerOpen(true)}>
+                    <Text style={s.addBtnText}>+ Dodaj partnera</Text>
                   </Pressable>
-                  <Pressable
-                    style={[
-                      s.primary,
-                      {
-                        backgroundColor: "rgba(34,197,94,0.18)",
-                        borderWidth: StyleSheet.hairlineWidth,
-                        borderColor: "rgba(34,197,94,0.35)",
-                      },
-                    ]}
-                    onPress={finalize}
-                  >
-                    <Text style={[s.primaryText, { color: Colors.text }]}>Finalize</Text>
-                  </Pressable>
-                </View>
-              )}
 
-              {session.status !== "DRAFT" && !!session.finalResult && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={s.label}>Final result</Text>
-                  <Text style={s.sub}>
-                    Total: {(session.finalResult as any)?.total ?? "?"} • Succeeded: {(session.finalResult as any)?.succeeded ?? "?"} • Failed:{" "}
-                    {(session.finalResult as any)?.failed ?? "?"}
-                  </Text>
+                  <Pressable
+                    style={[s.finalizeBtn, finalizeM.isPending && { opacity: 0.6 }]}
+                    onPress={finalize}
+                    disabled={finalizeM.isPending}
+                  >
+                    {finalizeM.isPending ? <ActivityIndicator /> : <Text style={s.finalizeText}>Finaliziraj</Text>}
+                  </Pressable>
                 </View>
+              ) : (
+                !!(session as any).finalResult && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={s.label}>Rezultat</Text>
+                    <Text style={s.sub}>
+                      Ukupno: {(session as any).finalResult?.total ?? "?"} • Uspjelo: {(session as any).finalResult?.succeeded ?? "?"} • Neuspjelo:{" "}
+                      {(session as any).finalResult?.failed ?? "?"}
+                    </Text>
+                  </View>
+                )
               )}
             </View>
 
-            <Text style={s.label}>Entries</Text>
+            <Text style={s.label}>Stavke evidencije</Text>
 
             <FlatList
               data={(session.entries ?? []) as BookingSessionEntryResponseDTO[]}
               keyExtractor={(x) => String(x.id)}
-              contentContainerStyle={{ gap: 10, paddingBottom: 24 }}
+              contentContainerStyle={{ gap: 10, paddingBottom: 28 }}
+              ListEmptyComponent={<Text style={s.helper}>Nema unosa.</Text>}
               renderItem={({ item }) => (
                 <View style={s.card}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
+                  <View style={s.cardTop}>
                     <Text style={s.title}>Partner #{item.partnerId}</Text>
+
                     <View style={[s.badge, badgeStyle(item.draftMode === "FINAL" ? "FINALIZED" : "DRAFT")]}>
-                      <Text style={s.badgeText}>{item.draftMode}</Text>
+                      <Text style={s.badgeText}>{item.draftMode === "FINAL" ? "FINAL" : "DRAFT"}</Text>
                     </View>
                   </View>
 
-                  <Text style={s.sub}>Template #{item.templateId || "—"}</Text>
+                  <Text style={s.sub}>Predložak #{item.templateId || "—"}</Text>
 
                   <View style={s.rowBtns}>
                     <Pressable
@@ -340,22 +376,19 @@ export default function SessionDetail() {
                       disabled={session.status !== "DRAFT"}
                       onPress={() => startEdit(item)}
                     >
-                      <Text style={s.smallBtnText}>Edit</Text>
+                      <Text style={s.smallBtnText}>Uredi</Text>
                     </Pressable>
 
                     <Pressable
                       style={[s.smallBtn, { backgroundColor: Colors.dangerBg }, session.status !== "DRAFT" && { opacity: 0.5 }]}
-                      disabled={session.status !== "DRAFT"}
+                      disabled={session.status !== "DRAFT" || delEntryM.isPending}
                       onPress={() => deleteEntry(Number(item.id))}
                     >
-                      <Text style={[s.smallBtnText, { color: Colors.dangerText }]}>
-                        {delEntryM.isPending ? "…" : "Delete"}
-                      </Text>
+                      <Text style={[s.smallBtnText, { color: Colors.dangerText }]}>{delEntryM.isPending ? "…" : "Obriši"}</Text>
                     </Pressable>
                   </View>
                 </View>
               )}
-              ListEmptyComponent={<Text style={s.helper}>No entries.</Text>}
             />
           </>
         )}
@@ -363,7 +396,7 @@ export default function SessionDetail() {
         {/* Partner picker */}
         <SearchPickerSheet<PartnerResponseDTO>
           visible={partnerPickerOpen}
-          title="Select partner"
+          title="Odaberi partnera"
           onClose={() => setPartnerPickerOpen(false)}
           keyOf={(p) => String(p.id)}
           fetchPage={async ({ page, size, q }) => {
@@ -388,15 +421,21 @@ export default function SessionDetail() {
           )}
         />
 
-        {/* Entry editor */}
-        <Sheet
+        {/* Editor */}
+        <CenterSheet
           visible={editOpen}
-          title={entry ? `Entry: Partner #${entry.partnerId}` : "Entry"}
-          onClose={() => setEditOpen(false)}
+          title={entry ? `Unos: Partner #${entry.partnerId}` : "Unos"}
+          width={MAX_W}
+          closeOnBackdrop={false}
+          disableClose={upsertM.isPending}
+          onClose={() => {
+            if (upsertM.isPending) return;
+            setEditOpen(false);
+          }}
         >
           {!entry ? null : (
             <View style={{ gap: 12 }}>
-              <Text style={s.label}>Mode</Text>
+              <Text style={s.label}>Način</Text>
               <Segmented<DraftMode>
                 value={draftMode}
                 options={[
@@ -406,33 +445,40 @@ export default function SessionDetail() {
                 onChange={setDraftMode}
               />
 
-              <Text style={s.label}>Template</Text>
+              <Text style={s.label}>Predložak</Text>
               <Pressable style={s.secondaryBtn} onPress={() => setTemplatePickerOpen(true)}>
-                <Text style={s.secondaryText}>{templateId ? `Template #${templateId}` : "Choose template"}</Text>
+                <Text style={s.secondaryText}>{templateId ? `Predložak #${templateId}` : "Odaberi predložak"}</Text>
               </Pressable>
 
-              {/* Standalone items */}
               <View style={s.sectionHeader}>
-                <Text style={s.label}>Extra items</Text>
-                <Pressable style={s.secondaryBtn} onPress={openStandaloneItems}>
-                  <Text style={s.secondaryText}>+ Add</Text>
+                <Text style={s.label}>Dodatne stavke</Text>
+                <Pressable style={s.secondaryBtn} onPress={() => {
+                  setQtyDraft({ ...standaloneQty });
+                  setItemTarget({ kind: "STANDALONE" });
+                  setItemPickerOpen(true);
+                }}>
+                  <Text style={s.secondaryText}>+ Dodaj</Text>
                 </Pressable>
               </View>
 
               <View style={s.docCard}>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.docTitle}>Standalone items</Text>
-                  <Text style={s.docSub}>Items: {qtyToItems(standaloneQty).length}</Text>
+                  <Text style={s.docTitle}>Samostalne stavke</Text>
+                  <Text style={s.docSub}>Stavki: {qtyToItems(standaloneQty).length}</Text>
 
                   {!!templateDocs?.length && (
                     <>
-                      <Text style={[s.docSub, { fontWeight: "900", marginTop: 10 }]}>Assign to document:</Text>
+                      <Text style={[s.docSub, { fontWeight: "900", marginTop: 10 }]}>Dodijeli dokumentu:</Text>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
                         {templateDocs.map((d: any) => {
                           const docId = Number(d.documentId);
                           const active = Number(standaloneDocId ?? 0) === docId;
                           return (
-                            <Pressable key={String(docId)} style={[s.docChip, active && s.docChipActive]} onPress={() => setStandaloneDocId(docId)}>
+                            <Pressable
+                              key={String(docId)}
+                              style={[s.docChip, active && s.docChipActive]}
+                              onPress={() => setStandaloneDocId(docId)}
+                            >
                               <Text style={[s.docChipText, active && s.docChipTextActive]}>#{docId}</Text>
                             </Pressable>
                           );
@@ -443,12 +489,11 @@ export default function SessionDetail() {
                 </View>
               </View>
 
-              {/* Per-document items */}
-              <Text style={s.label}>Documents</Text>
+              <Text style={s.label}>Dokumenti</Text>
               {!templateId ? (
-                <Text style={s.helper}>Pick a template first.</Text>
+                <Text style={s.helper}>Prvo odaberi predložak.</Text>
               ) : templateDocs.length === 0 ? (
-                <Text style={s.helper}>No documents on this template (or not available in list cache).</Text>
+                <Text style={s.helper}>Predložak nema dokumenata.</Text>
               ) : (
                 <View style={{ gap: 10 }}>
                   {templateDocs.map((d: any) => {
@@ -459,12 +504,22 @@ export default function SessionDetail() {
                     return (
                       <View key={String(docId)} style={s.docCard}>
                         <View style={{ flex: 1 }}>
-                          <Text style={s.docTitle}>Document #{docId}</Text>
-                          <Text style={s.docSub}>Added: {added}</Text>
+                          <Text style={s.docTitle}>Dokument #{docId}</Text>
+                          <Text style={s.docSub}>Dodano: {added}</Text>
                         </View>
 
-                        <Pressable style={s.smallBtn} onPress={() => openDocItems(docId)}>
-                          <Text style={s.smallBtnText}>Add items</Text>
+                        <Pressable
+                          style={s.smallBtn}
+                          onPress={() => {
+                            const p = patchByDocId.get(Number(docId));
+                            const m: QtyMap = {};
+                            (p?.addItems ?? []).forEach((it: any) => (m[String(it.itemId)] = Number(it.quantity ?? 0)));
+                            setQtyDraft(m);
+                            setItemTarget({ kind: "DOC", documentId: docId });
+                            setItemPickerOpen(true);
+                          }}
+                        >
+                          <Text style={s.smallBtnText}>Dodaj stavke</Text>
                         </Pressable>
                       </View>
                     );
@@ -472,64 +527,88 @@ export default function SessionDetail() {
                 </View>
               )}
 
-              <Pressable
-                style={[s.primary, (!templateId || upsertM.isPending) && { opacity: 0.5 }]}
-                disabled={!templateId || upsertM.isPending}
-                onPress={save}
-              >
-                <Text style={s.primaryText}>Save entry</Text>
+              <Pressable style={[s.primaryBtn, (!templateId || upsertM.isPending) && { opacity: 0.5 }]} disabled={!templateId || upsertM.isPending} onPress={save}>
+                {upsertM.isPending ? <ActivityIndicator /> : <Text style={s.primaryText}>Spremi</Text>}
+              </Pressable>
+
+              <Pressable style={[s.secondaryBtn, upsertM.isPending && { opacity: 0.5 }]} disabled={upsertM.isPending} onPress={() => setEditOpen(false)}>
+                <Text style={s.secondaryText}>Zatvori</Text>
               </Pressable>
             </View>
           )}
-        </Sheet>
+        </CenterSheet>
 
         {/* Template picker */}
-        <Sheet visible={templatePickerOpen} title="Choose template" onClose={() => setTemplatePickerOpen(false)}>
+        <CenterSheet visible={templatePickerOpen} title="Odaberi predložak" width={MAX_W} closeOnBackdrop={true} onClose={() => setTemplatePickerOpen(false)}>
           <View style={{ gap: 10 }}>
-            <SearchPickerSheet<TemplateResponseDTO>
-              visible={true as any}
-              title="Templates"
-              onClose={() => {}}
-              keyOf={(t) => String(t.id)}
-              fetchPage={async ({ page, size, q }) => {
-                const all = (tplListQ.data ?? []) as any as TemplateResponseDTO[];
-                const needle = (q ?? "").trim().toLowerCase();
-                const filtered = !needle
-                  ? all
-                  : all.filter((t) => (t.name ?? "").toLowerCase().includes(needle) || String(t.id).includes(needle));
-
-                const start = page * size;
-                const items = filtered.slice(start, start + size);
-                return { items, page, size, total: filtered.length };
-              }}
-              renderRow={(t) => (
-                <Pressable
-                  style={s.pickRow}
-                  onPress={() => {
-                    setTemplateId(Number(t.id));
-                    setDocPatches([]);
-                    setStandaloneDocId(null);
-                    setTemplatePickerOpen(false);
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.pickTitle}>{t.name}</Text>
-                    <Text style={s.pickSub}>#{t.id} • docs: {t.documents?.length ?? 0}</Text>
-                  </View>
+            <View style={s.searchWrap}>
+              <FontAwesome name="search" size={14} color={Colors.sub} />
+              <TextInput
+                value={templateQ}
+                onChangeText={setTemplateQ}
+                placeholder="Pretraži predloške…"
+                placeholderTextColor={Colors.sub}
+                style={s.search}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+              {!!templateQ && (
+                <Pressable onPress={() => setTemplateQ("")} hitSlop={8}>
+                  <FontAwesome name="times-circle" size={16} color={Colors.sub} />
                 </Pressable>
               )}
-            />
+            </View>
+
+            {tplListQ.isLoading ? (
+              <View style={s.center}>
+                <ActivityIndicator />
+                <Text style={s.helper}>Učitavam predloške…</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={(tplListQ.data ?? []) as any as TemplateResponseDTO[]}
+                keyExtractor={(t) => String(t.id)}
+                contentContainerStyle={{ gap: 10, paddingBottom: 16 }}
+                renderItem={({ item: t }) => {
+                  const needle = templateQDeb.toLowerCase();
+                  const ok = !needle || (t.name ?? "").toLowerCase().includes(needle) || String(t.id).includes(needle);
+                  if (!ok) return null;
+
+                  return (
+                    <Pressable
+                      style={s.pickRow}
+                      onPress={() => {
+                        setTemplateId(Number(t.id));
+                        setDocPatches([]);
+                        setStandaloneDocId(null);
+                        setTemplatePickerOpen(false);
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.pickTitle}>{t.name}</Text>
+                        <Text style={s.pickSub}>#{t.id} • dokumenata: {t.documents?.length ?? 0}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                }}
+                ListEmptyComponent={<Text style={s.helper}>Nema predložaka.</Text>}
+              />
+            )}
+
+            <Pressable style={s.secondaryBtn} onPress={() => setTemplatePickerOpen(false)}>
+              <Text style={s.secondaryText}>Zatvori</Text>
+            </Pressable>
           </View>
-        </Sheet>
+        </CenterSheet>
 
         {/* Items picker */}
-        <Sheet visible={itemPickerOpen} title="Pick items" onClose={() => setItemPickerOpen(false)}>
+        <CenterSheet visible={itemPickerOpen} title="Odaberi stavke" width={MAX_W} closeOnBackdrop={false} onClose={() => setItemPickerOpen(false)}>
           <View style={{ gap: 12 }}>
-            <Text style={s.helper}>Tap to +1 • Long press to -1</Text>
+            <Text style={s.helper}>Tap = +1 • Long press = -1</Text>
 
             <SearchPickerSheet<ItemDescriptorResponseDTO>
               visible={true as any}
-              title="Items"
+              title="Stavke"
               onClose={() => {}}
               keyOf={(it) => String(it.itemId)}
               fetchPage={async ({ page, size, q }) => {
@@ -565,11 +644,40 @@ export default function SessionDetail() {
               }}
             />
 
-            <Pressable style={s.primary} onPress={applyItems}>
-              <Text style={s.primaryText}>Apply</Text>
+            <Pressable
+              style={s.primaryBtn}
+              onPress={() => {
+                if (!itemTarget) return;
+
+                const items = qtyToItems(qtyDraft);
+
+                if (itemTarget.kind === "DOC") {
+                  const docId = Number(itemTarget.documentId);
+                  const next = [...docPatches];
+                  const idx = next.findIndex((p) => Number(p.documentId) === docId);
+
+                  if (items.length === 0) {
+                    if (idx >= 0) next.splice(idx, 1);
+                  } else {
+                    if (idx === -1) next.push(mkPatch(docId, items));
+                    else next[idx] = { ...next[idx], addItems: items as any };
+                  }
+                  setDocPatches(next);
+                } else {
+                  setStandaloneQty(qtyDraft);
+                }
+
+                setItemPickerOpen(false);
+              }}
+            >
+              <Text style={s.primaryText}>Primijeni</Text>
+            </Pressable>
+
+            <Pressable style={s.secondaryBtn} onPress={() => setItemPickerOpen(false)}>
+              <Text style={s.secondaryText}>Zatvori</Text>
             </Pressable>
           </View>
-        </Sheet>
+        </CenterSheet>
       </View>
     </Screen>
   );
@@ -577,11 +685,26 @@ export default function SessionDetail() {
 
 const s = StyleSheet.create({
   container: { padding: 14, gap: 12 },
+
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  headerTitle: { fontWeight: "900", color: Colors.text, fontSize: 20, flex: 1, textAlign: "center" },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.bg,
+  },
+
+  center: { padding: 20, alignItems: "center", justifyContent: "center", gap: 10 },
   helper: { color: Colors.sub, fontWeight: "800", textAlign: "center", marginTop: 10 },
 
-  headerCard: {
+  heroCard: {
     backgroundColor: Colors.bg,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
     padding: 14,
@@ -593,8 +716,37 @@ const s = StyleSheet.create({
   title: { fontWeight: "900", color: Colors.text },
   sub: { color: Colors.sub, fontWeight: "800" },
 
-  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
+  metaLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8 },
+
+  // buttons
+  addBtnWide: { flex: 1, height: 38, borderRadius: 999, backgroundColor: Colors.orange, alignItems: "center", justifyContent: "center" },
+  addBtnText: { color: "#fff", fontWeight: "900" },
+
+  finalizeBtn: {
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "rgba(34,197,94,0.18)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  finalizeText: { fontWeight: "900", color: Colors.text },
+
+  primaryBtn: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center", justifyContent: "center" },
   primaryText: { color: "#fff", fontWeight: "900" },
+
+  secondaryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+    alignItems: "center",
+  },
+  secondaryText: { fontWeight: "900", color: Colors.text },
 
   badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
   badgeText: { fontWeight: "900", color: Colors.text },
@@ -607,6 +759,7 @@ const s = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
+  cardTop: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
 
   rowBtns: { flexDirection: "row", gap: 10 },
 
@@ -621,17 +774,6 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   smallBtnText: { fontWeight: "900", color: Colors.text },
-
-  secondaryBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    alignItems: "center",
-  },
-  secondaryText: { fontWeight: "900", color: Colors.text },
 
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 
@@ -674,7 +816,19 @@ const s = StyleSheet.create({
   pickTitle: { fontWeight: "900", color: Colors.text },
   pickSub: { color: Colors.sub, fontWeight: "800" },
 
-  // items
+  searchWrap: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.14)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  search: { flex: 1, fontWeight: "800", color: Colors.text },
+
   itemRow: {
     padding: 12,
     borderRadius: 16,
