@@ -73,6 +73,28 @@ public class DispatchBookingSessionService {
         this.om = om;
     }
 
+    @Transactional
+    public ServiceResponseDTO<Void> deleteSession(Long sessionId) {
+        try {
+            Long userId = authUtil.requireUserId();
+
+            DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
+            if (s == null) return ServiceResponseDirector.errorNotFound("Session not found.");
+
+            if (s.getStatus() != BookingSessionStatus.DRAFT) {
+                return ServiceResponseDirector.errorBadRequest("Session cannot be deleted.");
+            }
+
+            entryRepo.delete("bookingSession.id = ?1", sessionId);
+
+            s.delete();
+
+            return ServiceResponseDirector.successOk(null, "Session deleted.");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to delete session: " + e.getMessage());
+        }
+    }
+
     public ServiceResponseDTO<List<BookingSessionResponseDTO>> listSessions(String statusRaw) {
         try {
             Long userId = authUtil.requireUserId();

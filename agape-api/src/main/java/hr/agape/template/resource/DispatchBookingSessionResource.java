@@ -74,4 +74,10 @@ public class DispatchBookingSessionResource {
     public Response cancel(@PathParam("id") Long sessionId) {
         return Responses.from(service.cancelSession(sessionId));
     }
+
+    @DELETE
+    @Path("/{id}")
+    public Response delete(@PathParam("id") Long id) {
+        return Responses.from(service.deleteSession(id));
+    }
 }

@@ -64,6 +64,6 @@ public class DispatchBookingSessionEntryEntity extends PanacheEntityBase {
     @Column(name = "extra_items", nullable = false, columnDefinition = "jsonb")
     private String extraItemsJson;
 
-    @Column(name = "note")
+    @Column(name = "note", columnDefinition = "text")
     private String note;
 }
