@@ -203,8 +203,8 @@ CREATE TABLE dispatch_booking_session_entry
     draft_mode    VARCHAR(10) NOT NULL,          -- EnumType.STRING
     document_date DATE,
 
-    doc_patches   TEXT NOT NULL,                  -- columnDefinition="text", nullable=false
-    extra_items   TEXT NOT NULL,                  -- columnDefinition="text", nullable=false
+    doc_patches   JSONB NOT NULL,
+    extra_items   JSONB NOT NULL,
     note          TEXT,
 
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
