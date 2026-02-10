@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-08 14:53:49.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-10 18:11:38.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -545,7 +545,7 @@ export interface DispatchItemPatch {
     quantity: number;
 }
 
-export type DispatchBookingStatus = "ALL" | "DRAFT" | "FINAL";
+export type DispatchBookingStatus = "ALL" | "DRAFT" | "FINAL" | "CANCELLED";
 
 export type DraftMode = "DRAFT" | "FINAL";
 

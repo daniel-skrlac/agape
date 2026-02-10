@@ -1,14 +1,25 @@
+// app/(tabs)/sessions/[id].tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
+import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
-import { Segmented } from "@/components/Segmented";
-import { CenterSheet } from "@/components/CenterSheet";
+import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
 
 import type {
   BookingSessionEntryResponseDTO,
@@ -24,6 +35,7 @@ import type {
 
 import { partnerService } from "@/app/api/services/partnerService";
 import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
+import { dispatchTemplateService } from "@/app/api/services/dispatchTemplateService";
 
 import {
   useBookingSession,
@@ -32,11 +44,42 @@ import {
   useUpsertBookingSessionEntry,
 } from "@/app/api/hooks/useBookingSessions";
 
-import { useTemplateList } from "@/app/api/hooks/useDispatchTemplates";
-
 const MAX_W = 560;
+const ITEMS_PAGE_SIZE = 12;
 
 type QtyMap = Record<string, number>;
+
+function cleanText(v: any) {
+  const s = String(v ?? "").trim();
+  if (
+    s.length >= 2 &&
+    ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))
+  )
+    return s.slice(1, -1);
+  return s;
+}
+function cleanDescription(v: any): string | null {
+  if (v == null) return null;
+  if (Array.isArray(v) && v.length === 0) return null;
+  const s = cleanText(v).trim();
+  if (!s) return null;
+  if (s.replace(/\s/g, "") === "[]") return null;
+  return s;
+}
+
+function badgeStyle(status: any) {
+  if (status === "FINALIZED")
+    return { backgroundColor: "rgba(34,197,94,0.18)", borderColor: "rgba(34,197,94,0.35)" };
+  if (status === "CANCELLED")
+    return { backgroundColor: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.35)" };
+  return { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.35)" };
+}
+function statusHr(status: any) {
+  if (status === "DRAFT") return "DRAFT";
+  if (status === "FINALIZED") return "FINAL";
+  if (status === "CANCELLED") return "STORNO";
+  return String(status ?? "");
+}
 
 function upsertQty(qty: QtyMap, itemId: number, delta: number) {
   const k = String(itemId);
@@ -48,13 +91,11 @@ function upsertQty(qty: QtyMap, itemId: number, delta: number) {
   }
   return { ...qty, [k]: next };
 }
-
 function qtyToItems(qty: QtyMap): TemplateBookItemDTO[] {
   return Object.entries(qty)
     .map(([k, v]) => ({ itemId: Number(k), quantity: Number(v) }))
     .filter((x) => x.itemId && x.quantity > 0);
 }
-
 function mkPatch(docId: number, addItems: TemplateBookItemDTO[]): TemplateBookDocPatchDTO {
   return {
     documentId: docId,
@@ -66,32 +107,48 @@ function mkPatch(docId: number, addItems: TemplateBookItemDTO[]): TemplateBookDo
   } as any;
 }
 
-function badgeStyle(status: any) {
-  if (status === "FINALIZED") return { backgroundColor: "rgba(34,197,94,0.18)", borderColor: "rgba(34,197,94,0.35)" };
-  if (status === "CANCELLED") return { backgroundColor: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.35)" };
-  return { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.35)" };
-}
+// ✅ Center modal bez animacije, s ispravnim layeringom (da ne blokira touch nakon close)
+function CenterModal(props: {
+  visible: boolean;
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  disableClose?: boolean;
+}) {
+  const { visible, title, onClose, children, disableClose } = props;
 
-function statusHr(status: any) {
-  if (status === "DRAFT") return "DRAFT";
-  if (status === "FINALIZED") return "FINAL";
-  if (status === "CANCELLED") return "STORNO";
-  return String(status ?? "");
-}
-
-function Header({ title }: { title: string }) {
   return (
-    <View style={s.header}>
-      <Pressable style={s.iconBtn} onPress={() => router.back()} hitSlop={10}>
-        <FontAwesome name="chevron-left" size={18} color={Colors.text} />
-      </Pressable>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="none"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      onRequestClose={disableClose ? undefined : onClose}
+    >
+      <View style={st.modalWrap}>
+        <Pressable style={st.backdrop} onPress={disableClose ? undefined : onClose} />
 
-      <Text style={s.headerTitle} numberOfLines={1}>
-        {title}
-      </Text>
+        <View style={st.modalCard} pointerEvents="auto">
+          <View style={st.modalHeader}>
+            <Text style={st.modalTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            <Pressable
+              style={[st.iconBtn, disableClose && { opacity: 0.5 }]}
+              onPress={disableClose ? undefined : onClose}
+              disabled={disableClose}
+            >
+              <FontAwesome name="close" size={18} color={Colors.text} />
+            </Pressable>
+          </View>
 
-      <View style={{ width: 38 }} />
-    </View>
+          <ScrollView contentContainerStyle={st.modalBody} keyboardShouldPersistTaps="handled">
+            {children}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -113,104 +170,231 @@ export default function SessionDetail() {
     (finalizeM.error as any)?.message ||
     null;
 
-  // partner picker
+  const headerTitle = cleanText((session as any)?.title) || "";
+
+  // partner cache
+  const [partnerById, setPartnerById] = useState<Record<string, PartnerResponseDTO>>({});
+  const partnerLabel = (partnerId: number | null | undefined) => {
+    const p = partnerId ? partnerById[String(partnerId)] : null;
+    if (p?.name) return `${p.name} (#${(p as any).id})`;
+    return partnerId ? `Partner #${partnerId}` : "Partner";
+  };
+
+  // pickers + modals
   const [partnerPickerOpen, setPartnerPickerOpen] = useState(false);
 
-  // editor (CenterSheet)
   const [editOpen, setEditOpen] = useState(false);
   const [entry, setEntry] = useState<BookingSessionEntryResponseDTO | null>(null);
 
   const [draftMode, setDraftMode] = useState<DraftMode>("DRAFT");
-  const [templateId, setTemplateId] = useState<number | null>(null);
 
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateResponseDTO | null>(null);
+
+  // doc patches + standalone
   const [docPatches, setDocPatches] = useState<TemplateBookDocPatchDTO[]>([]);
   const [standaloneDocId, setStandaloneDocId] = useState<number | null>(null);
   const [standaloneQty, setStandaloneQty] = useState<QtyMap>({});
 
-  // template picker (CenterSheet)
-  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [templateQ, setTemplateQ] = useState("");
-  const tplListQ = useTemplateList({ folderId: null, q: templateQ, includeShared: true, rootOnly: true });
+  // items modal
+  const [itemsOpen, setItemsOpen] = useState(false);
+  const [itemTarget, setItemTarget] = useState<
+    { kind: "DOC"; documentId: number } | { kind: "STANDALONE" } | null
+  >(null);
 
-  // items picker (CenterSheet)
-  const [itemPickerOpen, setItemPickerOpen] = useState(false);
-  const [itemTarget, setItemTarget] = useState<{ kind: "DOC"; documentId: number } | { kind: "STANDALONE" } | null>(null);
   const [qtyDraft, setQtyDraft] = useState<QtyMap>({});
+  const [itemsTab, setItemsTab] = useState<"results" | "added">("results");
+  const [searchQ, setSearchQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [itemsPage, setItemsPage] = useState(0);
+
+  useEffect(() => {
+    const tt = setTimeout(() => setDebouncedQ(searchQ.trim()), 220);
+    return () => clearTimeout(tt);
+  }, [searchQ]);
+
+  useEffect(() => {
+    setItemsPage(0);
+  }, [debouncedQ]);
+
+  // delete entry confirm
+  const [deleteEntryOpen, setDeleteEntryOpen] = useState(false);
+  const [deletePartnerId, setDeletePartnerId] = useState<number | null>(null);
+  const [deleteLabel, setDeleteLabel] = useState<string>("");
 
   const patchByDocId = useMemo(() => {
     const m = new Map<number, TemplateBookDocPatchDTO>();
-    (docPatches ?? []).forEach((p) => m.set(Number(p.documentId), p));
+    (docPatches ?? []).forEach((p) => m.set(Number((p as any).documentId), p));
     return m;
   }, [docPatches]);
 
-  // debounce search
-  const [templateQDeb, setTemplateQDeb] = useState("");
+  const templateDocs = useMemo(
+    () => ((selectedTemplate as any)?.documents ?? []) as any[],
+    [selectedTemplate]
+  );
+
+  // prefetch partner names (za listu)
   useEffect(() => {
-    const t = setTimeout(() => setTemplateQDeb(templateQ.trim()), 200);
-    return () => clearTimeout(t);
-  }, [templateQ]);
+    const ids = (session?.entries ?? [])
+      .map((e: any) => Number(e.partnerId))
+      .filter(Boolean);
 
-  const selectedTemplate: TemplateResponseDTO | null = useMemo(() => {
-    const list = (tplListQ.data ?? []) as any as TemplateResponseDTO[];
-    const id = templateId ?? Number(entry?.templateId ?? 0);
-    if (!id) return null;
-    return list.find((t) => Number(t.id) === Number(id)) ?? null;
-  }, [tplListQ.data, templateId, entry?.templateId]);
+    const missing = ids.filter((id) => !partnerById[String(id)]);
+    if (!missing.length) return;
 
-  const templateDocs = (selectedTemplate?.documents ?? []) as any[];
+    let cancelled = false;
+    (async () => {
+      for (const id of missing.slice(0, 25)) {
+        try {
+          const res = await partnerService.pagePartners({ page: 0, size: 10, q: String(id) });
+          const hit = (res.items ?? []).find((p: any) => Number(p.id) === Number(id)) ?? null;
+          if (!hit) continue;
+          if (cancelled) return;
+          setPartnerById((cur) => ({ ...cur, [String((hit as any).id)]: hit }));
+        } catch {}
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.id, (session?.entries ?? []).length]);
+
+  const resetEditorState = () => {
+    setSelectedTemplate(null);
+    setDocPatches([]);
+    setStandaloneDocId(null);
+    setStandaloneQty({});
+  };
 
   const startCreateForPartner = (p: PartnerResponseDTO) => {
-    if (!session || session.status !== "DRAFT") return;
+    if (!session || (session as any).status !== "DRAFT") return;
+
+    setPartnerById((cur) => ({ ...cur, [String((p as any).id)]: p }));
 
     const e: BookingSessionEntryResponseDTO = {
       id: 0 as any,
-      partnerId: p.id,
+      partnerId: (p as any).id,
       templateId: 0 as any,
       draftMode: "DRAFT",
       documentDate: null as any,
       docPatches: [] as any,
-      extraDocuments: [] as any,
+      extraItems: [] as any,
       note: null as any,
     } as any;
 
     setEntry(e);
     setDraftMode("DRAFT");
-    setTemplateId(null);
-    setDocPatches([]);
-    setStandaloneDocId(null);
-    setStandaloneQty({});
-    setEditOpen(true);
+    resetEditorState();
+
+    // ✅ bitno: open editor u idućem ticku ako dolazi iz modala
+    setTimeout(() => setEditOpen(true), 0);
   };
 
-  const startEdit = (e: BookingSessionEntryResponseDTO) => {
-    if (!session || session.status !== "DRAFT") return;
+  const startEdit = async (e: BookingSessionEntryResponseDTO) => {
+    if (!session || (session as any).status !== "DRAFT") return;
 
     setEntry(e);
-    setDraftMode(e.draftMode ?? "DRAFT");
-    setTemplateId(Number(e.templateId) || null);
+    setDraftMode(((e as any).draftMode ?? "DRAFT") as any);
 
-    const patches = (e.docPatches ?? []) as any;
-    setDocPatches(Array.isArray(patches) ? (patches as any) : []);
-
+    const patches = ((e as any).docPatches ?? []) as any;
+    setDocPatches(Array.isArray(patches) ? patches : []);
     setStandaloneDocId(null);
     setStandaloneQty({});
-    setEditOpen(true);
+
+    const tplId = Number((e as any).templateId || 0);
+    if (tplId) {
+      try {
+        const tpl = await dispatchTemplateService.getTemplate(tplId);
+        setSelectedTemplate(tpl as any);
+      } catch {
+        setSelectedTemplate(null);
+      }
+    } else {
+      setSelectedTemplate(null);
+    }
+
+    setTimeout(() => setEditOpen(true), 0);
   };
 
   const openDocItems = (documentId: number) => {
     const p = patchByDocId.get(Number(documentId));
     const m: QtyMap = {};
-    (p?.addItems ?? []).forEach((it: any) => (m[String(it.itemId)] = Number(it.quantity ?? 0)));
+    ((p as any)?.addItems ?? []).forEach(
+      (it: any) => (m[String(it.itemId)] = Number(it.quantity ?? 0))
+    );
+
     setQtyDraft(m);
     setItemTarget({ kind: "DOC", documentId });
-    setItemPickerOpen(true);
+
+    setItemsTab("results");
+    setSearchQ("");
+    setDebouncedQ("");
+    setItemsPage(0);
+
+    // ✅ open u idućem ticku (sprječava ghost overlay kad klikneš iz edit modala)
+    setTimeout(() => setItemsOpen(true), 0);
   };
 
   const openStandaloneItems = () => {
     setQtyDraft({ ...standaloneQty });
     setItemTarget({ kind: "STANDALONE" });
-    setItemPickerOpen(true);
+
+    setItemsTab("results");
+    setSearchQ("");
+    setDebouncedQ("");
+    setItemsPage(0);
+
+    setTimeout(() => setItemsOpen(true), 0);
   };
+
+  // items paging fetch
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsRows, setItemsRows] = useState<ItemDescriptorResponseDTO[]>([]);
+  const [itemsTotal, setItemsTotal] = useState(0);
+
+  useEffect(() => {
+    if (!itemsOpen) return;
+    let alive = true;
+
+    (async () => {
+      setItemsLoading(true);
+      try {
+        if (!session?.warehouseId) {
+          if (!alive) return;
+          setItemsRows([]);
+          setItemsTotal(0);
+          return;
+        }
+
+        const res = await itemDirectoryService.pageItems({
+          warehouseId: Number((session as any).warehouseId),
+          page: itemsPage,
+          size: ITEMS_PAGE_SIZE,
+          q: debouncedQ || "",
+        });
+
+        if (!alive) return;
+        setItemsRows((res.items ?? []) as any);
+        setItemsTotal(Number((res as any).total ?? 0));
+      } catch {
+        if (!alive) return;
+        setItemsRows([]);
+        setItemsTotal(0);
+      } finally {
+        if (!alive) return;
+        setItemsLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [itemsOpen, session?.warehouseId, itemsPage, debouncedQ]);
+
+  const itemsTotalPages = Math.max(1, Math.ceil((itemsTotal || 0) / ITEMS_PAGE_SIZE));
+  const canPrev = itemsPage > 0;
+  const canNext = itemsPage + 1 < itemsTotalPages;
 
   const applyItems = () => {
     if (!itemTarget) return;
@@ -219,7 +403,7 @@ export default function SessionDetail() {
     if (itemTarget.kind === "DOC") {
       const docId = Number(itemTarget.documentId);
       const next = [...docPatches];
-      const idx = next.findIndex((p) => Number(p.documentId) === docId);
+      const idx = next.findIndex((p) => Number((p as any).documentId) === docId);
 
       if (items.length === 0) {
         if (idx >= 0) next.splice(idx, 1);
@@ -232,23 +416,30 @@ export default function SessionDetail() {
       setStandaloneQty(qtyDraft);
     }
 
-    setItemPickerOpen(false);
+    setItemsOpen(false);
   };
 
   const buildDocPatchesWithStandalone = () => {
     const standaloneItems = qtyToItems(standaloneQty);
     if (standaloneItems.length === 0) return docPatches;
 
-    const docId = standaloneDocId ?? Number(templateDocs?.[0]?.documentId ?? 0);
+    const docId =
+      standaloneDocId ??
+      Number(
+        (templateDocs?.[0] as any)?.documentId ??
+          (templateDocs?.[0] as any)?.document_id ??
+          0
+      );
+
     if (!docId) return docPatches;
 
     const next = [...docPatches];
-    const idx = next.findIndex((p) => Number(p.documentId) === docId);
-
+    const idx = next.findIndex((p) => Number((p as any).documentId) === docId);
     if (idx === -1) return [...next, mkPatch(docId, standaloneItems)];
 
-    const cur = next[idx]?.addItems ?? [];
+    const cur = ((next[idx] as any)?.addItems ?? []) as any[];
     const by = new Map<number, number>();
+
     [...cur, ...standaloneItems].forEach((x: any) => {
       const id = Number(x.itemId);
       const q = Number(x.quantity ?? 0);
@@ -257,499 +448,601 @@ export default function SessionDetail() {
     });
 
     next[idx] = {
-      ...next[idx],
+      ...(next[idx] as any),
       addItems: Array.from(by.entries()).map(([itemId, quantity]) => ({ itemId, quantity })) as any,
-    };
+    } as any;
 
     return next;
   };
 
   const save = async () => {
-    if (!session || session.status !== "DRAFT") return;
+    if (!session || (session as any).status !== "DRAFT") return;
     if (!entry) return;
-    if (!templateId || templateId <= 0) return;
+
+    const tplId = Number((selectedTemplate as any)?.id ?? 0);
+    if (!tplId) return;
 
     const payload: BookingSessionEntryUpsertRequestDTO = {
-      partnerId: Number(entry.partnerId),
-      templateId: Number(templateId),
+      partnerId: Number((entry as any).partnerId),
+      templateId: tplId,
       draftMode: draftMode as any,
-      documentDate: entry.documentDate ?? null,
+      documentDate: (entry as any).documentDate ?? null,
       docPatches: buildDocPatchesWithStandalone() as any,
-      extraDocuments: [] as any,
-      note: entry.note ?? null,
+      extraItems: [] as any,
+      note: (entry as any).note ?? null,
     } as any;
 
     await upsertM.mutateAsync(payload);
     setEditOpen(false);
     setEntry(null);
-    sQ.refetch();
+    await sQ.refetch();
   };
 
-  const deleteEntry = async (entryId: number) => {
-    await delEntryM.mutateAsync(entryId);
-    sQ.refetch();
+  const askDeleteEntry = (e: BookingSessionEntryResponseDTO) => {
+    const pid = Number((e as any).partnerId);
+    setDeletePartnerId(pid);
+    setDeleteLabel(partnerLabel(pid));
+    setDeleteEntryOpen(true);
+  };
+
+  const deleteEntry = async () => {
+    if (!deletePartnerId) return;
+    await delEntryM.mutateAsync(Number(deletePartnerId));
+    setDeleteEntryOpen(false);
+    setDeletePartnerId(null);
+    await sQ.refetch();
   };
 
   const finalize = async () => {
     await finalizeM.mutateAsync();
-    sQ.refetch();
+    await sQ.refetch();
   };
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <View style={s.container}>
-        <Header title="Evidencija" />
+      <TemplatesHeader title={headerTitle} fallbackHref="/(tabs)/sessions" />
 
+      <View style={st.container}>
         {!!err && <Banner type="error" text={String(err)} />}
 
         {!session ? (
-          <View style={s.center}>
+          <View style={st.center}>
             {sQ.isLoading ? <ActivityIndicator /> : null}
-            <Text style={s.helper}>{sQ.isLoading ? "Učitavam…" : "Evidencija nije pronađena."}</Text>
+            <Text style={st.helper}>{sQ.isLoading ? "Učitavam…" : "Nije pronađeno."}</Text>
           </View>
         ) : (
           <>
-            <View style={s.heroCard}>
-              <Text style={s.h1}>{session.title}</Text>
-              {!!session.note && <Text style={s.sub}>{session.note}</Text>}
+            <View style={st.heroCard}>
+              {!!cleanDescription((session as any).note) && (
+                <Text style={st.sub}>{cleanDescription((session as any).note)}</Text>
+              )}
 
-              <View style={s.metaLine}>
-                <View style={[s.badge, badgeStyle(session.status)]}>
-                  <Text style={s.badgeText}>{statusHr(session.status)}</Text>
+              <View style={st.metaLine}>
+                <View style={[st.badge, badgeStyle((session as any).status)]}>
+                  <Text style={st.badgeText}>{statusHr((session as any).status)}</Text>
                 </View>
 
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                   <FontAwesome name="home" size={14} color={Colors.sub} />
-                  <Text style={s.sub}>Skladište #{session.warehouseId}</Text>
+                  <Text style={st.sub}>Skladište #{(session as any).warehouseId}</Text>
                 </View>
               </View>
 
-              {session.status === "DRAFT" ? (
+              {(session as any).status === "DRAFT" ? (
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-                  <Pressable style={s.addBtnWide} onPress={() => setPartnerPickerOpen(true)}>
-                    <Text style={s.addBtnText}>+ Dodaj partnera</Text>
+                  <Pressable style={st.primaryPill} onPress={() => setPartnerPickerOpen(true)}>
+                    <Text style={st.primaryPillText}>+ Dodaj partnera</Text>
                   </Pressable>
 
                   <Pressable
-                    style={[s.finalizeBtn, finalizeM.isPending && { opacity: 0.6 }]}
+                    style={[st.ghostPill, finalizeM.isPending && { opacity: 0.7 }]}
                     onPress={finalize}
                     disabled={finalizeM.isPending}
                   >
-                    {finalizeM.isPending ? <ActivityIndicator /> : <Text style={s.finalizeText}>Finaliziraj</Text>}
+                    <Text style={st.ghostPillText}>{finalizeM.isPending ? "…" : "Finaliziraj"}</Text>
                   </Pressable>
                 </View>
-              ) : (
-                !!(session as any).finalResult && (
-                  <View style={{ marginTop: 12 }}>
-                    <Text style={s.label}>Rezultat</Text>
-                    <Text style={s.sub}>
-                      Ukupno: {(session as any).finalResult?.total ?? "?"} • Uspjelo: {(session as any).finalResult?.succeeded ?? "?"} • Neuspjelo:{" "}
-                      {(session as any).finalResult?.failed ?? "?"}
-                    </Text>
-                  </View>
-                )
-              )}
+              ) : null}
             </View>
 
-            <Text style={s.label}>Stavke evidencije</Text>
-
             <FlatList
-              data={(session.entries ?? []) as BookingSessionEntryResponseDTO[]}
-              keyExtractor={(x) => String(x.id)}
+              data={((session as any).entries ?? []) as BookingSessionEntryResponseDTO[]}
+              keyExtractor={(x) => String((x as any).id)}
               contentContainerStyle={{ gap: 10, paddingBottom: 28 }}
-              ListEmptyComponent={<Text style={s.helper}>Nema unosa.</Text>}
-              renderItem={({ item }) => (
-                <View style={s.card}>
-                  <View style={s.cardTop}>
-                    <Text style={s.title}>Partner #{item.partnerId}</Text>
+              ListEmptyComponent={<Text style={st.helper}>Nema unosa.</Text>}
+              renderItem={({ item }) => {
+                const pid = Number((item as any).partnerId);
+                const tplId = Number((item as any).templateId || 0);
+                const dm = (item as any).draftMode;
 
-                    <View style={[s.badge, badgeStyle(item.draftMode === "FINAL" ? "FINALIZED" : "DRAFT")]}>
-                      <Text style={s.badgeText}>{item.draftMode === "FINAL" ? "FINAL" : "DRAFT"}</Text>
+                return (
+                  <View style={st.card}>
+                    <View style={st.cardTop}>
+                      <Text style={st.title} numberOfLines={1}>
+                        {partnerLabel(pid)}
+                      </Text>
+
+                      <View style={[st.badge, badgeStyle(dm === "FINAL" ? "FINALIZED" : "DRAFT")]}>
+                        <Text style={st.badgeText}>{dm === "FINAL" ? "FINAL" : "DRAFT"}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={st.sub}>Predložak: {tplId ? `#${tplId}` : "—"}</Text>
+
+                    <View style={st.rowBtns}>
+                      <Pressable
+                        style={[
+                          st.primaryPill,
+                          (session as any).status !== "DRAFT" && { opacity: 0.5 },
+                        ]}
+                        disabled={(session as any).status !== "DRAFT"}
+                        onPress={() => startEdit(item)}
+                      >
+                        <Text style={st.primaryPillText}>Otvori</Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={[
+                          st.dangerPill,
+                          (session as any).status !== "DRAFT" && { opacity: 0.5 },
+                        ]}
+                        disabled={(session as any).status !== "DRAFT" || delEntryM.isPending}
+                        onPress={() => askDeleteEntry(item)}
+                      >
+                        <Text style={st.dangerPillText}>{delEntryM.isPending ? "…" : "Obriši"}</Text>
+                      </Pressable>
                     </View>
                   </View>
-
-                  <Text style={s.sub}>Predložak #{item.templateId || "—"}</Text>
-
-                  <View style={s.rowBtns}>
-                    <Pressable
-                      style={[s.smallBtn, session.status !== "DRAFT" && { opacity: 0.5 }]}
-                      disabled={session.status !== "DRAFT"}
-                      onPress={() => startEdit(item)}
-                    >
-                      <Text style={s.smallBtnText}>Uredi</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[s.smallBtn, { backgroundColor: Colors.dangerBg }, session.status !== "DRAFT" && { opacity: 0.5 }]}
-                      disabled={session.status !== "DRAFT" || delEntryM.isPending}
-                      onPress={() => deleteEntry(Number(item.id))}
-                    >
-                      <Text style={[s.smallBtnText, { color: Colors.dangerText }]}>{delEntryM.isPending ? "…" : "Obriši"}</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              )}
+                );
+              }}
             />
           </>
         )}
 
-        {/* Partner picker */}
+        {/* Partner picker (TVOJ SearchPickerSheet) */}
         <SearchPickerSheet<PartnerResponseDTO>
           visible={partnerPickerOpen}
           title="Odaberi partnera"
           onClose={() => setPartnerPickerOpen(false)}
-          keyOf={(p) => String(p.id)}
+          keyOf={(p) => String((p as any).id)}
           fetchPage={async ({ page, size, q }) => {
             const res = await partnerService.pagePartners({ page, size, q: q ?? "" });
             return { items: res.items, page: res.page, size: res.size, total: res.total };
           }}
-          renderRow={(p) => (
+          renderRow={(p, close) => (
             <Pressable
-              style={s.pickRow}
+              style={st.pickRow}
               onPress={() => {
+                // ✅ ključni fix: zatvori modal, pa tek onda otvori editor u idućem ticku
+                close();
                 setPartnerPickerOpen(false);
-                startCreateForPartner(p);
+                setTimeout(() => startCreateForPartner(p), 0);
               }}
             >
               <View style={{ flex: 1 }}>
-                <Text style={s.pickTitle}>{p.name}</Text>
-                <Text style={s.pickSub}>
-                  #{p.partnerNumber} • {p.city}
+                <Text style={st.pickTitle}>{(p as any).name}</Text>
+                <Text style={st.pickSub}>
+                  #{(p as any).partnerNumber} • {(p as any).city}
                 </Text>
               </View>
             </Pressable>
           )}
+          searchPlaceholder="Pretraži partnere…"
+          closeOnBackdropPress={false}
         />
 
-        {/* Editor */}
-        <CenterSheet
+        {/* Editor modal */}
+        <CenterModal
           visible={editOpen}
-          title={entry ? `Unos: Partner #${entry.partnerId}` : "Unos"}
-          width={MAX_W}
-          closeOnBackdrop={false}
+          title={entry ? `Unos • ${partnerLabel(Number((entry as any).partnerId))}` : "Unos"}
           disableClose={upsertM.isPending}
           onClose={() => {
             if (upsertM.isPending) return;
             setEditOpen(false);
+            setEntry(null);
           }}
         >
           {!entry ? null : (
-            <View style={{ gap: 12 }}>
-              <Text style={s.label}>Način</Text>
-              <Segmented<DraftMode>
-                value={draftMode}
-                options={[
-                  { value: "DRAFT", label: "Draft" },
-                  { value: "FINAL", label: "Final" },
-                ]}
-                onChange={setDraftMode}
-              />
+            <View style={{ width: "100%", maxWidth: MAX_W, alignSelf: "center", gap: 12 }}>
+              <Text style={st.label}>Način</Text>
 
-              <Text style={s.label}>Predložak</Text>
-              <Pressable style={s.secondaryBtn} onPress={() => setTemplatePickerOpen(true)}>
-                <Text style={s.secondaryText}>{templateId ? `Predložak #${templateId}` : "Odaberi predložak"}</Text>
-              </Pressable>
+              <View style={st.segmentRow}>
+                <Pressable
+                  style={[st.segBtn, draftMode === "DRAFT" && st.segBtnOn]}
+                  onPress={() => setDraftMode("DRAFT")}
+                >
+                  <Text style={[st.segText, draftMode === "DRAFT" && st.segTextOn]}>Draft</Text>
+                </Pressable>
 
-              <View style={s.sectionHeader}>
-                <Text style={s.label}>Dodatne stavke</Text>
-                <Pressable style={s.secondaryBtn} onPress={() => {
-                  setQtyDraft({ ...standaloneQty });
-                  setItemTarget({ kind: "STANDALONE" });
-                  setItemPickerOpen(true);
-                }}>
-                  <Text style={s.secondaryText}>+ Dodaj</Text>
+                <Pressable
+                  style={[st.segBtn, draftMode === "FINAL" && st.segBtnOn]}
+                  onPress={() => setDraftMode("FINAL")}
+                >
+                  <Text style={[st.segText, draftMode === "FINAL" && st.segTextOn]}>Final</Text>
                 </Pressable>
               </View>
 
-              <View style={s.docCard}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.docTitle}>Samostalne stavke</Text>
-                  <Text style={s.docSub}>Stavki: {qtyToItems(standaloneQty).length}</Text>
-
-                  {!!templateDocs?.length && (
-                    <>
-                      <Text style={[s.docSub, { fontWeight: "900", marginTop: 10 }]}>Dodijeli dokumentu:</Text>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                        {templateDocs.map((d: any) => {
-                          const docId = Number(d.documentId);
-                          const active = Number(standaloneDocId ?? 0) === docId;
-                          return (
-                            <Pressable
-                              key={String(docId)}
-                              style={[s.docChip, active && s.docChipActive]}
-                              onPress={() => setStandaloneDocId(docId)}
-                            >
-                              <Text style={[s.docChipText, active && s.docChipTextActive]}>#{docId}</Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </>
-                  )}
-                </View>
+              {/* Template select */}
+              <View style={st.sectionHeader}>
+                <Text style={st.label}>Predložak</Text>
+                <Pressable style={st.smallBtn} onPress={() => setTemplatePickerOpen(true)}>
+                  <Text style={st.smallBtnText}>Odaberi</Text>
+                </Pressable>
               </View>
 
-              <Text style={s.label}>Dokumenti</Text>
-              {!templateId ? (
-                <Text style={s.helper}>Prvo odaberi predložak.</Text>
-              ) : templateDocs.length === 0 ? (
-                <Text style={s.helper}>Predložak nema dokumenata.</Text>
-              ) : (
-                <View style={{ gap: 10 }}>
-                  {templateDocs.map((d: any) => {
-                    const docId = Number(d.documentId);
-                    const p = patchByDocId.get(docId);
-                    const added = p?.addItems?.length ?? 0;
+              {selectedTemplate ? (
+                <View
+                  style={[
+                    st.pickRow,
+                    { backgroundColor: "rgba(249,115,22,0.10)", borderColor: "rgba(249,115,22,0.35)" },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.pickTitle}>{(selectedTemplate as any).name}</Text>
+                    <Text style={st.pickSub}>
+                      #{(selectedTemplate as any).id} • dokumenata:{" "}
+                      {(selectedTemplate as any).documents?.length ?? 0}
+                    </Text>
+                  </View>
 
-                    return (
-                      <View key={String(docId)} style={s.docCard}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.docTitle}>Dokument #{docId}</Text>
-                          <Text style={s.docSub}>Dodano: {added}</Text>
-                        </View>
-
-                        <Pressable
-                          style={s.smallBtn}
-                          onPress={() => {
-                            const p = patchByDocId.get(Number(docId));
-                            const m: QtyMap = {};
-                            (p?.addItems ?? []).forEach((it: any) => (m[String(it.itemId)] = Number(it.quantity ?? 0)));
-                            setQtyDraft(m);
-                            setItemTarget({ kind: "DOC", documentId: docId });
-                            setItemPickerOpen(true);
-                          }}
-                        >
-                          <Text style={s.smallBtnText}>Dodaj stavke</Text>
-                        </Pressable>
-                      </View>
-                    );
-                  })}
+                  <Pressable style={[st.iconBtn, { width: 40, height: 40 }]} onPress={resetEditorState}>
+                    <FontAwesome name="trash" size={16} color={Colors.text} />
+                  </Pressable>
                 </View>
+              ) : (
+                <Text style={st.helper}>Nije odabran predložak.</Text>
               )}
 
-              <Pressable style={[s.primaryBtn, (!templateId || upsertM.isPending) && { opacity: 0.5 }]} disabled={!templateId || upsertM.isPending} onPress={save}>
-                {upsertM.isPending ? <ActivityIndicator /> : <Text style={s.primaryText}>Spremi</Text>}
+              {/* Standalone items */}
+              <View style={st.sectionHeader}>
+                <Text style={st.label}>Dodatne stavke</Text>
+                <Pressable style={st.smallBtn} onPress={openStandaloneItems}>
+                  <Text style={st.smallBtnText}>Dodaj stavke</Text>
+                </Pressable>
+              </View>
+
+              {/* Docs */}
+              {selectedTemplate ? (
+                <>
+                  <Text style={st.label}>Dokumenti</Text>
+                  {templateDocs.length === 0 ? (
+                    <Text style={st.helper}>Predložak nema dokumenata.</Text>
+                  ) : (
+                    <View style={{ gap: 10 }}>
+                      {templateDocs.map((d: any) => {
+                        const docId = Number(d.documentId ?? d.document_id ?? 0);
+                        const p = patchByDocId.get(docId);
+                        const added = ((p as any)?.addItems?.length ?? 0) as number;
+
+                        return (
+                          <View key={String(docId)} style={st.docCard}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={st.docTitle}>Dokument #{docId}</Text>
+                              <Text style={st.docSub}>Dodano: {added}</Text>
+                            </View>
+
+                            <Pressable style={st.smallBtn} onPress={() => openDocItems(docId)}>
+                              <Text style={st.smallBtnText}>Dodaj stavke</Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
+              ) : null}
+
+              <Pressable
+                style={[st.primaryBtn, (!selectedTemplate || upsertM.isPending) && { opacity: 0.5 }]}
+                disabled={!selectedTemplate || upsertM.isPending}
+                onPress={save}
+              >
+                {upsertM.isPending ? (
+                  <ActivityIndicator />
+                ) : (
+                  <Text style={st.primaryText}>Spremi</Text>
+                )}
               </Pressable>
 
-              <Pressable style={[s.secondaryBtn, upsertM.isPending && { opacity: 0.5 }]} disabled={upsertM.isPending} onPress={() => setEditOpen(false)}>
-                <Text style={s.secondaryText}>Zatvori</Text>
+              <Pressable
+                style={[st.ghostBtn, upsertM.isPending && { opacity: 0.6 }]}
+                disabled={upsertM.isPending}
+                onPress={() => {
+                  if (upsertM.isPending) return;
+                  setEditOpen(false);
+                  setEntry(null);
+                }}
+              >
+                <Text style={st.ghostText}>Zatvori</Text>
               </Pressable>
             </View>
           )}
-        </CenterSheet>
+        </CenterModal>
 
-        {/* Template picker */}
-        <CenterSheet visible={templatePickerOpen} title="Odaberi predložak" width={MAX_W} closeOnBackdrop={true} onClose={() => setTemplatePickerOpen(false)}>
-          <View style={{ gap: 10 }}>
-            <View style={s.searchWrap}>
-              <FontAwesome name="search" size={14} color={Colors.sub} />
-              <TextInput
-                value={templateQ}
-                onChangeText={setTemplateQ}
-                placeholder="Pretraži predloške…"
-                placeholderTextColor={Colors.sub}
-                style={s.search}
-                autoCorrect={false}
-                autoCapitalize="none"
-              />
-              {!!templateQ && (
-                <Pressable onPress={() => setTemplateQ("")} hitSlop={8}>
-                  <FontAwesome name="times-circle" size={16} color={Colors.sub} />
-                </Pressable>
-              )}
-            </View>
+        {/* Template picker sheet */}
+        <SearchPickerSheet<TemplateResponseDTO>
+          visible={templatePickerOpen}
+          title="Odaberi predložak"
+          onClose={() => setTemplatePickerOpen(false)}
+          keyOf={(t) => String((t as any).id)}
+          fetchPage={async ({ page, size, q }) => {
+            const list = await dispatchTemplateService.listTemplates({
+              folderId: null,
+              name: q ?? "",
+              includeShared: true,
+              rootOnly: true,
+            });
 
-            {tplListQ.isLoading ? (
-              <View style={s.center}>
-                <ActivityIndicator />
-                <Text style={s.helper}>Učitavam predloške…</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={(tplListQ.data ?? []) as any as TemplateResponseDTO[]}
-                keyExtractor={(t) => String(t.id)}
-                contentContainerStyle={{ gap: 10, paddingBottom: 16 }}
-                renderItem={({ item: t }) => {
-                  const needle = templateQDeb.toLowerCase();
-                  const ok = !needle || (t.name ?? "").toLowerCase().includes(needle) || String(t.id).includes(needle);
-                  if (!ok) return null;
-
-                  return (
-                    <Pressable
-                      style={s.pickRow}
-                      onPress={() => {
-                        setTemplateId(Number(t.id));
-                        setDocPatches([]);
-                        setStandaloneDocId(null);
-                        setTemplatePickerOpen(false);
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.pickTitle}>{t.name}</Text>
-                        <Text style={s.pickSub}>#{t.id} • dokumenata: {t.documents?.length ?? 0}</Text>
-                      </View>
-                    </Pressable>
-                  );
-                }}
-                ListEmptyComponent={<Text style={s.helper}>Nema predložaka.</Text>}
-              />
-            )}
-
-            <Pressable style={s.secondaryBtn} onPress={() => setTemplatePickerOpen(false)}>
-              <Text style={s.secondaryText}>Zatvori</Text>
-            </Pressable>
-          </View>
-        </CenterSheet>
-
-        {/* Items picker */}
-        <CenterSheet visible={itemPickerOpen} title="Odaberi stavke" width={MAX_W} closeOnBackdrop={false} onClose={() => setItemPickerOpen(false)}>
-          <View style={{ gap: 12 }}>
-            <Text style={s.helper}>Tap = +1 • Long press = -1</Text>
-
-            <SearchPickerSheet<ItemDescriptorResponseDTO>
-              visible={true as any}
-              title="Stavke"
-              onClose={() => {}}
-              keyOf={(it) => String(it.itemId)}
-              fetchPage={async ({ page, size, q }) => {
-                if (!session?.warehouseId) return { items: [], page, size, total: 0 };
-                const res = await itemDirectoryService.pageItems({
-                  warehouseId: Number(session.warehouseId),
-                  page,
-                  size,
-                  q: q ?? "",
-                });
-                return { items: res.items, page: res.page, size: res.size, total: res.total };
-              }}
-              renderRow={(it) => {
-                const qv = Number(qtyDraft[String(it.itemId)] ?? 0);
-                return (
-                  <Pressable
-                    style={[s.itemRow, qv > 0 && s.itemRowSelected]}
-                    onPress={() => setQtyDraft((cur) => upsertQty(cur, Number(it.itemId), 1))}
-                    onLongPress={() => setQtyDraft((cur) => upsertQty(cur, Number(it.itemId), -1))}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.pickTitle}>
-                        {it.code} • {it.name}
-                      </Text>
-                      <Text style={s.pickSub}>{it.unit}</Text>
-                    </View>
-
-                    <View style={[s.qtyPill, qv > 0 && s.qtyPillOn]}>
-                      <Text style={s.qtyText}>{qv}</Text>
-                    </View>
-                  </Pressable>
-                );
-              }}
-            />
-
+            const items = (list ?? []) as any[];
+            return {
+              items: items as any,
+              page: page ?? 0,
+              size: size ?? items.length,
+              total: items.length,
+            };
+          }}
+          renderRow={(t, close) => (
             <Pressable
-              style={s.primaryBtn}
+              style={st.pickRow}
               onPress={() => {
-                if (!itemTarget) return;
+                close();
+                setTemplatePickerOpen(false);
 
-                const items = qtyToItems(qtyDraft);
+                // ✅ ključni fix: dohvat full template u idućem ticku (nakon zatvaranja modala)
+                setTimeout(async () => {
+                  const id = Number((t as any).id ?? 0);
+                  if (!id) return;
 
-                if (itemTarget.kind === "DOC") {
-                  const docId = Number(itemTarget.documentId);
-                  const next = [...docPatches];
-                  const idx = next.findIndex((p) => Number(p.documentId) === docId);
-
-                  if (items.length === 0) {
-                    if (idx >= 0) next.splice(idx, 1);
-                  } else {
-                    if (idx === -1) next.push(mkPatch(docId, items));
-                    else next[idx] = { ...next[idx], addItems: items as any };
+                  try {
+                    const full = await dispatchTemplateService.getTemplate(id);
+                    setSelectedTemplate(full as any);
+                  } catch {
+                    setSelectedTemplate(t as any);
                   }
-                  setDocPatches(next);
-                } else {
-                  setStandaloneQty(qtyDraft);
-                }
 
-                setItemPickerOpen(false);
+                  setDocPatches([]);
+                  setStandaloneDocId(null);
+                  setStandaloneQty({});
+                }, 0);
               }}
             >
-              <Text style={s.primaryText}>Primijeni</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={st.pickTitle}>{(t as any).name ?? `Predložak #${(t as any).id}`}</Text>
+                <Text style={st.pickSub}>#{(t as any).id}</Text>
+              </View>
+            </Pressable>
+          )}
+          searchPlaceholder="Pretraži predloške…"
+          closeOnBackdropPress={false}
+        />
+
+        {/* Items modal */}
+        <CenterModal visible={itemsOpen} title="Stavke" onClose={() => setItemsOpen(false)}>
+          <View style={{ width: "100%", maxWidth: MAX_W, alignSelf: "center", gap: 12 }}>
+            <View style={st.tabs}>
+              <Pressable
+                style={[st.tabBtn, itemsTab === "results" && st.tabBtnActive]}
+                onPress={() => setItemsTab("results")}
+              >
+                <Text style={[st.tabText, itemsTab === "results" && st.tabTextActive]}>Rezultati</Text>
+              </Pressable>
+              <Pressable
+                style={[st.tabBtn, itemsTab === "added" && st.tabBtnActive]}
+                onPress={() => setItemsTab("added")}
+              >
+                <Text style={[st.tabText, itemsTab === "added" && st.tabTextActive]}>
+                  Dodano ({qtyToItems(qtyDraft).length})
+                </Text>
+              </Pressable>
+            </View>
+
+            {itemsTab === "results" ? (
+              <>
+                <TextInput
+                  value={searchQ}
+                  onChangeText={setSearchQ}
+                  placeholder="Pretraži artikle…"
+                  placeholderTextColor={Colors.sub}
+                  style={st.searchInput}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                />
+
+                {itemsLoading ? (
+                  <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                    <ActivityIndicator />
+                  </View>
+                ) : itemsRows.length === 0 ? (
+                  <Text style={st.helper}>Nema rezultata.</Text>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {itemsRows.map((it: any) => {
+                      const itemId = Number(it.itemId ?? it.id ?? it.item_id ?? 0);
+                      if (!itemId) return null;
+
+                      const name = String(it.name ?? it.itemName ?? it.naziv ?? "").trim();
+                      const code = String(it.code ?? it.itemCode ?? it.sifra ?? "").trim();
+                      const unit = String(it.unit ?? it.jmj ?? "").trim();
+
+                      return (
+                        <Pressable
+                          key={String(itemId)}
+                          style={st.resultRow}
+                          onPress={() => {
+                            setQtyDraft((cur) => upsertQty(cur, itemId, 1));
+                            setItemsTab("added");
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={st.itemNameStrong} numberOfLines={2}>
+                              {name ? name : `Artikl #${itemId}`}
+                            </Text>
+                            <Text style={st.itemMeta}>
+                              {[code ? `Šifra: ${code}` : null, `ID: ${itemId}`, unit ? `JMJ: ${unit}` : null]
+                                .filter(Boolean)
+                                .join(" • ")}
+                            </Text>
+                          </View>
+
+                          <View style={st.addBtn}>
+                            <Text style={st.addBtnText}>+1</Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <View style={st.pager}>
+                  <Pressable
+                    style={[st.pagerBtn, !canPrev && { opacity: 0.4 }]}
+                    disabled={!canPrev}
+                    onPress={() => setItemsPage((p) => Math.max(0, p - 1))}
+                  >
+                    <FontAwesome name="chevron-left" size={14} color={Colors.text} />
+                  </Pressable>
+
+                  <Text style={st.pagerText}>
+                    Str. {itemsPage + 1} / {itemsTotalPages}
+                  </Text>
+
+                  <Pressable
+                    style={[st.pagerBtn, !canNext && { opacity: 0.4 }]}
+                    disabled={!canNext}
+                    onPress={() => setItemsPage((p) => p + 1)}
+                  >
+                    <FontAwesome name="chevron-right" size={14} color={Colors.text} />
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                {qtyToItems(qtyDraft).length === 0 ? (
+                  <Text style={st.helper}>Još nema dodanih stavki.</Text>
+                ) : (
+                  <View style={{ gap: 10 }}>
+                    {qtyToItems(qtyDraft).map((x) => (
+                      <View key={String(x.itemId)} style={st.addedRow}>
+                        <Text style={st.itemMeta}>Artikl #{x.itemId}</Text>
+                        <View style={st.qtyBox}>
+                          <Pressable
+                            style={st.qtyBtn}
+                            onPress={() => setQtyDraft((cur) => upsertQty(cur, x.itemId, -1))}
+                          >
+                            <Text style={st.qtyBtnText}>−</Text>
+                          </Pressable>
+                          <Text style={st.qtyValue}>{x.quantity}</Text>
+                          <Pressable
+                            style={st.qtyBtn}
+                            onPress={() => setQtyDraft((cur) => upsertQty(cur, x.itemId, +1))}
+                          >
+                            <Text style={st.qtyBtnText}>+</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            <Pressable style={st.primaryBtn} onPress={applyItems}>
+              <Text style={st.primaryText}>Primijeni</Text>
             </Pressable>
 
-            <Pressable style={s.secondaryBtn} onPress={() => setItemPickerOpen(false)}>
-              <Text style={s.secondaryText}>Zatvori</Text>
+            <Pressable style={st.ghostBtn} onPress={() => setItemsOpen(false)}>
+              <Text style={st.ghostText}>Zatvori</Text>
             </Pressable>
           </View>
-        </CenterSheet>
+        </CenterModal>
+
+        {/* Confirm delete entry */}
+        <CenterConfirmSheet
+          visible={deleteEntryOpen}
+          title="Obrisati unos?"
+          description={deleteLabel}
+          confirmText="Obriši"
+          danger
+          loading={delEntryM.isPending}
+          onClose={() => setDeleteEntryOpen(false)}
+          onConfirm={deleteEntry}
+          closeOnBackdrop={!delEntryM.isPending}
+        />
       </View>
     </Screen>
   );
 }
 
-const s = StyleSheet.create({
+const st = StyleSheet.create({
   container: { padding: 14, gap: 12 },
 
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
-  headerTitle: { fontWeight: "900", color: Colors.text, fontSize: 20, flex: 1, textAlign: "center" },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.bg,
-  },
-
   center: { padding: 20, alignItems: "center", justifyContent: "center", gap: 10 },
-  helper: { color: Colors.sub, fontWeight: "800", textAlign: "center", marginTop: 10 },
+  helper: { color: Colors.sub, fontWeight: "800", textAlign: "center" },
 
   heroCard: {
     backgroundColor: Colors.bg,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
     padding: 14,
     gap: 8,
   },
-  h1: { fontWeight: "900", color: Colors.text, fontSize: 18 },
 
   label: { fontWeight: "900", color: Colors.text },
   title: { fontWeight: "900", color: Colors.text },
   sub: { color: Colors.sub, fontWeight: "800" },
 
-  metaLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8 },
+  metaLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 8,
+  },
 
-  // buttons
-  addBtnWide: { flex: 1, height: 38, borderRadius: 999, backgroundColor: Colors.orange, alignItems: "center", justifyContent: "center" },
-  addBtnText: { color: "#fff", fontWeight: "900" },
-
-  finalizeBtn: {
-    height: 38,
-    paddingHorizontal: 14,
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(34,197,94,0.18)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(34,197,94,0.35)",
+  },
+  badgeText: { fontWeight: "900", color: Colors.text },
+
+  rowBtns: { flexDirection: "row", gap: 10 },
+
+  primaryPill: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: Colors.orange,
     alignItems: "center",
     justifyContent: "center",
   },
-  finalizeText: { fontWeight: "900", color: Colors.text },
+  primaryPillText: { color: "#fff", fontWeight: "900" },
 
-  primaryBtn: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center", justifyContent: "center" },
-  primaryText: { color: "#fff", fontWeight: "900" },
-
-  secondaryBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
+  ghostPill: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: "rgba(148,163,184,0.20)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
-    backgroundColor: Colors.bg,
     alignItems: "center",
+    justifyContent: "center",
   },
-  secondaryText: { fontWeight: "900", color: Colors.text },
+  ghostPillText: { fontWeight: "900", color: Colors.text },
 
-  badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
-  badgeText: { fontWeight: "900", color: Colors.text },
+  dangerPill: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: "rgba(239,68,68,0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(239,68,68,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dangerPillText: { color: Colors.dangerText, fontWeight: "900" },
 
   card: {
     backgroundColor: Colors.bg,
@@ -761,46 +1054,52 @@ const s = StyleSheet.create({
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
 
-  rowBtns: { flexDirection: "row", gap: 10 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+
+  primaryBtn: {
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryText: { color: "#fff", fontWeight: "900" },
+
+  ghostBtn: {
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.20)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2, 6, 23, 0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ghostText: { fontWeight: "900", color: Colors.text },
 
   smallBtn: {
-    flex: 1,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 14,
     backgroundColor: "rgba(249,115,22,0.12)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(249,115,22,0.35)",
     alignItems: "center",
+    justifyContent: "center",
   },
   smallBtnText: { fontWeight: "900", color: Colors.text },
-
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 
   docCard: {
     padding: 12,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
-    backgroundColor: Colors.bg,
+    backgroundColor: "rgba(148,163,184,0.12)",
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
   docTitle: { fontWeight: "900", color: Colors.text },
   docSub: { color: Colors.sub, fontWeight: "800" },
-
-  docChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-  },
-  docChipActive: { borderColor: Colors.orange, backgroundColor: "rgba(249,115,22,0.12)" },
-  docChipText: { fontWeight: "900", color: Colors.sub },
-  docChipTextActive: { color: Colors.text },
 
   pickRow: {
     padding: 12,
@@ -810,47 +1109,162 @@ const s = StyleSheet.create({
     backgroundColor: Colors.bg,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: 10,
   },
   pickTitle: { fontWeight: "900", color: Colors.text },
   pickSub: { color: Colors.sub, fontWeight: "800" },
 
-  searchWrap: {
+  searchInput: {
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: MAX_W,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(148,163,184,0.14)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    fontWeight: "800",
+    color: Colors.text,
   },
-  search: { flex: 1, fontWeight: "800", color: Colors.text },
 
-  itemRow: {
-    padding: 12,
-    borderRadius: 16,
+  segmentRow: { flexDirection: "row", gap: 10 },
+  segBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    justifyContent: "space-between",
-  },
-  itemRowSelected: { borderColor: Colors.orange, backgroundColor: "rgba(249,115,22,0.10)" },
-  qtyPill: {
-    minWidth: 46,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
+    backgroundColor: "rgba(148,163,184,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
-  qtyPillOn: { borderColor: Colors.orange, backgroundColor: "rgba(249,115,22,0.12)" },
-  qtyText: { fontWeight: "900", color: Colors.text },
+  segBtnOn: { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.35)" },
+  segText: { fontWeight: "900", color: Colors.sub },
+  segTextOn: { color: Colors.text },
+
+  // modal
+  modalWrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    zIndex: 1,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: MAX_W,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+    overflow: "hidden",
+    maxHeight: "85%",
+    zIndex: 2,
+  },
+  modalHeader: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  modalTitle: { fontWeight: "900", color: Colors.text, fontSize: 16, flex: 1 },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "rgba(148,163,184,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalBody: { padding: 14, gap: 12, paddingBottom: 20 },
+
+  // items ui
+  tabs: { width: "100%", maxWidth: MAX_W, flexDirection: "row", gap: 10 },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabBtnActive: {
+    backgroundColor: "rgba(249,115,22,0.18)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.35)",
+  },
+  tabText: { fontWeight: "900", color: Colors.sub },
+  tabTextActive: { color: Colors.text },
+
+  resultRow: {
+    width: "100%",
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  addBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(249,115,22,0.16)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addBtnText: { fontWeight: "900", color: Colors.text },
+
+  itemNameStrong: { fontWeight: "900", color: Colors.text, fontSize: 15 },
+  itemMeta: { color: Colors.sub, fontWeight: "800" },
+
+  pager: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 6 },
+  pagerBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pagerText: { fontWeight: "900", color: Colors.sub },
+
+  addedRow: {
+    width: "100%",
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  qtyBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderRadius: 14,
+    padding: 6,
+  },
+  qtyBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "rgba(148,163,184,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qtyBtnText: { fontWeight: "900", color: Colors.text, fontSize: 18 },
+  qtyValue: { fontWeight: "900", color: Colors.text, minWidth: 28, textAlign: "center" },
 });

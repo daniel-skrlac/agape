@@ -7,7 +7,7 @@ export default function SessionsLayout() {
     return (
         <AuthBackground>
             <RequireMainWarehouse>
-                <Stack screenOptions={{ headerShown: false }}>
+                <Stack screenOptions={{ headerShown: false, animation: "none" }}>
                     <Stack.Screen name="index" />
                     <Stack.Screen name="[id]" />
                 </Stack>

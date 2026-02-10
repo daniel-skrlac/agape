@@ -12,33 +12,18 @@ import {
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Colors from "@/constants/Colors";
 
-type PageResult<T> = {
-  items: T[];
-  page: number;
-  size: number;
-  total: number;
-};
-
+type PageResult<T> = { items: T[]; page: number; size: number; total: number };
 type FetchPage<T> = (args: { page: number; size: number; q?: string }) => Promise<PageResult<T>>;
 
 type Props<T> = {
   visible: boolean;
   title: string;
   onClose: () => void;
-
   keyOf: (item: T) => string;
   fetchPage: FetchPage<T>;
-
   renderRow: (item: T, close: () => void) => React.ReactElement;
-
-  // optional
   initialSize?: number;
   searchPlaceholder?: string;
-
-  /**
-   * If true, tapping the dimmed area closes the sheet.
-   * Default: false (so it WILL NOT close on backdrop press).
-   */
   closeOnBackdropPress?: boolean;
 };
 
@@ -57,7 +42,6 @@ export function SearchPickerSheet<T>(props: Props<T>) {
 
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-
   const [page, setPage] = useState(0);
   const [size] = useState(initialSize);
 
@@ -71,11 +55,8 @@ export function SearchPickerSheet<T>(props: Props<T>) {
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
 
-  const close = () => {
-    onClose();
-  };
+  const close = () => onClose();
 
-  // debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 250);
     return () => clearTimeout(t);
@@ -134,13 +115,11 @@ export function SearchPickerSheet<T>(props: Props<T>) {
     }
   };
 
-  // load when opened
   useEffect(() => {
     mountedRef.current = true;
     if (visible) {
       setQ("");
       setDebouncedQ("");
-      // start load next tick so Modal mounts first (prevents some Android glitches)
       setTimeout(() => resetAndLoad(), 0);
     }
     return () => {
@@ -149,7 +128,6 @@ export function SearchPickerSheet<T>(props: Props<T>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // reload when debouncedQ changes (only if visible)
   useEffect(() => {
     if (!visible) return;
     resetAndLoad();
@@ -157,16 +135,23 @@ export function SearchPickerSheet<T>(props: Props<T>) {
   }, [debouncedQ]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
-      {/* Backdrop: DO NOT close by default */}
-      <Pressable
-        style={s.backdrop}
-        // only close if explicitly enabled
-        onPress={closeOnBackdropPress ? close : undefined}
-      >
-        {/* Card: stop bubbling so press inside doesn't trigger backdrop */}
-        <Pressable style={s.card} onPress={() => { }}>
-          {/* Header */}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      onRequestClose={close}
+    >
+      <View style={s.backdrop}>
+        {/* ✅ pravi backdrop layer */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={closeOnBackdropPress ? close : undefined}
+        />
+
+        {/* ✅ card je običan View, ne Pressable wrapper */}
+        <View style={s.card} pointerEvents="auto">
           <View style={s.header}>
             <Text style={s.title} numberOfLines={1}>
               {title}
@@ -176,7 +161,6 @@ export function SearchPickerSheet<T>(props: Props<T>) {
             </Pressable>
           </View>
 
-          {/* Search */}
           <View style={s.searchWrap}>
             <FontAwesome name="search" size={14} color={Colors.sub} />
             <TextInput
@@ -196,7 +180,6 @@ export function SearchPickerSheet<T>(props: Props<T>) {
             )}
           </View>
 
-          {/* Content */}
           {loading ? (
             <View style={s.center}>
               <ActivityIndicator />
@@ -228,8 +211,8 @@ export function SearchPickerSheet<T>(props: Props<T>) {
               }
             />
           )}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

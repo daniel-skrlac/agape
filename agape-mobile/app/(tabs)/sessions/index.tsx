@@ -1,12 +1,13 @@
+// app/(tabs)/sessions/index.tsx
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 import { CenterSheet } from "@/components/CenterSheet";
+import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
 import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
 import type { BookingSessionCreateRequestDTO, BookingSessionResponseDTO } from "@/app/models/generated";
@@ -14,12 +15,25 @@ import { useBookingSessions, useCreateBookingSession, useDeleteBookingSession } 
 
 const MAX_W = 560;
 
+function cleanText(v: any) {
+  const s = String(v ?? "").trim();
+  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) return s.slice(1, -1);
+  return s;
+}
+function cleanDescription(v: any): string | null {
+  if (v == null) return null;
+  if (Array.isArray(v) && v.length === 0) return null;
+  const s = cleanText(v).trim();
+  if (!s) return null;
+  if (s.replace(/\s/g, "") === "[]") return null;
+  return s;
+}
+
 function badgeStyle(status: any) {
   if (status === "FINALIZED") return { backgroundColor: "rgba(34,197,94,0.18)", borderColor: "rgba(34,197,94,0.35)" };
   if (status === "CANCELLED") return { backgroundColor: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.35)" };
   return { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.35)" };
 }
-
 function statusHr(status: any) {
   if (status === "DRAFT") return "DRAFT";
   if (status === "FINALIZED") return "FINAL";
@@ -27,23 +41,11 @@ function statusHr(status: any) {
   return String(status ?? "");
 }
 
-function Header({ onAdd }: { onAdd: () => void }) {
-  return (
-    <View style={s.header}>
-      <Text style={s.headerTitle}>Evidencije</Text>
-
-      <Pressable style={s.addBtn} onPress={onAdd} hitSlop={8}>
-        <Text style={s.addBtnText}>+ Dodaj</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 export default function SessionsIndex() {
   const { session, ready } = useCurrentUser();
   const warehouseId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
 
-  const listQ = useBookingSessions();
+  const listQ = useBookingSessions(null);
   const createM = useCreateBookingSession();
   const deleteM = useDeleteBookingSession();
 
@@ -51,11 +53,19 @@ export default function SessionsIndex() {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
 
-  const err = (listQ.error as any)?.message || (createM.error as any)?.message || (deleteM.error as any)?.message || null;
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BookingSessionResponseDTO | null>(null);
 
-  const canCreate = useMemo(() => {
-    return !!warehouseId && title.trim().length > 0 && !createM.isPending;
-  }, [warehouseId, title, createM.isPending]);
+  const err =
+    (listQ.error as any)?.message ||
+    (createM.error as any)?.message ||
+    (deleteM.error as any)?.message ||
+    null;
+
+  const canCreate = useMemo(
+    () => !!warehouseId && title.trim().length > 0 && !createM.isPending,
+    [warehouseId, title, createM.isPending]
+  );
 
   const openCreate = () => {
     setTitle("");
@@ -73,13 +83,23 @@ export default function SessionsIndex() {
       documentDate: new Date() as any,
     } as any;
 
-    const created = await createM.mutateAsync(payload);
+    await createM.mutateAsync(payload);
+
+    // ✅ ne navigiraj na novu sesiju
     setCreateOpen(false);
-    router.push(`/(tabs)/sessions/${created.id}`);
+    listQ.refetch?.();
   };
 
-  const remove = async (id: number) => {
-    await deleteM.mutateAsync(id);
+  const askDelete = (it: BookingSessionResponseDTO) => {
+    setDeleteTarget(it);
+    setDeleteOpen(true);
+  };
+
+  const remove = async () => {
+    if (!deleteTarget) return;
+    await deleteM.mutateAsync(Number((deleteTarget as any).id));
+    setDeleteOpen(false);
+    setDeleteTarget(null);
     listQ.refetch?.();
   };
 
@@ -98,7 +118,12 @@ export default function SessionsIndex() {
       <View style={s.container}>
         {!!err && <Banner type="error" text={String(err)} />}
 
-        <Header onAdd={openCreate} />
+        <View style={s.topRow}>
+          <View style={{ flex: 1 }} />
+          <Pressable style={s.addPill} onPress={openCreate} hitSlop={10}>
+            <Text style={s.addPillText}>+ Dodaj</Text>
+          </Pressable>
+        </View>
 
         {listQ.isLoading ? (
           <View style={s.center}>
@@ -108,54 +133,58 @@ export default function SessionsIndex() {
         ) : (
           <FlatList
             data={(listQ.data ?? []) as BookingSessionResponseDTO[]}
-            keyExtractor={(x) => String(x.id)}
+            keyExtractor={(x) => String((x as any).id)}
             contentContainerStyle={{ gap: 10, paddingBottom: 28 }}
-            ListEmptyComponent={<Text style={s.helper}>Nema evidencija.</Text>}
-            renderItem={({ item }) => (
-              <Pressable style={s.card} onPress={() => router.push(`/(tabs)/sessions/${item.id}`)}>
-                <View style={s.cardTop}>
-                  <Text style={s.title} numberOfLines={1}>
-                    {item.title}
-                  </Text>
+            ListEmptyComponent={<Text style={s.helper}>Nema sesija.</Text>}
+            renderItem={({ item }) => {
+              const id = Number((item as any).id);
+              const t = cleanText((item as any).title);
+              const n = cleanDescription((item as any).note);
 
-                  <View style={[s.badge, badgeStyle(item.status)]}>
-                    <Text style={s.badgeText}>{statusHr(item.status)}</Text>
-                  </View>
-                </View>
-
-                {!!item.note && (
-                  <Text style={s.sub} numberOfLines={2}>
-                    {item.note}
-                  </Text>
-                )}
-
-                <View style={s.metaRow}>
-                  <FontAwesome name="home" size={14} color={Colors.sub} />
-                  <Text style={s.sub}>Skladište #{item.warehouseId}</Text>
-                </View>
-
-                <View style={s.rowBtns}>
-                  <Pressable style={s.smallBtn} onPress={() => router.push(`/(tabs)/sessions/${item.id}`)}>
-                    <Text style={s.smallBtnText}>Otvori</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[s.smallBtn, { backgroundColor: Colors.dangerBg }]}
-                    onPress={() => remove(Number(item.id))}
-                    disabled={deleteM.isPending}
-                  >
-                    <Text style={[s.smallBtnText, { color: Colors.dangerText }]}>
-                      {deleteM.isPending ? "…" : "Obriši"}
+              return (
+                <Pressable style={s.card} onPress={() => router.push(`/(tabs)/sessions/${id}`)}>
+                  <View style={s.cardTop}>
+                    <Text style={s.title} numberOfLines={1}>
+                      {t || "—"}
                     </Text>
-                  </Pressable>
-                </View>
-              </Pressable>
-            )}
+
+                    <View style={[s.badge, badgeStyle((item as any).status)]}>
+                      <Text style={s.badgeText}>{statusHr((item as any).status)}</Text>
+                    </View>
+                  </View>
+
+                  {!!n && (
+                    <Text style={s.sub} numberOfLines={2}>
+                      {n}
+                    </Text>
+                  )}
+
+                  <View style={s.metaRow}>
+                    <Text style={s.sub}>Skladište #{(item as any).warehouseId}</Text>
+                  </View>
+
+                  <View style={s.rowBtns}>
+                    <Pressable style={s.primaryPill} onPress={() => router.push(`/(tabs)/sessions/${id}`)}>
+                      <Text style={s.primaryPillText}>Otvori</Text>
+                    </Pressable>
+
+                    {/* ✅ boja obriši kao prije (nije “pun crven”) */}
+                    <Pressable
+                      style={[s.dangerPill, deleteM.isPending && { opacity: 0.7 }]}
+                      onPress={() => askDelete(item)}
+                      disabled={deleteM.isPending}
+                    >
+                      <Text style={s.dangerPillText}>{deleteM.isPending ? "…" : "Obriši"}</Text>
+                    </Pressable>
+                  </View>
+                </Pressable>
+              );
+            }}
           />
         )}
       </View>
 
-      {/* Create popup (CenterSheet) */}
+      {/* Create popup */}
       <CenterSheet
         visible={createOpen}
         title="Nova evidencija"
@@ -173,18 +202,18 @@ export default function SessionsIndex() {
             value={title}
             onChangeText={setTitle}
             style={s.input}
-            placeholder="npr. Jutarnja otprema"
+            placeholder="npr. Utorak 10.02."
             placeholderTextColor={Colors.sub}
             autoCorrect={false}
           />
 
-          <Text style={s.label}>Napomena (opcionalno)</Text>
+          <Text style={s.label}>Opis (opcionalno)</Text>
           <TextInput
             value={note}
             onChangeText={setNote}
             style={[s.input, { minHeight: 96 }]}
             multiline
-            placeholder="…"
+            placeholder=""
             placeholderTextColor={Colors.sub}
             textAlignVertical="top"
             autoCorrect={false}
@@ -195,14 +224,27 @@ export default function SessionsIndex() {
           </Pressable>
 
           <Pressable
-            style={[s.secondaryBtn, createM.isPending && { opacity: 0.5 }]}
+            style={[s.ghostBtn, createM.isPending && { opacity: 0.6 }]}
             disabled={createM.isPending}
             onPress={() => setCreateOpen(false)}
           >
-            <Text style={s.secondaryText}>Odustani</Text>
+            <Text style={s.ghostText}>Odustani</Text>
           </Pressable>
         </View>
       </CenterSheet>
+
+      {/* Confirm delete session */}
+      <CenterConfirmSheet
+        visible={deleteOpen}
+        title="Obrisati evidenciju?"
+        description={deleteTarget ? cleanText((deleteTarget as any).title) : ""}
+        confirmText="Obriši"
+        danger
+        loading={deleteM.isPending}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={remove}
+        closeOnBackdrop={!deleteM.isPending}
+      />
     </Screen>
   );
 }
@@ -210,11 +252,9 @@ export default function SessionsIndex() {
 const s = StyleSheet.create({
   container: { padding: 14, gap: 12 },
 
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
-  headerTitle: { fontWeight: "900", color: Colors.text, fontSize: 24, letterSpacing: -0.2 },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 
-  // “Dodaj” kao template feel (pill)
-  addBtn: {
+  addPill: {
     height: 36,
     paddingHorizontal: 16,
     borderRadius: 999,
@@ -222,7 +262,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  addBtnText: { color: "#fff", fontWeight: "900", fontSize: 15 },
+  addPillText: { color: "#fff", fontWeight: "900", fontSize: 15 },
 
   center: { padding: 20, alignItems: "center", justifyContent: "center", gap: 10 },
   helper: { color: Colors.sub, fontWeight: "800", textAlign: "center", marginTop: 10 },
@@ -245,36 +285,31 @@ const s = StyleSheet.create({
   badgeText: { fontWeight: "900", color: Colors.text },
 
   rowBtns: { flexDirection: "row", gap: 10, marginTop: 2 },
-  smallBtn: {
+
+  primaryPill: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(249,115,22,0.12)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(249,115,22,0.35)",
-    alignItems: "center",
-  },
-  smallBtnText: { fontWeight: "900", color: Colors.text },
-
-  label: { fontWeight: "900", color: Colors.text },
-
-  primaryBtn: {
-    paddingVertical: 12,
-    borderRadius: 14,
+    height: 38,
+    borderRadius: 999,
     backgroundColor: Colors.orange,
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryText: { color: "#fff", fontWeight: "900" },
+  primaryPillText: { color: "#fff", fontWeight: "900" },
 
-  secondaryBtn: {
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(148,163,184,0.18)",
+  // ✅ stara “soft red” varijanta (kao prije)
+  dangerPill: {
+    flex: 1,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: "rgba(239,68,68,0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(239,68,68,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryText: { fontWeight: "900", color: Colors.text },
+  dangerPillText: { color: Colors.dangerText, fontWeight: "900" },
+
+  label: { fontWeight: "900", color: Colors.text },
 
   input: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -284,6 +319,20 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     color: Colors.text,
     fontWeight: "800",
-    backgroundColor: Colors.bg,
+    backgroundColor: "rgba(148,163,184,0.12)",
   },
+
+  primaryBtn: { paddingVertical: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center", justifyContent: "center" },
+  primaryText: { color: "#fff", fontWeight: "900" },
+
+  ghostBtn: {
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.20)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2, 6, 23, 0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ghostText: { fontWeight: "900", color: Colors.text },
 });

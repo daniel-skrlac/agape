@@ -127,14 +127,19 @@ export default function TabLayout() {
           }}
         />
 
-
         <Tabs.Screen
           name="sessions"
           options={{
-            title: "Evidencija",
+            title: "Evidencije",
             tabBarIcon: ({ color, size }) => (
               <MaterialCommunityIcons name="clipboard-list-outline" size={size} color={color} />
             ),
+          }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)/sessions");
+            },
           }}
         />
 
