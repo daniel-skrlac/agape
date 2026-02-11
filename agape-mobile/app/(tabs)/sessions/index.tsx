@@ -1,4 +1,3 @@
-// app/(tabs)/sessions/index.tsx
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
@@ -85,7 +84,6 @@ export default function SessionsIndex() {
 
     await createM.mutateAsync(payload);
 
-    // ✅ ne navigiraj na novu sesiju
     setCreateOpen(false);
     listQ.refetch?.();
   };
@@ -141,8 +139,14 @@ export default function SessionsIndex() {
               const t = cleanText((item as any).title);
               const n = cleanDescription((item as any).note);
 
+              const open = () =>
+                router.push({
+                  pathname: "/(tabs)/sessions/[id]" as const,
+                  params: { id: String(id) },
+                });
+
               return (
-                <Pressable style={s.card} onPress={() => router.push(`/(tabs)/sessions/${id}`)}>
+                <Pressable style={s.card} onPress={open}>
                   <View style={s.cardTop}>
                     <Text style={s.title} numberOfLines={1}>
                       {t || "—"}
@@ -164,11 +168,10 @@ export default function SessionsIndex() {
                   </View>
 
                   <View style={s.rowBtns}>
-                    <Pressable style={s.primaryPill} onPress={() => router.push(`/(tabs)/sessions/${id}`)}>
+                    <Pressable style={s.primaryPill} onPress={open}>
                       <Text style={s.primaryPillText}>Otvori</Text>
                     </Pressable>
 
-                    {/* ✅ boja obriši kao prije (nije “pun crven”) */}
                     <Pressable
                       style={[s.dangerPill, deleteM.isPending && { opacity: 0.7 }]}
                       onPress={() => askDelete(item)}
@@ -184,7 +187,6 @@ export default function SessionsIndex() {
         )}
       </View>
 
-      {/* Create popup */}
       <CenterSheet
         visible={createOpen}
         title="Nova evidencija"
@@ -233,7 +235,6 @@ export default function SessionsIndex() {
         </View>
       </CenterSheet>
 
-      {/* Confirm delete session */}
       <CenterConfirmSheet
         visible={deleteOpen}
         title="Obrisati evidenciju?"
@@ -296,7 +297,6 @@ const s = StyleSheet.create({
   },
   primaryPillText: { color: "#fff", fontWeight: "900" },
 
-  // ✅ stara “soft red” varijanta (kao prije)
   dangerPill: {
     flex: 1,
     height: 38,
