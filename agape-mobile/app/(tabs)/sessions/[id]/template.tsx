@@ -8,7 +8,7 @@ import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
 
-import type { FolderResponseDTO, TemplateResponseDTO } from "@/app/models/generated";
+import type { FolderResponseDTO, TemplateDocResponseDTO, TemplateResponseDTO } from "@/app/models/generated";
 import { dispatchTemplateService } from "@/app/api/services/dispatchTemplateService";
 import { patchDraft } from "../_entryDraftStore";
 
@@ -21,7 +21,39 @@ type ScopeTab = "mine" | "shared";
 function isTemplateInFolder(t: any, folderId: number | null) {
   const fid = t?.folderId ?? t?.folder?.id ?? null;
   if (folderId == null) return fid == null;
-  return Number(fid ?? 0) === Number(folderId);
+  return Number(fid ?? 0) === Number(folderId ?? 0);
+}
+
+function normDocDocumentId(d: any): number {
+  return Number(d?.documentId ?? d?.document_id ?? d?.document?.id ?? d?.document?.documentId ?? 0);
+}
+function normDocLabel(d: any): string {
+  // Prefer explicit "documentName" / "documentCode" if backend supplies it.
+  const name = String(d?.documentName ?? d?.document?.name ?? d?.name ?? "").trim();
+  const code = String(d?.documentCode ?? d?.document?.code ?? d?.code ?? "").trim();
+  const docId = normDocDocumentId(d);
+  if (name) return name;
+  if (code) return code;
+  if (docId) return `Dokument #${docId}`;
+  // fallback to template-doc id if nothing
+  const tid = Number(d?.id ?? 0);
+  return tid ? `Doc #${tid}` : "Dokument";
+}
+
+function summarizeDocTypes(tpl: any): string {
+  const docs = ((tpl as any)?.documents ?? (tpl as any)?.docs ?? []) as any[];
+  const labels = docs.map(normDocLabel).filter(Boolean);
+
+  // keep it short: unique, first 2 + “+N”
+  const uniq: string[] = [];
+  for (const x of labels) {
+    const k = x.trim();
+    if (!k) continue;
+    if (!uniq.includes(k)) uniq.push(k);
+  }
+  if (!uniq.length) return "—";
+  if (uniq.length <= 2) return uniq.join(" • ");
+  return `${uniq.slice(0, 2).join(" • ")} • +${uniq.length - 2}`;
 }
 
 export default function SessionTemplatePicker() {
@@ -77,22 +109,6 @@ export default function SessionTemplatePicker() {
     });
   }, [folders, folderId]);
 
-  /**
-   * ✅ KEY FIX:
-   * Backend endpoint listTemplates() ALWAYS returns "owned" templates
-   * and only ADDITIONALLY returns shared templates when includeShared=true AND folderId==null.
-   *
-   * That means in "Shared" tab we MUST NOT call includeShared=true and trust the result,
-   * because it will contain your own templates too.
-   *
-   * Instead we:
-   *  1) Load my templates with includeShared=false (mineAll)
-   *  2) Load shared+mine with includeShared=true (mixed)
-   *  3) Compute sharedOnly = mixed - mineAll (by id)
-   *
-   * This matches your “I have my own way to fetch shared” requirement and guarantees
-   * "Shared" tab never shows your own templates.
-   */
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -103,22 +119,18 @@ export default function SessionTemplatePicker() {
         const name = debouncedQ || "";
 
         // 1) My templates for current folder context
-        // - rootOnly when folderId is null (root)
-        // - folderId when inside a folder
         const mineParams = {
           folderId: folderId == null ? null : folderId,
           name,
           includeShared: false,
-          rootOnly: folderId == null, // show only root templates at root; folder list handled separately
+          rootOnly: folderId == null,
         };
 
         const mine = (await dispatchTemplateService.listTemplates(mineParams as any)) ?? [];
         if (!alive) return;
         setMineAll(mine as any);
 
-        // 2) For shared: backend can only list shared when folderId==null, so we fetch mixed at root
-        // and then subtract mine-root to get shared-only.
-        // NOTE: do this always, so switching tabs is instant and correct.
+        // 2) shared-only = mixed(includeShared=true) - mineRoot(includeShared=false)
         const mixedParams = {
           folderId: null,
           name,
@@ -128,12 +140,11 @@ export default function SessionTemplatePicker() {
         const mixed = (await dispatchTemplateService.listTemplates(mixedParams as any)) ?? [];
         if (!alive) return;
 
-        // Mine-at-root for subtraction:
         const mineRootParams = {
           folderId: null,
           name,
           includeShared: false,
-          rootOnly: false, // we want ALL my templates at root call to subtract properly (root+folder headers can still come via folder browsing)
+          rootOnly: false,
         };
         const mineRoot = (await dispatchTemplateService.listTemplates(mineRootParams as any)) ?? [];
 
@@ -183,17 +194,7 @@ export default function SessionTemplatePicker() {
     });
   };
 
-  // rows for current view
-  const currentTemplates = useMemo(() => {
-    if (tab === "shared") {
-      // shared has no folder browsing
-      return sharedAll;
-    }
-    // mine tab: templates already fetched for current folderId via mineParams
-    // but mineParams uses rootOnly=true at root: that shows only root templates, which is what we want.
-    return mineAll;
-  }, [tab, mineAll, sharedAll]);
-
+  const currentTemplates = useMemo(() => (tab === "shared" ? sharedAll : mineAll), [tab, mineAll, sharedAll]);
   const showFolders = tab === "mine";
 
   return (
@@ -206,23 +207,11 @@ export default function SessionTemplatePicker() {
       <View style={s.wrap}>
         {/* tabs */}
         <View style={s.tabs}>
-          <Pressable
-            style={[s.tabBtn, tab === "mine" && s.tabBtnActive]}
-            onPress={() => {
-              setTab("mine");
-              // keep folder browsing state
-            }}
-          >
+          <Pressable style={[s.tabBtn, tab === "mine" && s.tabBtnActive]} onPress={() => setTab("mine")}>
             <Text style={[s.tabText, tab === "mine" && s.tabTextActive]}>Moji</Text>
           </Pressable>
 
-          <Pressable
-            style={[s.tabBtn, tab === "shared" && s.tabBtnActive]}
-            onPress={() => {
-              setTab("shared");
-              // shared is root-only concept; keep folderId as-is but UI hides folders anyway
-            }}
-          >
+          <Pressable style={[s.tabBtn, tab === "shared" && s.tabBtnActive]} onPress={() => setTab("shared")}>
             <Text style={[s.tabText, tab === "shared" && s.tabTextActive]}>Dijeljeni</Text>
           </Pressable>
         </View>
@@ -270,10 +259,7 @@ export default function SessionTemplatePicker() {
           </View>
         ) : (
           <FlatList
-            data={[
-              ...(showFolders ? (childFolders as any[]) : []),
-              ...(currentTemplates as any[]),
-            ]}
+            data={[...(showFolders ? (childFolders as any[]) : []), ...(currentTemplates as any[])]}
             keyExtractor={(x: any, idx) => {
               const looksLikeFolder = (x as any)?.parentId !== undefined || (x as any)?.parent !== undefined;
               return looksLikeFolder ? `folder-${String((x as any)?.id)}` : `tpl-${String((x as any)?.id)}-${idx}`;
@@ -299,21 +285,14 @@ export default function SessionTemplatePicker() {
                 );
               }
 
-              // template
-              const isShared = tab === "shared"; // because sharedAll is already shared-only
+              // template row
+              if (tab === "mine" && !isTemplateInFolder(item, folderId)) return null;
+
+              const isShared = tab === "shared";
               const perm = String((item as any)?.sharedPermission ?? "").toUpperCase();
               const permLabel = isShared ? (perm ? `Dijeljeni • ${perm}` : "Dijeljeni") : "Moj";
 
-              // Extra safety: in shared tab, never show templates that belong to a folder in "mine" browsing context confusion
-              if (tab === "shared") {
-                // shared list comes from backend "shared headers", which in your service is folderId==null anyway
-                // keep it flat.
-              } else {
-                // mine tab: optionally ensure template belongs to current folder (in case backend returns more than expected)
-                if (!isTemplateInFolder(item, folderId)) {
-                  return null;
-                }
-              }
+              const docTypes = summarizeDocTypes(item);
 
               return (
                 <Pressable style={s.row} onPress={() => pick(item)}>
@@ -323,6 +302,11 @@ export default function SessionTemplatePicker() {
                     </Text>
                     <Text style={s.rowSub} numberOfLines={1}>
                       #{(item as any).id} • {permLabel}
+                    </Text>
+
+                    {/* ✅ document type line (e.g. Izdatnica, Primka...) */}
+                    <Text style={s.rowDocType} numberOfLines={1}>
+                      {docTypes}
                     </Text>
                   </View>
 
@@ -368,15 +352,7 @@ const s = StyleSheet.create({
   search: { flex: 1, fontWeight: "800", color: Colors.text },
 
   breadcrumbRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  folderBackBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: "rgba(148,163,184,0.18)",
-  },
+  folderBackBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)" },
   folderBackText: { fontWeight: "900", color: Colors.text },
   breadcrumbText: { flex: 1, fontWeight: "800", color: Colors.sub },
 
@@ -392,13 +368,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  folderRow: {
-    backgroundColor: "rgba(148,163,184,0.10)",
-    borderColor: "rgba(148,163,184,0.30)",
-  },
+  folderRow: { backgroundColor: "rgba(148,163,184,0.10)", borderColor: "rgba(148,163,184,0.30)" },
 
   rowTitle: { fontWeight: "900", color: Colors.text },
-  rowSub: { color: Colors.sub, fontWeight: "800" },
+  rowSub: { color: Colors.sub, fontWeight: "800", marginTop: 2 },
+  rowDocType: { color: Colors.sub, fontWeight: "800", marginTop: 6 },
 
   center: { padding: 20, alignItems: "center", gap: 10 },
   muted: { color: Colors.sub, fontWeight: "800" },

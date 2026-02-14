@@ -1,16 +1,28 @@
+// app/(tabs)/bookings/[id].tsx
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, router } from "expo-router";
+import { useMutation } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
+import ValidateImpactModal from "@/components/ValidateImpactModal";
+
 import { useCancelDispatch } from "@/app/api/hooks/useCancelDispatch";
 import { useDispatchDetails } from "@/app/api/hooks/useDispatchDetails";
+import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
 
-import type { DispatchBookingDetailDTO, DispatchBookingItemDTO } from "@/app/models/generated";
-import AuthBackground from "@/components/auth/AuthBackground";
+import type { DispatchBookingDetailDTO, DispatchBookingItemDTO, DispatchRequestValidationDTO } from "@/app/models/generated";
+import { ApiError } from "@/app/api/apiClient";
+import { api } from "@/app/api/api";
+// ✅ USE YOUR EXISTING api (createApiClient). Adjust path if needed.
+
+const MAX_W = 560;
+
+// ✅ Adjust if your backend path differs
+const POST_ENDPOINT = (id: number) => `/api/v1/dispatch-bookings/${id}/post`;
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -36,8 +48,8 @@ function fmtHrDateTime(x: any): string {
 }
 
 function statusOf(dto: DispatchBookingDetailDTO): "DRAFT" | "FINAL" | "CANCELLED" {
-  if (dto.cancelled) return "CANCELLED";
-  if (dto.posted) return "FINAL";
+  if ((dto as any)?.cancelled) return "CANCELLED";
+  if ((dto as any)?.posted) return "FINAL";
   return "DRAFT";
 }
 
@@ -52,6 +64,51 @@ function kv(label: string, value: any) {
   return { label, value: v };
 }
 
+/** Show only backend "message" (no JSON dump). */
+function getBackendMessage(e: unknown): string {
+  if (e instanceof ApiError) {
+    const body = e.body as any;
+    return (body?.message as string) || e.message || "Request failed";
+  }
+  if (e instanceof Error) return e.message || "Request failed";
+  return "Request failed";
+}
+
+/**
+ * Same idea as Otpremi:
+ * - validate needs: warehouseId + partnerId + items[]
+ * - draft flag should be false because we are going to POST/knjiži
+ */
+function buildValidatePayloadFromBooking(dto: DispatchBookingDetailDTO): DispatchRequestValidationDTO | null {
+  const warehouseId = Number((dto as any)?.warehouseId);
+  const partnerId = Number((dto as any)?.partnerId);
+  if (!warehouseId || !partnerId) return null;
+
+  const lines: any[] = Array.isArray((dto as any)?.items) ? ((dto as any).items as any[]) : [];
+
+  // IMPORTANT: prefer line.itemId (NOT line.id which is often row-id)
+  const items = lines
+    .map((ln) => {
+      const itemId = Number(ln?.itemId);
+      const quantity = Number(ln?.quantity ?? 0);
+      if (!itemId || !Number.isFinite(quantity) || quantity <= 0) return null;
+      return { itemId, quantity };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number((a as any).itemId) - Number((b as any).itemId));
+
+  if (!items.length) return null;
+
+  return {
+    warehouseId,
+    partnerId,
+    documentDate: undefined as any,
+    draft: false,
+    note: undefined as any,
+    items: items as any,
+  } as any;
+}
+
 export default function DispatchBookingDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const numericId = Number(id);
@@ -59,7 +116,13 @@ export default function DispatchBookingDetails() {
 
   const q = useDispatchDetails(validId);
   const cancelM = useCancelDispatch();
+  const validateM = useDispatchValidate();
+
   const [cancelReason, setCancelReason] = useState("");
+
+  // ✅ like Otpremi: modal visible state + confirm callback
+  const [validateOpen, setValidateOpen] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
 
   const dto = q.data as DispatchBookingDetailDTO | null;
 
@@ -68,21 +131,21 @@ export default function DispatchBookingDetails() {
 
   const partnerLabel = useMemo(() => {
     if (!dto) return "—";
-    const name = dto.partnerName ? String(dto.partnerName) : "";
-    const pid = dto.partnerId != null ? String(dto.partnerId) : "";
+    const name = (dto as any)?.partnerName ? String((dto as any).partnerName) : "";
+    const pid = (dto as any)?.partnerId != null ? String((dto as any).partnerId) : "";
     if (!name && !pid) return "—";
     return `${name || "Partner"}${pid ? ` (#${pid})` : ""}`;
   }, [dto]);
 
   const warehouseLabel = useMemo(() => {
     if (!dto) return "—";
-    return dto.warehouseId != null ? `Skladište #${dto.warehouseId}` : "—";
+    return (dto as any)?.warehouseId != null ? `Skladište #${(dto as any).warehouseId}` : "—";
   }, [dto]);
 
   const canCancel = useMemo(() => {
     if (!dto) return false;
     if (cancelM.loading) return false;
-    if (dto.cancelled) return false;
+    if ((dto as any)?.cancelled) return false;
     return true;
   }, [dto, cancelM.loading]);
 
@@ -90,6 +153,75 @@ export default function DispatchBookingDetails() {
     const a = (dto as any)?.items ?? [];
     return Array.isArray(a) ? (a as DispatchBookingItemDTO[]) : [];
   }, [dto]);
+
+  // ✅ this is your "submit" action after validate confirm
+  const postM = useMutation({
+    mutationFn: async (bookingId: number) => {
+      // using YOUR api client (with onUnauthorized etc)
+      return api.request(POST_ENDPOINT(bookingId), {} as any);
+    },
+  });
+
+  const validateLoading = validateM.isPending;
+  const validateData = validateM.data ?? null;
+  const validateError = validateM.error ? getBackendMessage(validateM.error) : null;
+  const posting = postM.isPending;
+
+  const openValidate = async () => {
+    setPostError(null);
+
+    if (!validId || !dto) return;
+
+    // only if draft and not cancelled
+    if ((dto as any)?.cancelled) {
+      setPostError("Dokument je već storniran.");
+      return;
+    }
+    if ((dto as any)?.posted) {
+      setPostError("Dokument je već knjižen.");
+      return;
+    }
+
+    const payload = buildValidatePayloadFromBooking(dto);
+    if (!payload) {
+      setPostError("Nedostaju podaci za validaciju (warehouseId/partnerId/stavke).");
+      return;
+    }
+
+    if (!(payload.items as any[])?.length) {
+      setPostError("Nema stavki za validaciju.");
+      return;
+    }
+
+    setValidateOpen(true);
+    validateM.reset();
+
+    try {
+      await validateM.mutateAsync(payload as any);
+    } catch {
+      // error shown via validateError in modal
+    }
+  };
+
+  const confirmValidateAndPost = async () => {
+    if (!validId || !dto) return;
+    if (posting || validateLoading) return;
+
+    setPostError(null);
+
+    try {
+      const res: any = await postM.mutateAsync(validId);
+
+      // if backend returns updated booking details -> apply, else refetch
+      if (res) q.setData(res as any);
+      else q.refetch();
+
+      setValidateOpen(false);
+    } catch (e) {
+      setPostError(getBackendMessage(e));
+      // keep modal open to show error
+    }
+  };
 
   const TopBar = ({ subtitle }: { subtitle: string }) => (
     <View style={s.topBar}>
@@ -166,37 +298,39 @@ export default function DispatchBookingDetails() {
   const stLabel = st ?? "DRAFT";
   const stHuman = stLabel === "CANCELLED" ? "STORNO" : stLabel;
 
-  const headerSubtitle = [stHuman, dto.documentCode ? dto.documentCode : null, partnerLabel !== "—" ? partnerLabel : null, warehouseLabel !== "—" ? warehouseLabel : null]
+  const headerSubtitle = [stHuman, (dto as any)?.documentCode ? (dto as any).documentCode : null, partnerLabel !== "—" ? partnerLabel : null, warehouseLabel !== "—" ? warehouseLabel : null]
     .filter(Boolean)
     .join(" • ");
 
   const metaRows = [
-    kv("Header ID", dto.headerId),
-    kv("Skladište ID", dto.warehouseId), // ✅ prikaz skladišta
-    kv("Dokument ID", dto.documentId),
-    kv("Šifra", dto.documentCode),
-    kv("Naziv", dto.documentName),
-    kv("Broj", dto.documentBr),
+    kv("Header ID", (dto as any)?.headerId),
+    kv("Skladište ID", (dto as any)?.warehouseId),
+    kv("Dokument ID", (dto as any)?.documentId),
+    kv("Šifra", (dto as any)?.documentCode),
+    kv("Naziv", (dto as any)?.documentName),
+    kv("Broj", (dto as any)?.documentBr),
     kv("Partner", partnerLabel),
   ];
 
   const timeRows = [
-    kv("Datum dokumenta", fmtHrDateTime(dto.documentDate)),
-    kv("Knjigovano/izrađeno", fmtHrDateTime(dto.bookedAt)),
-    kv("Kreirano", fmtHrDateTime(dto.createdAt)),
-    kv("Kreirao", dto.createdBy),
-    kv("Knjigovao", dto.postedBy),
-    kv("Knjigovano", fmtHrDateTime(dto.postedAt)),
-    kv("Stornirao", dto.cancelledBy),
-    kv("Stornirano", fmtHrDateTime(dto.cancelledAt)),
+    kv("Datum dokumenta", fmtHrDateTime((dto as any)?.documentDate)),
+    kv("Knjigovano/izrađeno", fmtHrDateTime((dto as any)?.bookedAt)),
+    kv("Kreirano", fmtHrDateTime((dto as any)?.createdAt)),
+    kv("Kreirao", (dto as any)?.createdBy),
+    kv("Knjigovao", (dto as any)?.postedBy),
+    kv("Knjigovano", fmtHrDateTime((dto as any)?.postedAt)),
+    kv("Stornirao", (dto as any)?.cancelledBy),
+    kv("Stornirano", fmtHrDateTime((dto as any)?.cancelledAt)),
   ];
+
+  const canPost = !(dto as any)?.posted && !(dto as any)?.cancelled;
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
       <TopBar subtitle={headerSubtitle} />
 
       <ScrollView contentContainerStyle={s.pad}>
-        {!!cancelM.error && <Banner type="error" text={cancelM.error} />}
+        {!!(cancelM.error || postError) && <Banner type="error" text={(cancelM.error || postError) as string} />}
 
         <View style={s.statusRow}>
           <View style={[s.statusPill, { backgroundColor: tone?.bg, borderColor: tone?.bd }]}>
@@ -205,22 +339,29 @@ export default function DispatchBookingDetails() {
 
           <View style={{ flex: 1 }} />
 
-          {!!dto.cancelled && (
+          {!!(dto as any)?.cancelled && (
             <View style={[s.miniPill, { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.25)" }]}>
               <Text style={s.miniText}>STORNO</Text>
             </View>
           )}
-          {!!dto.posted && !dto.cancelled && (
+          {!!(dto as any)?.posted && !(dto as any)?.cancelled && (
             <View style={[s.miniPill, { backgroundColor: "rgba(34,197,94,0.12)", borderColor: "rgba(34,197,94,0.25)" }]}>
               <Text style={s.miniText}>KNJIŽENO</Text>
             </View>
           )}
-          {!dto.posted && !dto.cancelled && (
+          {!(dto as any)?.posted && !(dto as any)?.cancelled && (
             <View style={[s.miniPill, { backgroundColor: "rgba(59,130,246,0.10)", borderColor: "rgba(59,130,246,0.22)" }]}>
               <Text style={s.miniText}>DRAFT</Text>
             </View>
           )}
         </View>
+
+        {/* ✅ Validate + Post (same flow as Otpremi) */}
+        {canPost && (
+          <Pressable style={[s.primary, (posting || validateLoading) && { opacity: 0.5 }]} disabled={posting || validateLoading} onPress={openValidate}>
+            <Text style={s.primaryText}>{posting || validateLoading ? "Radim…" : "Validiraj i knjiži"}</Text>
+          </Pressable>
+        )}
 
         <View style={s.card}>
           <Text style={s.cardTitle}>Podaci</Text>
@@ -290,6 +431,7 @@ export default function DispatchBookingDetails() {
           )}
         </View>
 
+        {/* Storno / delete draft (your existing logic) */}
         <View style={s.card}>
           <Text style={s.cardTitle}>Storno</Text>
 
@@ -322,6 +464,20 @@ export default function DispatchBookingDetails() {
           <Text style={s.secondaryText}>Nazad</Text>
         </Pressable>
       </ScrollView>
+
+      <ValidateImpactModal
+        visible={validateOpen}
+        onClose={() => {
+          if (posting || validateLoading) return;
+          setValidateOpen(false);
+        }}
+        disableClose={posting || validateLoading}
+        loading={validateLoading || posting}
+        error={validateError || postError}
+        data={validateData}
+        onConfirm={confirmValidateAndPost}
+        confirmText={posting ? "Knjižim…" : "Knjiži"}
+      />
     </Screen>
   );
 }
@@ -358,6 +514,9 @@ const s = StyleSheet.create({
 
   miniPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
   miniText: { fontWeight: "900", color: Colors.text, fontSize: 11 },
+
+  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
+  primaryText: { color: "#fff", fontWeight: "900" },
 
   card: {
     borderRadius: 16,

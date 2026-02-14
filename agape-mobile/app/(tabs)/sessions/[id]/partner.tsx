@@ -10,6 +10,9 @@ import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
 import type { PartnerResponseDTO } from "@/app/models/generated";
 import { partnerService } from "@/app/api/services/partnerService";
 
+// ✅ IMPORTANT: clear draft before opening entry, so "deleted then add again" is blank
+import { clearDraft } from "../_entryDraftStore";
+
 const MAX_W = 560;
 const PAGE_SIZE = 20;
 
@@ -89,6 +92,9 @@ export default function SessionPartnerPicker() {
   const pick = (p: any) => {
     const partnerId = Number(p?.id ?? 0);
     if (!partnerId) return;
+
+    // ✅ KEY FIX: always clear local draft for this pair before opening editor
+    clearDraft(sessionId, partnerId);
 
     router.push({
       pathname: "/(tabs)/sessions/[id]/entry" as const,

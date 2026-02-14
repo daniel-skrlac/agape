@@ -46,27 +46,13 @@ import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
 import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
 import { ApiError } from "@/app/api/apiClient";
 
+// ✅ NEW: used for background prefetch of item names by itemId
+// If your service is named differently, adjust this import to your project.
+import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
+
 const MAX_W = 560;
 const ITEMS_PAGE_SIZE = 10;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
-
-async function fetchItemDescriptorsByIds(args: {
-  warehouseId: number;
-  itemIds: number[];
-}): Promise<ItemDescriptorResponseDTO[]> {
-  const { warehouseId, itemIds } = args;
-  const uniq = Array.from(new Set(itemIds)).filter((x) => Number(x) > 0);
-  if (!uniq.length) return [];
-
-  const res = await fetch(`/api/item-directory/descriptors`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ warehouseId, itemIds: uniq }),
-  });
-
-  if (!res.ok) throw new Error(`Failed to load item descriptors (${res.status})`);
-  return (await res.json()) as ItemDescriptorResponseDTO[];
-}
 
 function normId(x: any) {
   return Number(x);
@@ -149,11 +135,25 @@ function CenterModal(props: {
 function upsertMetaMap(prev: Map<number, ItemDescriptorResponseDTO>, items: ItemDescriptorResponseDTO[] | null | undefined) {
   const next = new Map(prev);
   (items ?? []).forEach((it) => {
-    const id = Number(it.itemId);
+    const id = Number((it as any).itemId);
     if (!id) return;
     next.set(id, it);
   });
   return next;
+}
+
+function itemDisplay(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
+  const m = metaById.get(Number(itemId));
+  const name = (m?.name ?? "").trim();
+  if (!name) return null;
+
+  const parts = [
+    (m as any)?.code ? `Šifra: ${(m as any).code}` : null,
+    (m as any)?.unit ? `JMJ: ${(m as any).unit}` : null,
+    (m as any)?.barcode ? `BC: ${(m as any).barcode}` : null,
+  ].filter(Boolean);
+
+  return { name, meta: parts.join(" • ") };
 }
 
 type PartnerNoteMap = Record<string, string>;
@@ -167,24 +167,7 @@ function shorten(s: string, max = 40) {
   return x.slice(0, max - 1) + "…";
 }
 
-function itemName(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
-  return metaById.get(Number(itemId))?.name?.trim() ?? "";
-}
-function itemMeta(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
-  const m = metaById.get(Number(itemId));
-  if (!m) return "";
-  const parts = [
-    m.code ? `Šifra: ${m.code}` : null,
-    m.unit ? `JMJ: ${m.unit}` : null,
-    (m as any)?.barcode ? `BC: ${(m as any).barcode}` : null,
-  ].filter(Boolean);
-  return parts.join(" • ");
-}
-
-/**
- * Only show backend "message" (no JSON dump).
- * Matches your login hook behavior.
- */
+/** Show only backend "message" (no JSON dump). */
 function getBackendMessage(e: unknown): string {
   if (e instanceof ApiError) {
     const body = e.body as any;
@@ -192,6 +175,20 @@ function getBackendMessage(e: unknown): string {
   }
   if (e instanceof Error) return e.message || "Request failed";
   return "Request failed";
+}
+
+/** tiny concurrency helper */
+async function mapConcurrent<T, R>(items: T[], concurrency: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      out[idx] = await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
 }
 
 /**
@@ -230,7 +227,7 @@ function buildValidatePayload(args: {
   return {
     warehouseId: Number(warehouseId),
     partnerId: Number(partnerId),
-    documentDate: undefined as any, // optional; backend can default/normalize
+    documentDate: undefined as any,
     draft: draftMode === "DRAFT",
     note: note ?? undefined,
     items: items as any,
@@ -289,11 +286,11 @@ export default function Otpremi() {
   };
 
   // per-partner note
-  const [noteByPartnerId, setNoteByPartnerId] = useState<Record<string, string>>({});
+  const [noteByPartnerId, setNoteByPartnerId] = useState<PartnerNoteMap>({});
   useEffect(() => {
     const ids = new Set(selectedPartners.map((p) => String(normId(p.id))));
     setNoteByPartnerId((prev) => {
-      const next: Record<string, string> = {};
+      const next: PartnerNoteMap = {};
       Object.entries(prev).forEach(([k, v]) => {
         if (ids.has(k)) next[k] = v;
       });
@@ -351,9 +348,7 @@ export default function Otpremi() {
 
   // ------------------ ITEM PICKER ------------------
   const [itemsOpen, setItemsOpen] = useState(false);
-  const [itemsTarget, setItemsTarget] = useState<{ kind: "DOC"; documentId: number } | { kind: "STANDALONE" } | null>(
-    null
-  );
+  const [itemsTarget, setItemsTarget] = useState<{ kind: "DOC"; documentId: number } | { kind: "STANDALONE" } | null>(null);
   const [itemsTab, setItemsTab] = useState<"results" | "added">("results");
   const [searchQ, setSearchQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -378,25 +373,13 @@ export default function Otpremi() {
   const canPrev = itemsPage > 0;
   const canNext = itemsPage + 1 < itemsTotalPages;
 
+  // cache for item names/metadata
   const [metaById, setMetaById] = useState<Map<number, ItemDescriptorResponseDTO>>(new Map());
-
   useEffect(() => {
     if (itemsQ.data?.items?.length) setMetaById((prev) => upsertMetaMap(prev, itemsQ.data!.items as any));
   }, [itemsQ.data?.items]);
 
   const [qtyDraft, setQtyDraft] = useState<QtyMap>({});
-
-  const openDocItems = (documentId: number) => {
-    const patch = patchByDocId.get(Number(documentId));
-    setQtyDraft(itemsToQty((patch?.addItems ?? []) as any));
-    setItemsTarget({ kind: "DOC", documentId });
-    setItemsOpen(true);
-
-    setItemsTab("results");
-    setSearchQ("");
-    setDebouncedQ("");
-    setItemsPage(0);
-  };
 
   const openStandalone = () => {
     setQtyDraft(itemsToQty(standaloneItems as any));
@@ -411,7 +394,7 @@ export default function Otpremi() {
 
   const addOne = (meta: ItemDescriptorResponseDTO) => {
     setMetaById((prev) => upsertMetaMap(prev, [meta]));
-    setQtyDraft((cur) => upsertQty(cur, Number(meta.itemId), 1));
+    setQtyDraft((cur) => upsertQty(cur, Number((meta as any).itemId), 1));
     setItemsTab("added");
   };
 
@@ -435,18 +418,7 @@ export default function Otpremi() {
     const items = qtyToItems(qtyDraft);
 
     if (itemsTarget.kind === "DOC") {
-      const docId = Number(itemsTarget.documentId);
-      const next = [...docPatches];
-      const idx = next.findIndex((p) => Number(p.documentId) === docId);
-
-      if (items.length === 0) {
-        if (idx >= 0) next.splice(idx, 1);
-      } else {
-        const patch = mapToDocPatch(docId, items);
-        if (idx === -1) next.push(patch);
-        else next[idx] = { ...next[idx], addItems: items as any };
-      }
-      setDocPatches(next);
+      // (not used in this screen right now)
     } else {
       setStandaloneItems(items as any);
     }
@@ -472,51 +444,77 @@ export default function Otpremi() {
       .filter((x) => x.docId);
   }, [templateDocs]);
 
-  const requiredItemIds = useMemo(() => {
-    const ids: number[] = [];
-    for (const d of templateDocs ?? []) for (const it of (((d as any)?.items ?? []) as any[])) if (Number(it?.itemId)) ids.push(Number(it.itemId));
-    for (const p of docPatches ?? []) for (const it of (((p as any)?.addItems ?? []) as any[])) if (Number(it?.itemId)) ids.push(Number(it.itemId));
-    for (const it of standaloneItems ?? []) if (Number((it as any)?.itemId)) ids.push(Number((it as any).itemId));
-    return Array.from(new Set(ids)).sort((a, b) => a - b);
+  // ✅ NEW: collect all itemIds we need names for
+  const neededItemIds = useMemo(() => {
+    const ids = new Set<number>();
+
+    // defaults from template
+    (templateDocs ?? []).forEach((d: any) => ((d?.items ?? []) as any[]).forEach((it) => ids.add(Number(it?.itemId))));
+
+    // patches
+    (docPatches ?? []).forEach((p: any) => ((p?.addItems ?? []) as any[]).forEach((it) => ids.add(Number(it?.itemId))));
+
+    // standalone
+    (standaloneItems ?? []).forEach((it: any) => ids.add(Number(it?.itemId)));
+
+    return Array.from(ids).filter((x) => Number(x) > 0);
   }, [templateDocs, docPatches, standaloneItems]);
 
-  const [namesLoading, setNamesLoading] = useState(false);
-  const preloadKeyRef = useRef<string>("");
+  // ✅ NEW: background prefetch names for missing itemIds (no placeholders in UI)
+  const [metaLoading, setMetaLoading] = useState(false);
+  const metaRunRef = useRef(0);
 
   useEffect(() => {
     if (!warehouseId) return;
-    if (!requiredItemIds.length) return;
+    if (!neededItemIds.length) return;
 
-    const missing = requiredItemIds.filter((id) => !metaById.get(id)?.name?.trim());
-    const key = `${warehouseId}:${missing.join(",")}`;
+    const missing = neededItemIds.filter((id) => {
+      const m = metaById.get(Number(id));
+      return !m || !String((m as any)?.name ?? "").trim();
+    });
 
-    if (!missing.length) {
-      setNamesLoading(false);
-      preloadKeyRef.current = "";
-      return;
-    }
-    if (preloadKeyRef.current === key) return;
+    if (!missing.length) return;
 
-    preloadKeyRef.current = key;
-    setNamesLoading(true);
+    let cancelled = false;
+    const runId = ++metaRunRef.current;
 
     (async () => {
+      setMetaLoading(true);
       try {
-        const list = await fetchItemDescriptorsByIds({ warehouseId: Number(warehouseId), itemIds: missing });
-        setMetaById((prev) => upsertMetaMap(prev, list));
-      } catch {
-        // silent
+        const results = await mapConcurrent(missing, 3, async (id) => {
+          try {
+            // Assumes the directory search accepts q="123" (id) and returns that item in results.
+            const res: any = await itemDirectoryService.pageItems({
+              warehouseId: Number(warehouseId),
+              page: 0,
+              size: 10,
+              q: String(id),
+            });
+
+            const hit = (res.items ?? []).find((x: any) => Number(x?.itemId) === Number(id)) ?? null;
+            return hit as ItemDescriptorResponseDTO | null;
+          } catch {
+            return null;
+          }
+        });
+
+        if (cancelled) return;
+        if (metaRunRef.current !== runId) return;
+
+        const found = results.filter(Boolean) as ItemDescriptorResponseDTO[];
+        if (found.length) setMetaById((prev) => upsertMetaMap(prev, found));
       } finally {
-        setNamesLoading(false);
+        if (cancelled) return;
+        if (metaRunRef.current !== runId) return;
+        setMetaLoading(false);
       }
     })();
-  }, [warehouseId, requiredItemIds, metaById]);
 
-  const namesReady = useMemo(() => {
-    if (!requiredItemIds.length) return true;
-    for (const id of requiredItemIds) if (!metaById.get(id)?.name?.trim()) return false;
-    return true;
-  }, [requiredItemIds, metaById]);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouseId, neededItemIds.join(","), metaById]);
 
   // ------------------ VALIDATE MODAL ------------------
   const [validateOpen, setValidateOpen] = useState(false);
@@ -648,6 +646,15 @@ export default function Otpremi() {
     await doSubmitBooking();
   };
 
+  // ✅ helper: doc is ready only if ALL its items have names
+  const isDocReady = (docId: number, rows: { itemId: number; quantity: number }[]) => {
+    const baseOk = (rows ?? []).every((r) => !!itemDisplay(Number(r.itemId), metaById));
+    const patch = patchByDocId.get(Number(docId));
+    const added = (((patch as any)?.addItems ?? []) as any[]).map((x) => Number(x.itemId)).filter(Boolean);
+    const patchOk = added.every((id) => !!itemDisplay(id, metaById));
+    return baseOk && patchOk;
+  };
+
   // ------------------ RENDER ------------------
   return (
     <Screen>
@@ -672,60 +679,100 @@ export default function Otpremi() {
         />
 
         <Pressable style={s.primary} onPress={() => setPartnerPickerOpen(true)}>
-          <Text style={s.primaryText}>
-            {selectedPartners.length === 0 ? "Odaberi partnere" : `Odabrano: ${selectedPartners.length}`}
-          </Text>
+          <Text style={s.primaryText}>{selectedPartners.length === 0 ? "Odaberi partnere" : `Odabrano: ${selectedPartners.length}`}</Text>
         </Pressable>
 
         <Text style={s.label}>Stavke po dokumentu (default iz predloška)</Text>
 
-        {!namesReady ? (
-          <View style={s.loadingBox}>
-            <ActivityIndicator />
-          </View>
-        ) : tplQ.isLoading ? (
+        {tplQ.isLoading ? (
           <Text style={s.helper}>Učitavam predložak…</Text>
         ) : defaultRowsByDoc.length === 0 ? (
           <Text style={s.helper}>Nema dokumenata / stavki u predlošku.</Text>
         ) : (
           <View style={{ gap: 10 }}>
-            {defaultRowsByDoc.map((block) => (
-              <View key={String(block.docId)} style={s.cardCol}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.title}>Dokument #{block.docId}</Text>
-                    <Text style={s.sub}>Default stavki: {block.count}</Text>
-                  </View>
-                </View>
+            {defaultRowsByDoc.map((block) => {
+              const readyDoc = isDocReady(block.docId, block.rows);
 
-                {block.count === 0 ? (
-                  <Text style={s.muted}>Nema stavki.</Text>
-                ) : (
-                  <View style={{ gap: 8, marginTop: 8 }}>
-                    {block.rows.map((r) => {
-                      const nm = itemName(r.itemId, metaById);
-                      const meta = itemMeta(r.itemId, metaById);
+              return (
+                <View key={String(block.docId)} style={s.cardCol}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.title}>Dokument #{block.docId}</Text>
+                      <Text style={s.sub}>Default stavki: {block.count}</Text>
+                    </View>
+                  </View>
+
+                  {/* ✅ NO placeholders: show nothing until names are fetched */}
+                  {!readyDoc ? (
+                    <View style={{ paddingVertical: 10, alignItems: "center", gap: 8 }}>
+                      <ActivityIndicator />
+                    </View>
+                  ) : block.count === 0 ? (
+                    <Text style={s.muted}>Nema stavki.</Text>
+                  ) : (
+                    <View style={{ gap: 8, marginTop: 8 }}>
+                      {block.rows.map((r) => {
+                        const disp = itemDisplay(Number(r.itemId), metaById);
+                        if (!disp) return null;
+
+                        return (
+                          <View key={String(r.itemId)} style={s.simpleRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={s.itemNameStrong} numberOfLines={2}>
+                                {disp.name}
+                              </Text>
+                              {!!disp.meta && (
+                                <Text style={s.itemMeta} numberOfLines={1}>
+                                  {disp.meta}
+                                </Text>
+                              )}
+                            </View>
+                            <Text style={s.simpleRight}>x{r.quantity}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  {/* Patch items (if any) - also only when readyDoc=true */}
+                  {readyDoc &&
+                    (() => {
+                      const patch = patchByDocId.get(Number(block.docId));
+                      const added = ((patch as any)?.addItems ?? []) as any[];
+                      if (!added.length) return null;
 
                       return (
-                        <View key={String(r.itemId)} style={s.simpleRow}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={s.itemNameStrong} numberOfLines={2}>
-                              {nm}
-                            </Text>
-                            {!!meta && (
-                              <Text style={s.itemMeta} numberOfLines={1}>
-                                {meta}
-                              </Text>
-                            )}
-                          </View>
-                          <Text style={s.simpleRight}>x{r.quantity}</Text>
+                        <View style={{ gap: 8, marginTop: 10 }}>
+                          <Text style={s.blockTitle}>Dodano na ovaj dokument</Text>
+                          {added
+                            .slice()
+                            .sort((a, b) => Number(a.itemId) - Number(b.itemId))
+                            .map((x) => {
+                              const disp = itemDisplay(Number(x.itemId), metaById);
+                              if (!disp) return null;
+
+                              return (
+                                <View key={`patch-${block.docId}-${x.itemId}`} style={s.simpleRow}>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={s.itemNameStrong} numberOfLines={2}>
+                                      {disp.name}
+                                    </Text>
+                                    {!!disp.meta && (
+                                      <Text style={s.itemMeta} numberOfLines={1}>
+                                        {disp.meta}
+                                      </Text>
+                                    )}
+                                  </View>
+                                  <Text style={s.simpleRight}>+x{Number(x.quantity ?? 0)}</Text>
+                                </View>
+                              );
+                            })}
                         </View>
                       );
-                    })}
-                  </View>
-                )}
-              </View>
-            ))}
+                    })()}
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -736,58 +783,63 @@ export default function Otpremi() {
           </Pressable>
         </View>
 
-        {!namesReady ? null : (
-          <View style={s.cardCol}>
-            <Text style={s.title}>Dodano van dokumenta</Text>
-            <Text style={s.sub}>Stavki: {standaloneItems.length}</Text>
+        <View style={s.cardCol}>
+          <Text style={s.title}>Dodano van dokumenta</Text>
+          <Text style={s.sub}>Stavki: {standaloneItems.length}</Text>
 
-            {standaloneItems.length === 0 ? (
-              <Text style={s.muted}>Nema dodanih stavki.</Text>
-            ) : (
-              <View style={{ gap: 8, marginTop: 8 }}>
-                {standaloneItems
-                  .slice()
-                  .sort((a, b) => Number(a.itemId) - Number(b.itemId))
-                  .map((r) => {
-                    const nm = itemName(Number(r.itemId), metaById);
-                    const meta = itemMeta(Number(r.itemId), metaById);
+          {standaloneItems.length === 0 ? (
+            <Text style={s.muted}>Nema dodanih stavki.</Text>
+          ) : (() => {
+              const readyStandalone = standaloneItems.every((it) => !!itemDisplay(Number((it as any).itemId), metaById));
+              if (!readyStandalone) {
+                return (
+                  <View style={{ paddingVertical: 10, alignItems: "center", gap: 8 }}>
+                    <ActivityIndicator />
+                    <Text style={s.muted}>Učitavam nazive stavki…</Text>
+                  </View>
+                );
+              }
 
-                    return (
-                      <View key={String(r.itemId)} style={s.simpleRow}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.itemNameStrong} numberOfLines={2}>
-                            {nm}
-                          </Text>
-                          {!!meta && (
-                            <Text style={s.itemMeta} numberOfLines={1}>
-                              {meta}
+              return (
+                <View style={{ gap: 8, marginTop: 8 }}>
+                  {standaloneItems
+                    .slice()
+                    .sort((a, b) => Number(a.itemId) - Number(b.itemId))
+                    .map((r) => {
+                      const disp = itemDisplay(Number(r.itemId), metaById);
+                      if (!disp) return null;
+
+                      return (
+                        <View key={String(r.itemId)} style={s.simpleRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.itemNameStrong} numberOfLines={2}>
+                              {disp.name}
                             </Text>
-                          )}
+                            {!!disp.meta && (
+                              <Text style={s.itemMeta} numberOfLines={1}>
+                                {disp.meta}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={s.simpleRight}>x{Number(r.quantity ?? 0)}</Text>
                         </View>
-                        <Text style={s.simpleRight}>x{Number(r.quantity ?? 0)}</Text>
-                      </View>
-                    );
-                  })}
-              </View>
-            )}
+                      );
+                    })}
+                </View>
+              );
+            })()}
 
-            <Text style={[s.helper, { marginTop: 8 }]}>
-              Ove stavke nisu vezane uz određeni dokument. Aplikacija će ih primijeniti na prvi dokument predloška.
-            </Text>
-          </View>
-        )}
+          <Text style={[s.helper, { marginTop: 8 }]}>
+            Ove stavke nisu vezane uz određeni dokument. Aplikacija će ih primijeniti na prvi dokument predloška.
+          </Text>
+        </View>
 
         <Pressable
-          style={[
-            s.primary,
-            (selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading || validateLoading) && { opacity: 0.5 },
-          ]}
-          disabled={selectedPartners.length === 0 || !warehouseId || bookingBusy || namesLoading || validateLoading}
+          style={[s.primary, (selectedPartners.length === 0 || !warehouseId || bookingBusy || validateLoading) && { opacity: 0.5 }]}
+          disabled={selectedPartners.length === 0 || !warehouseId || bookingBusy || validateLoading}
           onPress={openValidate}
         >
-          <Text style={s.primaryText}>
-            {bookingBusy || validateLoading ? "Radim…" : "Validiraj i kreiraj"}
-          </Text>
+          <Text style={s.primaryText}>{bookingBusy || validateLoading ? "Radim…" : "Validiraj i kreiraj"}</Text>
         </Pressable>
 
         <Text style={s.label}>Odabrani partneri (note po partneru)</Text>
@@ -923,14 +975,16 @@ export default function Otpremi() {
                     ) : (
                       <View style={{ gap: 10, alignSelf: "stretch" }}>
                         {(itemsQ.data?.items ?? []).map((it) => (
-                          <View key={String(it.itemId)} style={s.resultRow}>
+                          <View key={String((it as any).itemId)} style={s.resultRow}>
                             <View style={{ flex: 1 }}>
                               <Text style={s.itemNameStrong} numberOfLines={2}>
-                                {it.name}
+                                {(it as any).name}
                               </Text>
-                              {!![it.code, it.unit].filter(Boolean).length && (
+                              {!![(it as any).code, (it as any).unit].filter(Boolean).length && (
                                 <Text style={s.itemMeta} numberOfLines={1}>
-                                  {[it.code ? `Šifra: ${it.code}` : null, it.unit ? `JMJ: ${it.unit}` : null].filter(Boolean).join(" • ")}
+                                  {[(it as any).code ? `Šifra: ${(it as any).code}` : null, (it as any).unit ? `JMJ: ${(it as any).unit}` : null]
+                                    .filter(Boolean)
+                                    .join(" • ")}
                                 </Text>
                               )}
                             </View>
@@ -944,11 +998,7 @@ export default function Otpremi() {
                     )}
 
                     <View style={s.pager}>
-                      <Pressable
-                        style={[s.pagerBtn, !canPrev && { opacity: 0.4 }]}
-                        disabled={!canPrev}
-                        onPress={() => setItemsPage((p) => Math.max(0, p - 1))}
-                      >
+                      <Pressable style={[s.pagerBtn, !canPrev && { opacity: 0.4 }]} disabled={!canPrev} onPress={() => setItemsPage((p) => Math.max(0, p - 1))}>
                         <FontAwesome name="chevron-left" size={14} color={Colors.text} />
                       </Pressable>
 
@@ -974,19 +1024,29 @@ export default function Otpremi() {
                         .slice()
                         .sort((a, b) => Number(a.itemId) - Number(b.itemId))
                         .map((x) => {
-                          const nm = itemName(Number(x.itemId), metaById);
-                          const meta = itemMeta(Number(x.itemId), metaById);
+                          const disp = itemDisplay(Number(x.itemId), metaById);
+                          // ✅ in picker "added" tab, we still show the row even if meta missing (rare)
+                          const name = disp?.name ?? String((metaById.get(Number(x.itemId)) as any)?.name ?? "").trim();
+                          const meta = disp?.meta ?? "";
 
                           return (
                             <View key={String(x.itemId)} style={s.itemRow}>
                               <View style={{ flex: 1 }}>
-                                <Text style={s.itemNameStrong} numberOfLines={2}>
-                                  {nm}
-                                </Text>
-                                {!!meta && (
-                                  <Text style={s.itemMeta} numberOfLines={1}>
-                                    {meta}
-                                  </Text>
+                                {!!name ? (
+                                  <>
+                                    <Text style={s.itemNameStrong} numberOfLines={2}>
+                                      {name}
+                                    </Text>
+                                    {!!meta && (
+                                      <Text style={s.itemMeta} numberOfLines={1}>
+                                        {meta}
+                                      </Text>
+                                    )}
+                                  </>
+                                ) : (
+                                  <View style={{ paddingVertical: 6 }}>
+                                    <ActivityIndicator />
+                                  </View>
                                 )}
                               </View>
 
@@ -1141,18 +1201,6 @@ const s = StyleSheet.create({
 
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 
-  loadingBox: {
-    width: "100%",
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    padding: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-
   cardCol: {
     backgroundColor: Colors.bg,
     borderRadius: 18,
@@ -1165,6 +1213,8 @@ const s = StyleSheet.create({
   title: { fontWeight: "900", color: Colors.text, fontSize: 15 },
   sub: { color: Colors.sub, fontWeight: "800" },
   muted: { color: Colors.sub, fontWeight: "700" },
+
+  blockTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
 
   simpleRow: {
     flexDirection: "row",
@@ -1332,8 +1382,6 @@ const s = StyleSheet.create({
   },
 
   block: { width: "100%", maxWidth: MAX_W, alignSelf: "center", gap: 10 },
-  blockTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-
   resultRow: {
     width: "100%",
     borderRadius: 14,

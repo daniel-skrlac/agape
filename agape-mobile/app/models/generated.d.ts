@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-11 16:00:50.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-14 15:06:07.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -113,7 +113,6 @@ export interface DispatchRequestDTO {
 export interface DispatchRequestValidationDTO {
     warehouseId: number;
     documentDate: Date;
-    partnerId: number;
     items: DispatchItemValidationRequest[];
     draft: boolean;
     note: string;
@@ -344,7 +343,6 @@ export interface FolderResponseDTO {
 
 export interface TemplateBookDocPatchDTO {
     documentId: number;
-    noteOverride: string;
     addItems: TemplateBookItemDTO[];
 }
 
