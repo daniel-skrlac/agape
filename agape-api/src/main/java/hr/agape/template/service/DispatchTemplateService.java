@@ -952,8 +952,8 @@ public class DispatchTemplateService {
             TemplateBookDocPatchDTO patch = patchByDocId.get(d.getDocumentId());
 
             String note = null;
-            if (patch != null && patch.getNoteOverride() != null) {
-                note = patch.getNoteOverride();
+            if (patch != null && d.getDefaultNote() != null) {
+                note = d.getDefaultNote();
             }
 
             Map<Long, BigDecimal> qty = new LinkedHashMap<>();

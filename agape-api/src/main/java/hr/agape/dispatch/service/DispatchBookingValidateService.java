@@ -14,7 +14,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @ApplicationScoped
 public class DispatchBookingValidateService {
@@ -39,13 +42,13 @@ public class DispatchBookingValidateService {
      * This method does NOT use SD_SIFREZ.MIJENJAZALIHU.
      * Rules applied:
      * - draft=true:
-     *     OUT (inOutFlag=4): pendingOut += qty
-     *     IN  (otherwise):   pendingIn  += qty
-     *     current/inQty/outQty unchanged
+     * OUT (inOutFlag=4): pendingOut += qty
+     * IN  (otherwise):   pendingIn  += qty
+     * current/inQty/outQty unchanged
      * - draft=false (final/posted):
-     *     OUT (inOutFlag=4): current -= qty, outQty += qty
-     *     IN  (otherwise):   current += qty, inQty  += qty
-     *     pending unchanged
+     * OUT (inOutFlag=4): current -= qty, outQty += qty
+     * IN  (otherwise):   current += qty, inQty  += qty
+     * pending unchanged
      * effective = current - pendingOut + pendingIn
      * Output is frontend-focused:
      * - Only fields that actually change are populated (before/delta/after)
@@ -95,11 +98,11 @@ public class DispatchBookingValidateService {
 
                 final StockItemStatus s = snap.get(itemId);
 
-                final BigDecimal cur0      = bd(s == null ? null : s.getCurrentQty());
-                final BigDecimal pendOut0  = bd(s == null ? null : s.getPendingOutQty());
-                final BigDecimal pendIn0   = bd(s == null ? null : s.getPendingInQty());
-                final BigDecimal in0       = bd(s == null ? null : s.getInQty());
-                final BigDecimal out0      = bd(s == null ? null : s.getOutQty());
+                final BigDecimal cur0 = bd(s == null ? null : s.getCurrentQty());
+                final BigDecimal pendOut0 = bd(s == null ? null : s.getPendingOutQty());
+                final BigDecimal pendIn0 = bd(s == null ? null : s.getPendingInQty());
+                final BigDecimal in0 = bd(s == null ? null : s.getInQty());
+                final BigDecimal out0 = bd(s == null ? null : s.getOutQty());
 
                 final BigDecimal eff0 = cur0.subtract(pendOut0).add(pendIn0);
 
@@ -127,11 +130,11 @@ public class DispatchBookingValidateService {
                     }
                 }
 
-                final BigDecimal cur1     = cur0.add(dCur);
+                final BigDecimal cur1 = cur0.add(dCur);
                 final BigDecimal pendOut1 = pendOut0.add(dPendOut);
-                final BigDecimal pendIn1  = pendIn0.add(dPendIn);
-                final BigDecimal in1      = in0.add(dIn);
-                final BigDecimal out1     = out0.add(dOut);
+                final BigDecimal pendIn1 = pendIn0.add(dPendIn);
+                final BigDecimal in1 = in0.add(dIn);
+                final BigDecimal out1 = out0.add(dOut);
 
                 final BigDecimal eff1 = cur1.subtract(pendOut1).add(pendIn1);
 

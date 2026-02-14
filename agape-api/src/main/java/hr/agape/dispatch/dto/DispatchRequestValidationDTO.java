@@ -44,12 +44,6 @@ public class DispatchRequestValidationDTO {
     private LocalDate documentDate;
 
     /**
-     * Recipient/partner for whom goods are dispatched (FK → PARTNERI.PARTNER_ID).
-     */
-    @NotNull
-    private Long partnerId;
-
-    /**
      * Lines to book on this document. At least one is required.
      * Each item needs itemId (ARTIKL_ID) and quantity (KOLICINA).
      */

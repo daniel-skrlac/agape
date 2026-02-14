@@ -193,8 +193,12 @@ public class DispatchBookingSessionService {
             e.setDocumentDate(req.getDocumentDate());
             e.setNote(req.getNote());
 
-            e.setDocPatchesJson(mapper.toJson(req.getDocPatches()));
-            e.setExtraItemsJson(mapper.toJson(req.getExtraItems()));
+            if (req.getDocPatches() != null) {
+                e.setDocPatchesJson(mapper.toJson(req.getDocPatches()));
+            }
+            if (req.getExtraItems() != null) {
+                e.setExtraItemsJson(mapper.toJson(req.getExtraItems()));
+            }
 
             e.persist();
 
