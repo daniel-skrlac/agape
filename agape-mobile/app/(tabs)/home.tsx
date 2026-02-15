@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutAnimation, Pressable, Text, View, Platform, UIManager } from "react-native";
+import { LayoutAnimation, Pressable, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -26,6 +26,7 @@ const TOP_ERR_HINT = "Greška - pogledaj poruku iznad.";
 
 export default function HomeScreen() {
   const router = useRouter();
+
   const { session } = useCurrentUser();
   const defaultWarehouseId = (session?.defaultWarehouseId ?? null) as number | null;
 
@@ -35,7 +36,10 @@ export default function HomeScreen() {
   const whError = warehousesQuery?.error;
   const refetchWarehouses = warehousesQuery?.refetch;
 
-  const warehousesEmpty = useMemo(() => !whLoading && !whError && warehouses.length === 0, [whLoading, whError, warehouses.length]);
+  const warehousesEmpty = useMemo(
+    () => !whLoading && !whError && warehouses.length === 0,
+    [whLoading, whError, warehouses.length]
+  );
 
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
@@ -46,9 +50,7 @@ export default function HomeScreen() {
       followsDefaultRef.current = true;
       setWarehouseOpen(false);
       setWarehouseId(null);
-      return () => {
-        setWarehouseOpen(false);
-      };
+      return () => setWarehouseOpen(false);
     }, [])
   );
 
@@ -58,7 +60,7 @@ export default function HomeScreen() {
   }, [defaultWarehouseId]);
 
   useEffect(() => {
-    if (!warehouses?.length) return;
+    if (!warehouses.length) return;
 
     if (!followsDefaultRef.current && warehouseId != null) return;
 
@@ -129,6 +131,7 @@ export default function HomeScreen() {
       followsDefaultRef.current = true;
       setWarehouseId(null);
       setWarehouseOpen(false);
+
       await Promise.resolve(refetchWarehouses?.());
       await stats.refetch?.();
     },
@@ -202,6 +205,7 @@ export default function HomeScreen() {
             onSelect={onSelectWarehouse}
             itemLabel={(id) => Strings.home.warehouse.item(id)}
             inlineLoading={statsRefreshingInline}
+            style={styles.surface}
           />
         </View>
 
@@ -348,6 +352,10 @@ export default function HomeScreen() {
   );
 }
 
+function Surface({ children, style }: { children: React.ReactNode; style?: any }) {
+  return <View style={[styles.surface, style]}>{children}</View>;
+}
+
 function HeroCard(props: {
   routerPushProfile: () => void;
   displayName: string;
@@ -448,7 +456,7 @@ function Accordion(props: {
   const iconTone = props.tone === "warm" ? styles.accIconWarm : styles.accIconCool;
 
   return (
-    <View style={styles.accSurface}>
+    <Surface style={styles.accSurface}>
       <Pressable
         onPress={props.onPress}
         android_ripple={{ color: RIPPLE }}
@@ -475,10 +483,10 @@ function Accordion(props: {
         </View>
       </Pressable>
 
-      <View style={styles.accDivider} />
+      <View style={[styles.accDivider, { height: 1 }]} />
 
       {props.open ? <View style={styles.accBody}>{props.children}</View> : null}
-    </View>
+    </Surface>
   );
 }
 
