@@ -52,7 +52,7 @@ public class AuthService {
     public ServiceResponseDTO<RegisterResponseDTO> register(RegisterRequestDTO req) {
         try {
             if (userRepo.existsByUsername(req.getUsername())) {
-                return ServiceResponseDirector.errorBadRequest("Username already taken.");
+                return ServiceResponseDirector.errorConflict("Username already taken.");
             }
 
             RoleEntity defaultRole = roleRepo.findByName(defaultRoleName);
