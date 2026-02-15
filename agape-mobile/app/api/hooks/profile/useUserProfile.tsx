@@ -1,10 +1,10 @@
 import Strings from "@/constants/Strings";
 import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { userService } from "../services/userService";
-import { useCurrentUser } from "./useCurrentUser";
-import { toUserMessage } from "../apiClient";
 import type { UserResponseDTO } from "@/app/models/generated";
+import { toUserMessage } from "../../apiClient";
+import { userService } from "../../services/profile/userService";
+import { useCurrentUser } from "../useCurrentUser";
 
 const qk = {
     profile: (id: number) => ["userProfile", id] as const,

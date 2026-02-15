@@ -12,10 +12,10 @@ import { DateRangeSheet } from "@/components/DateRangeSheet";
 import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
 import { useDispatchBookings } from "@/app/api/hooks/useDispatchBookings";
 import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
-import { useWarehouses } from "@/app/api/hooks/useWarehouses";
 import { ApiError } from "@/app/api/apiClient";
 
 import type { DocumentDescriptorResponseDTO, DispatchBookingListItemDTO } from "@/app/models/generated";
+import { useWarehouses } from "@/app/api/hooks/dashboard/useWarehouses";
 
 type DispatchBookingStatusFilter = "ALL" | "FINAL" | "DRAFT" | "CANCELLED";
 type WarehousePick = { id: number | null; label: string };

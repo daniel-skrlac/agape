@@ -7,14 +7,13 @@ import Screen from "../../components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
 import Strings from "../../constants/Strings";
 
-import { useStockStatistics } from "../api/hooks/useStockStatistics";
-import { useWarehouses } from "../api/hooks/useWarehouses";
 import { useCurrentUser } from "../api/hooks/useCurrentUser";
-import { useUserProfile } from "../api/hooks/useUserProfile";
 import { usePullToRefresh } from "../api/hooks/usePullToRefresh";
 import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
 import { styles, RIPPLE, T } from "../(auth)/styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
+import { useWarehouses } from "../api/hooks/dashboard/useWarehouses";
+import { useStockStatistics } from "../api/hooks/dashboard/useStockStatistics";
 
 type SectionKey = "missing" | "needsFill" | "most";
 

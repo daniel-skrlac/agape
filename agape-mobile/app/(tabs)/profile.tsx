@@ -12,10 +12,10 @@ import { ErrorCard } from "@/components/ErrorCard";
 
 import { clearSession } from "@/app/api/sessionStore";
 import { usePullToRefresh } from "@/app/api/hooks/usePullToRefresh";
-import { useUserProfile } from "@/app/api/hooks/useUserProfile";
-import { useUserProfileForm } from "@/app/api/hooks/useUserProfileForm";
 
 import { styles } from "./styles/ProfileScreen.styles";
+import { useUserProfile } from "../api/hooks/profile/useUserProfile";
+import { useUserProfileForm } from "../api/hooks/profile/useUserProfileForm";
 
 export default function ProfileScreen() {
   const router = useRouter();

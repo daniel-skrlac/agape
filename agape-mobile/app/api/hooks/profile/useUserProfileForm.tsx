@@ -1,9 +1,9 @@
 import Strings from "@/constants/Strings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { userService } from "../services/userService";
-import { toUserMessage } from "../apiClient";
 import type { UpdateUserRequestDTO, UserResponseDTO } from "@/app/models/generated";
+import { toUserMessage } from "../../apiClient";
+import { userService } from "../../services/profile/userService";
 
 type Touched = { name: boolean; username: boolean; password: boolean };
 export type SubmitResult = { ok: true } | { ok: false };

@@ -1,6 +1,6 @@
 import Strings from "@/constants/Strings";
 import { useMemo, useState } from "react";
-import { authService } from "@/app/api/services/authService";
+import { authService } from "@/app/api/services/auth/authService";
 import { toUserMessage } from "../../apiClient";
 
 type Touched = { fullName: boolean; oib: boolean; username: boolean; password: boolean };

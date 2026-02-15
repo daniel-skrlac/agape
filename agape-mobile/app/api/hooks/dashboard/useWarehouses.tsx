@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { warehouseService } from "../services/warehouseService";
+import { warehouseService } from "../../services/dashboard/warehouseService";
 
 export function useWarehouses() {
     return useQuery({

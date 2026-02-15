@@ -3,9 +3,9 @@ import type {
     LoginRequestDTO,
     RegisterRequestDTO,
     RegisterResponseDTO,
-} from "../../models/generated";
-import { clearSession, saveSession } from "../sessionStore";
-import { api } from "../api";
+} from "../../../models/generated";
+import { clearSession, saveSession } from "../../sessionStore";
+import { api } from "../../api";
 
 export const authService = {
     async login(payload: LoginRequestDTO): Promise<AuthResponseDTO> {

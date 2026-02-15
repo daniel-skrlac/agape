@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import Strings from "@/constants/Strings";
 import { updateSession } from "@/app/api/sessionStore";
-import { userService } from "@/app/api/services/userService";
+import { userService } from "@/app/api/services/profile/userService";
 
 export function useMainWarehouseSettings(opts: {
     userId: number | null;

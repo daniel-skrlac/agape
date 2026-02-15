@@ -1,6 +1,6 @@
 
-import type { UpdateUserRequestDTO } from "../../models/generated";
-import { api } from "../api";
+import type { UpdateUserRequestDTO } from "../../../models/generated";
+import { api } from "../../api";
 
 export const userService = {
     getById(id: number, signal?: AbortSignal) {

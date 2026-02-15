@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { stockStatisticsService } from "../services/stockStatisticsService";
+import { stockStatisticsService } from "../../services/dashboard/stockStatisticsService";
 
 export function useStockStatistics(warehouseId: number | null) {
     return useQuery({
