@@ -41,7 +41,7 @@ import type {
 import { partnerService } from "@/app/api/services/partnerService";
 import { useItemsPage } from "@/app/api/hooks/useItemDirectory";
 import { useBookMany, useBookOne, useTemplate } from "@/app/api/hooks/useDispatchTemplates";
-import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
+import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
 import { ApiError } from "@/app/api/apiClient";
 

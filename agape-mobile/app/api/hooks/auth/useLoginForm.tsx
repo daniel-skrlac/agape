@@ -1,6 +1,6 @@
 import Strings from "@/constants/Strings";
 import { useMemo, useState } from "react";
-import { ApiError, toUserMessage } from "../../apiClient";
+import { toUserMessage } from "../../apiClient";
 import { authService } from "../../services/auth/authService";
 
 type Touched = { username: boolean; password: boolean };

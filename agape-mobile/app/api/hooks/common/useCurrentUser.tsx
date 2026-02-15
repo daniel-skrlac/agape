@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getSession, subscribeSession, type AuthSession } from "../sessionStore";
+import { getSession, subscribeSession, type AuthSession } from "../../sessionStore";
 
 export function useCurrentUser() {
     const [session, setSession] = useState<AuthSession | null>(null);

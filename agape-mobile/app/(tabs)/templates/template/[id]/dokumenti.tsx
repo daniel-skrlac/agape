@@ -20,7 +20,7 @@ import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import Colors from "@/constants/Colors";
 import TemplatesHeader from "../../TemplatesHeader";
 
-import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
+import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import { useTemplate, useUpsertDoc, useReplaceItems, useDeleteDoc } from "@/app/api/hooks/useDispatchTemplates";
 import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
 import { useItemsPage } from "@/app/api/hooks/useItemDirectory";

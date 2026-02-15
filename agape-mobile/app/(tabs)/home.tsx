@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, LayoutAnimation, Pressable, Text, View, useWindowDimensions } from "react-native";
+import { LayoutAnimation, Pressable, Text, View, Platform, UIManager } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFocusEffect, useRouter } from "expo-router";
 
@@ -7,53 +7,38 @@ import Screen from "../../components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
 import Strings from "../../constants/Strings";
 
-import { useCurrentUser } from "../api/hooks/useCurrentUser";
+import { useCurrentUser } from "../api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "../api/hooks/common/usePullToRefresh";
 import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
+
 import { styles, RIPPLE, T } from "./styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
+
 import { useWarehouses } from "../api/hooks/dashboard/useWarehouses";
 import { useStockStatistics } from "../api/hooks/dashboard/useStockStatistics";
 
+import WarehousePickerCard from "@/components/WarehousePickerCard";
+import { toUserMessage } from "../api/apiClient";
+
 type SectionKey = "missing" | "needsFill" | "most";
 
-function useDefaultWarehouseId() {
-  const { session } = useCurrentUser();
-
-  const defaultWarehouseId = useMemo(() => {
-    return (session?.defaultWarehouseId ?? null) as number | null;
-  }, [session?.defaultWarehouseId]);
-
-  return { session, defaultWarehouseId };
-}
-
-function errMsg(e: any) {
-  return String(e?.message ?? e?.error?.message ?? "Greška prilikom učitavanja.");
-}
+const TOP_ERR_HINT = "Greška - pogledaj poruku iznad.";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { session } = useCurrentUser();
+  const defaultWarehouseId = (session?.defaultWarehouseId ?? null) as number | null;
 
-  const warehousesQuery = useWarehouses();
+  const warehousesQuery = useWarehouses() as any;
+  const warehouses: number[] = (warehousesQuery?.data ?? []) as number[];
+  const whLoading: boolean = !!warehousesQuery?.isLoading;
+  const whError = warehousesQuery?.error;
+  const refetchWarehouses = warehousesQuery?.refetch;
 
-  const {
-    data: warehousesRaw,
-    isLoading: isWarehousesLoading,
-    refetch: refetchWarehouses,
-  } = warehousesQuery as unknown as {
-    data: number[] | undefined;
-    isLoading: boolean;
-    refetch: () => Promise<any>;
-  };
-
-  const warehouses: number[] = warehousesRaw ?? [];
-  const warehousesError = (warehousesQuery as any)?.error;
-
-  const { session, defaultWarehouseId } = useDefaultWarehouseId();
+  const warehousesEmpty = useMemo(() => !whLoading && !whError && warehouses.length === 0, [whLoading, whError, warehouses.length]);
 
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
-
   const followsDefaultRef = useRef(true);
 
   useFocusEffect(
@@ -78,22 +63,24 @@ export default function HomeScreen() {
     if (!followsDefaultRef.current && warehouseId != null) return;
 
     const next =
-      defaultWarehouseId != null && warehouses.includes(defaultWarehouseId) ? defaultWarehouseId : warehouses[0];
+      defaultWarehouseId != null && warehouses.includes(defaultWarehouseId)
+        ? defaultWarehouseId
+        : warehouses[0];
 
     if (warehouseId !== next) setWarehouseId(next);
   }, [warehouses, defaultWarehouseId, warehouseId]);
 
-  const onSelectWarehouse = (id: number) => {
+  const onSelectWarehouse = useCallback((id: number) => {
     followsDefaultRef.current = false;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setWarehouseId(id);
     setWarehouseOpen(false);
-  };
+  }, []);
 
-  const toggleWarehouse = () => {
+  const toggleWarehouse = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setWarehouseOpen((p) => !p);
-  };
+  }, []);
 
   const stats = useStockStatistics(warehouseId);
   const { data, isLoading, isFetching, dataUpdatedAt } = stats as any;
@@ -101,15 +88,15 @@ export default function HomeScreen() {
 
   const totals = data?.totals;
 
-  const [open, setOpen] = useState<Record<SectionKey, boolean>>({
+  const [openAcc, setOpenAcc] = useState<Record<SectionKey, boolean>>({
     missing: false,
     needsFill: false,
     most: false,
   });
 
-  const toggle = (k: SectionKey) => {
+  const toggleAcc = (k: SectionKey) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpen((prev) => ({ ...prev, [k]: !prev[k] }));
+    setOpenAcc((prev) => ({ ...prev, [k]: !prev[k] }));
   };
 
   const displayName = useMemo(() => {
@@ -132,22 +119,38 @@ export default function HomeScreen() {
   const mostItems = (data?.mostInStock ?? []).slice(0, 12);
 
   const selectedWarehouseLabel = useMemo(() => {
+    if (warehousesEmpty) return Strings.home.warehouse.empty;
     if (warehouseId == null) return Strings.home.warehouse.none;
     return Strings.home.warehouse.item(warehouseId);
-  }, [warehouseId]);
+  }, [warehousesEmpty, warehouseId]);
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
       followsDefaultRef.current = true;
       setWarehouseId(null);
       setWarehouseOpen(false);
-
-      await Promise.all([refetchWarehouses?.()]);
-      await stats.refetch();
+      await Promise.resolve(refetchWarehouses?.());
+      await stats.refetch?.();
     },
   ]);
 
   const statsRefreshingInline = isFetching && !refreshing;
+
+  const whErrorMessage = useMemo(() => (whError ? toUserMessage(whError) : null), [whError]);
+
+  const statsErrorMessage = useMemo(() => {
+    if (!statsError) return null;
+    if (warehouseId == null) return null;
+    return toUserMessage(statsError);
+  }, [statsError, warehouseId]);
+
+  const topError = useMemo(() => whErrorMessage || statsErrorMessage, [whErrorMessage, statsErrorMessage]);
+  const topErrorTitle = whErrorMessage ? "Ne mogu učitati skladišta" : "Ne mogu učitati statistiku";
+
+  const onTopErrorAction = useCallback(() => {
+    if (whErrorMessage) return refetchWarehouses?.();
+    return stats.refetch?.();
+  }, [whErrorMessage, refetchWarehouses, stats]);
 
   return (
     <TabScroll
@@ -169,257 +172,175 @@ export default function HomeScreen() {
           />
         </View>
 
-        <View style={styles.sectionGap}>
-          <Surface style={styles.whSurface}>
-            <Pressable
-              onPress={toggleWarehouse}
-              android_ripple={{ color: RIPPLE }}
-              style={({ pressed }) => [styles.whRow, pressed && styles.pressed]}
-            >
-              <View style={styles.whIcon}>
-                <FontAwesome name="building" size={16} color={T.text} />
-              </View>
-
-              <View style={styles.flex1}>
-                <Text style={styles.whLabel}>{Strings.home.warehouse.label}</Text>
-                <Text style={styles.whValue} numberOfLines={1}>
-                  {isWarehousesLoading ? Strings.home.warehouse.loading : selectedWarehouseLabel}
-                </Text>
-
-                {statsRefreshingInline ? (
-                  <View style={styles.whLoadingRow}>
-                    <ActivityIndicator size="small" />
-                    <Text style={styles.whLoadingInline} numberOfLines={1} />
-                  </View>
-                ) : null}
-              </View>
-
-              <View style={styles.whRight}>
-                <Text style={styles.whHint} numberOfLines={1}>
-                  {Strings.home.warehouse.changeHint}
-                </Text>
-                <FontAwesome name={warehouseOpen ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
-              </View>
-            </Pressable>
-
-            {warehouseOpen ? <View style={styles.whDivider} /> : null}
-
-            {warehouseOpen ? (
-              <View style={styles.whDropdown}>
-                {isWarehousesLoading ? (
-                  <View style={styles.whDropdownLoading}>
-                    <ActivityIndicator size="small" />
-                    <Text style={styles.whDropdownLoadingText}>{Strings.home.warehouse.loading}</Text>
-                  </View>
-                ) : warehousesError ? (
-                  <View style={styles.whDropdownLoading}>
-                    <ErrorCard
-                      title="Ne mogu učitati skladišta"
-                      message={errMsg(warehousesError)}
-                      actionText="Pokušaj ponovno"
-                      onAction={() => refetchWarehouses?.()}
-                      messageLines={1}
-                    />
-                  </View>
-                ) : warehouses.length === 0 ? (
-                  <View style={styles.whDropdownEmpty}>
-                    <Text style={styles.whDropdownEmptyText}>{Strings.home.warehouse.empty}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.whDropdownList}>
-                    {warehouses.map((id: number) => {
-                      const active = id === warehouseId;
-                      return (
-                        <Pressable
-                          key={id}
-                          onPress={() => onSelectWarehouse(id)}
-                          android_ripple={{ color: RIPPLE }}
-                          style={({ pressed }) => [
-                            styles.whItem,
-                            active ? styles.whItemActive : styles.whItemIdle,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <Text style={styles.whItemText}>{Strings.home.warehouse.item(id)}</Text>
-                          {active ? <FontAwesome name="check" size={16} color={T.text} /> : null}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-            ) : null}
-          </Surface>
-        </View>
-
-        <View style={styles.sectionGap}>
-          <View style={styles.metricsGrid}>
-            <MetricTile
-              icon="cubes"
-              title={Strings.home.metrics.totalItems}
-              value={formatIntHR(totals?.totalItems)}
-              tone="neutral"
-            />
-            <MetricTile
-              icon="exclamation-circle"
-              title={Strings.home.metrics.missing}
-              value={formatIntHR(totals?.missingCount)}
-              tone="warm"
-            />
-            <MetricTile
-              icon="arrow-up"
-              title={Strings.home.metrics.needsFill}
-              value={formatIntHR(totals?.needsFillCount)}
-              tone="warm"
-            />
-            <MetricTile
-              icon="bookmark"
-              title={Strings.home.metrics.reserved}
-              value={formatIntHR(totals?.reservedCount)}
-              tone="cool"
+        {!!topError ? (
+          <View style={styles.sectionGap}>
+            <ErrorCard
+              title={topErrorTitle}
+              message={topError}
+              actionText="Pokušaj ponovno"
+              onAction={onTopErrorAction}
+              messageLines={2}
+              titleLines={1}
             />
           </View>
+        ) : null}
+
+        <View style={styles.sectionGap}>
+          <WarehousePickerCard
+            labelText={Strings.home.warehouse.label}
+            changeHintText={Strings.home.warehouse.changeHint}
+            loadingText={Strings.home.warehouse.loading}
+            emptyText={Strings.home.warehouse.empty}
+            open={warehouseOpen}
+            onToggle={toggleWarehouse}
+            warehouses={warehouses}
+            loading={whLoading}
+            error={null}
+            onRetry={() => refetchWarehouses?.()}
+            selectedId={warehouseId}
+            selectedLabel={whLoading ? Strings.home.warehouse.loading : selectedWarehouseLabel}
+            onSelect={onSelectWarehouse}
+            itemLabel={(id) => Strings.home.warehouse.item(id)}
+            inlineLoading={statsRefreshingInline}
+          />
         </View>
 
-        <View style={styles.sectionGapStack}>
-          <Accordion
-            icon="exclamation-circle"
-            tone="warm"
-            title={Strings.home.sections.missingTitle}
-            subtitle={Strings.home.sections.missingSub}
-            count={data?.missing?.length ?? 0}
-            open={open.missing}
-            onPress={() => toggle("missing")}
-          >
-            {isLoading ? (
-              <EmptyLine text={Strings.home.empty.loading} />
-            ) : warehouseId == null && warehousesError ? (
-              <ErrorCard
-                title="Ne mogu učitati skladišta"
-                message={errMsg(warehousesError)}
-                actionText="Pokušaj ponovno"
-                onAction={() => refetchWarehouses?.()}
-                messageLines={1}
-              />
-            ) : statsError ? (
-              <ErrorCard
-                title="Ne mogu učitati statistiku"
-                message={errMsg(statsError)}
-                actionText="Pokušaj ponovno"
-                onAction={() => stats.refetch()}
-                messageLines={1}
-              />
-            ) : missingItems.length === 0 ? (
-              <EmptyLine text={Strings.home.empty.bySegment.missing} />
-            ) : (
-              <ListCard>
-                {missingItems.map((it: any, idx: number) => (
-                  <StockRow
-                    key={`${it.itemId}-${it.warehouseId}`}
-                    name={it.name}
-                    code={`${Strings.home.labels.code}: ${it.itemCode}`}
-                    rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
-                    rightBottom={Strings.home.rowHints.missing}
-                    badgeTone="warm"
-                    divider={idx < missingItems.length - 1}
-                  />
-                ))}
-              </ListCard>
-            )}
-          </Accordion>
+        {warehousesEmpty ? (
+          <View style={styles.sectionGap}>
+            <EmptyLine text={Strings.home.warehouse.empty} />
+          </View>
+        ) : null}
 
-          <Accordion
-            icon="arrow-up"
-            tone="warm"
-            title={Strings.home.sections.needsFillTitle}
-            subtitle={Strings.home.sections.needsFillSub}
-            count={data?.needsFill?.length ?? 0}
-            open={open.needsFill}
-            onPress={() => toggle("needsFill")}
-          >
-            {isLoading ? (
-              <EmptyLine text={Strings.home.empty.loading} />
-            ) : warehouseId == null && warehousesError ? (
-              <ErrorCard
-                title="Ne mogu učitati skladišta"
-                message={errMsg(warehousesError)}
-                actionText="Pokušaj ponovno"
-                onAction={() => refetchWarehouses?.()}
-                messageLines={1}
-              />
-            ) : statsError ? (
-              <ErrorCard
-                title="Ne mogu učitati statistiku"
-                message={errMsg(statsError)}
-                actionText="Pokušaj ponovno"
-                onAction={() => stats.refetch()}
-                messageLines={1}
-              />
-            ) : needsFillItems.length === 0 ? (
-              <EmptyLine text={Strings.home.empty.bySegment.needsFill} />
-            ) : (
-              <ListCard>
-                {needsFillItems.map((it: any, idx: number) => (
-                  <StockRow
-                    key={`${it.itemId}-${it.warehouseId}`}
-                    name={it.name}
-                    code={`${Strings.home.labels.code}: ${it.itemCode}`}
-                    rightTop={`${formatQtyHR(it.currentQty)} / ${formatQtyHR(it.minimalQty)}`}
-                    rightBottom={Strings.home.rowHints.needsFill}
-                    badgeTone="warm"
-                    divider={idx < needsFillItems.length - 1}
-                  />
-                ))}
-              </ListCard>
-            )}
-          </Accordion>
+        {!warehousesEmpty ? (
+          <>
+            <View style={styles.sectionGap}>
+              <View style={styles.metricsGrid}>
+                <MetricTile
+                  icon="cubes"
+                  title={Strings.home.metrics.totalItems}
+                  value={formatIntHR(totals?.totalItems)}
+                  tone="neutral"
+                />
+                <MetricTile
+                  icon="exclamation-circle"
+                  title={Strings.home.metrics.missing}
+                  value={formatIntHR(totals?.missingCount)}
+                  tone="warm"
+                />
+                <MetricTile
+                  icon="arrow-up"
+                  title={Strings.home.metrics.needsFill}
+                  value={formatIntHR(totals?.needsFillCount)}
+                  tone="warm"
+                />
+                <MetricTile
+                  icon="bookmark"
+                  title={Strings.home.metrics.reserved}
+                  value={formatIntHR(totals?.reservedCount)}
+                  tone="cool"
+                />
+              </View>
+            </View>
 
-          <Accordion
-            icon="check-circle"
-            tone="cool"
-            title={Strings.home.sections.mostTitle}
-            subtitle={Strings.home.sections.mostSub}
-            count={data?.mostInStock?.length ?? 0}
-            open={open.most}
-            onPress={() => toggle("most")}
-          >
-            {isLoading ? (
-              <EmptyLine text={Strings.home.empty.loading} />
-            ) : warehouseId == null && warehousesError ? (
-              <ErrorCard
-                title="Ne mogu učitati skladišta"
-                message={errMsg(warehousesError)}
-                actionText="Pokušaj ponovno"
-                onAction={() => refetchWarehouses?.()}
-                messageLines={1}
-              />
-            ) : statsError ? (
-              <ErrorCard
-                title="Ne mogu učitati statistiku"
-                message={errMsg(statsError)}
-                actionText="Pokušaj ponovno"
-                onAction={() => stats.refetch()}
-                messageLines={1}
-              />
-            ) : mostItems.length === 0 ? (
-              <EmptyLine text={Strings.home.empty.bySegment.most} />
-            ) : (
-              <ListCard>
-                {mostItems.map((it: any, idx: number) => (
-                  <StockRow
-                    key={`${it.itemId}-${it.warehouseId}`}
-                    name={it.name}
-                    code={`${Strings.home.labels.code}: ${it.itemCode}`}
-                    rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
-                    rightBottom={Strings.home.rowHints.most}
-                    badgeTone="cool"
-                    divider={idx < mostItems.length - 1}
-                  />
-                ))}
-              </ListCard>
-            )}
-          </Accordion>
-        </View>
+            <View style={styles.sectionGapStack}>
+              <Accordion
+                icon="exclamation-circle"
+                tone="warm"
+                title={Strings.home.sections.missingTitle}
+                subtitle={Strings.home.sections.missingSub}
+                count={data?.missing?.length ?? 0}
+                open={openAcc.missing}
+                onPress={() => toggleAcc("missing")}
+              >
+                {isLoading ? (
+                  <EmptyLine text={Strings.home.empty.loading} />
+                ) : topError ? (
+                  <EmptyLine text={TOP_ERR_HINT} />
+                ) : missingItems.length === 0 ? (
+                  <EmptyLine text={Strings.home.empty.bySegment.missing} />
+                ) : (
+                  <ListCard>
+                    {missingItems.map((it: any, idx: number) => (
+                      <StockRow
+                        key={`${it.itemId}-${it.warehouseId}`}
+                        name={it.name}
+                        code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                        rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
+                        rightBottom={Strings.home.rowHints.missing}
+                        badgeTone="warm"
+                        divider={idx < missingItems.length - 1}
+                      />
+                    ))}
+                  </ListCard>
+                )}
+              </Accordion>
+
+              <Accordion
+                icon="arrow-up"
+                tone="warm"
+                title={Strings.home.sections.needsFillTitle}
+                subtitle={Strings.home.sections.needsFillSub}
+                count={data?.needsFill?.length ?? 0}
+                open={openAcc.needsFill}
+                onPress={() => toggleAcc("needsFill")}
+              >
+                {isLoading ? (
+                  <EmptyLine text={Strings.home.empty.loading} />
+                ) : topError ? (
+                  <EmptyLine text={TOP_ERR_HINT} />
+                ) : needsFillItems.length === 0 ? (
+                  <EmptyLine text={Strings.home.empty.bySegment.needsFill} />
+                ) : (
+                  <ListCard>
+                    {needsFillItems.map((it: any, idx: number) => (
+                      <StockRow
+                        key={`${it.itemId}-${it.warehouseId}`}
+                        name={it.name}
+                        code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                        rightTop={`${formatQtyHR(it.currentQty)} / ${formatQtyHR(it.minimalQty)}`}
+                        rightBottom={Strings.home.rowHints.needsFill}
+                        badgeTone="warm"
+                        divider={idx < needsFillItems.length - 1}
+                      />
+                    ))}
+                  </ListCard>
+                )}
+              </Accordion>
+
+              <Accordion
+                icon="check-circle"
+                tone="cool"
+                title={Strings.home.sections.mostTitle}
+                subtitle={Strings.home.sections.mostSub}
+                count={data?.mostInStock?.length ?? 0}
+                open={openAcc.most}
+                onPress={() => toggleAcc("most")}
+              >
+                {isLoading ? (
+                  <EmptyLine text={Strings.home.empty.loading} />
+                ) : topError ? (
+                  <EmptyLine text={TOP_ERR_HINT} />
+                ) : mostItems.length === 0 ? (
+                  <EmptyLine text={Strings.home.empty.bySegment.most} />
+                ) : (
+                  <ListCard>
+                    {mostItems.map((it: any, idx: number) => (
+                      <StockRow
+                        key={`${it.itemId}-${it.warehouseId}`}
+                        name={it.name}
+                        code={`${Strings.home.labels.code}: ${it.itemCode}`}
+                        rightTop={`${formatQtyHR(it.currentQty)} ${it.unit ?? Strings.home.labels.pcs}`.trim()}
+                        rightBottom={Strings.home.rowHints.most}
+                        badgeTone="cool"
+                        divider={idx < mostItems.length - 1}
+                      />
+                    ))}
+                  </ListCard>
+                )}
+              </Accordion>
+            </View>
+          </>
+        ) : null}
 
         <View style={styles.bottomSpacer} />
       </Screen>
@@ -464,10 +385,6 @@ function HeroCard(props: {
   );
 }
 
-function Surface({ children, style }: { children: React.ReactNode; style?: any }) {
-  return <View style={[styles.surface, style]}>{children}</View>;
-}
-
 function KpiChip(props: { icon: React.ComponentProps<typeof FontAwesome>["name"]; label: string; value: string }) {
   return (
     <View style={styles.kpiChip}>
@@ -493,8 +410,7 @@ function MetricTile(props: {
   tone: "neutral" | "warm" | "cool";
   fullWidth?: boolean;
 }) {
-  const bg =
-    props.tone === "warm" ? styles.metricWarm : props.tone === "cool" ? styles.metricCool : styles.metricNeutral;
+  const bg = props.tone === "warm" ? styles.metricWarm : props.tone === "cool" ? styles.metricCool : styles.metricNeutral;
   const iconBg =
     props.tone === "warm" ? styles.metricIconWarm : props.tone === "cool" ? styles.metricIconCool : styles.metricIconNeut;
   const border =
@@ -532,7 +448,7 @@ function Accordion(props: {
   const iconTone = props.tone === "warm" ? styles.accIconWarm : styles.accIconCool;
 
   return (
-    <Surface style={styles.accSurface}>
+    <View style={styles.accSurface}>
       <Pressable
         onPress={props.onPress}
         android_ripple={{ color: RIPPLE }}
@@ -562,7 +478,7 @@ function Accordion(props: {
       <View style={styles.accDivider} />
 
       {props.open ? <View style={styles.accBody}>{props.children}</View> : null}
-    </Surface>
+    </View>
   );
 }
 

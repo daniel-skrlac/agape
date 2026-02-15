@@ -9,7 +9,7 @@ import { Banner } from "@/components/Banner";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
 
-import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
+import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import { useDispatchBookings } from "@/app/api/hooks/useDispatchBookings";
 import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
 import { ApiError } from "@/app/api/apiClient";

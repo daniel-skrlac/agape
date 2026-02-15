@@ -10,7 +10,7 @@ import { Banner } from "@/components/Banner";
 import { CenterSheet } from "@/components/CenterSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
-import { useCurrentUser } from "@/app/api/hooks/useCurrentUser";
+import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import type { BookingSessionCreateRequestDTO, BookingSessionResponseDTO } from "@/app/models/generated";
 import { useBookingSessions, useCreateBookingSession, useDeleteBookingSession } from "@/app/api/hooks/useBookingSessions";
 

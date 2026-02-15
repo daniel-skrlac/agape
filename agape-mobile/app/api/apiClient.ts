@@ -26,7 +26,6 @@ export class ApiError extends Error {
     if (this.status === 401 || this.status === 403) return "Unauthorized.";
     return this.message || `HTTP ${this.status}`;
   }
-
 }
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

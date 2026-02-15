@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserResponseDTO } from "@/app/models/generated";
 import { toUserMessage } from "../../apiClient";
 import { userService } from "../../services/profile/userService";
-import { useCurrentUser } from "../useCurrentUser";
+import { useCurrentUser } from "../common/useCurrentUser";
 
 const qk = {
     profile: (id: number) => ["userProfile", id] as const,
