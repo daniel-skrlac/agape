@@ -11,8 +11,8 @@ import TextField from "@/components/ui/TextField";
 import { ErrorCard } from "@/components/ErrorCard";
 
 import Strings from "@/constants/Strings";
-import { styles } from "../(tabs)/styles/RegisterScreen.styles";
 import { useRegisterForm } from "../api/hooks/auth/useRegisterForm";
+import { styles } from "./styles/RegisterScreen.styles";
 
 export default function RegisterScreen() {
   const router = useRouter();

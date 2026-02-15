@@ -11,7 +11,7 @@ import Strings from "@/constants/Strings";
 import { ErrorCard } from "@/components/ErrorCard";
 
 import { clearSession } from "@/app/api/sessionStore";
-import { usePullToRefresh } from "@/app/api/hooks/usePullToRefresh";
+import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
 
 import { styles } from "./styles/ProfileScreen.styles";
 import { useUserProfile } from "../api/hooks/profile/useUserProfile";

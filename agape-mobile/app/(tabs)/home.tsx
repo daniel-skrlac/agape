@@ -8,9 +8,9 @@ import TabScroll from "@/components/ui/TabScroll";
 import Strings from "../../constants/Strings";
 
 import { useCurrentUser } from "../api/hooks/useCurrentUser";
-import { usePullToRefresh } from "../api/hooks/usePullToRefresh";
+import { usePullToRefresh } from "../api/hooks/common/usePullToRefresh";
 import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
-import { styles, RIPPLE, T } from "../(auth)/styles/HomeScreen.styles";
+import { styles, RIPPLE, T } from "./styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
 import { useWarehouses } from "../api/hooks/dashboard/useWarehouses";
 import { useStockStatistics } from "../api/hooks/dashboard/useStockStatistics";

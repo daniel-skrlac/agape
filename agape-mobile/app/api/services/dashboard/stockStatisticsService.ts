@@ -1,5 +1,6 @@
-import type { StockStatisticsResponseDTO } from "../../models/generated";
-import { api } from "../api";
+import { StockStatisticsResponseDTO } from "@/app/models/generated";
+import { api } from "../../api";
+
 
 export const stockStatisticsService = {
   get(warehouseId: number, signal?: AbortSignal) {
