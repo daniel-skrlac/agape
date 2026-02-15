@@ -1,10 +1,11 @@
-// components/ValidateImpactModal.tsx
-import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useMemo } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Colors from "@/constants/Colors";
 
 import type { BookingImpactItemDTO, WarehouseBookingImpactDTO } from "@/app/models/generated";
+import { styles as s } from "./styles/ValidateImpactModal.styles";
+import { ErrorCard } from "./ErrorCard";
 
 type Props = {
   visible: boolean;
@@ -19,10 +20,7 @@ type Props = {
   onConfirm: () => void;
   confirmText?: string;
 
-  /** ✅ NEW: in bulk "Detalji", hide per-partner confirm ("Knjiži") */
   showConfirm?: boolean;
-
-  /** ✅ NEW: optional helper text shown in summary (useful when showConfirm=false) */
   bulkHint?: string | null;
 };
 
@@ -44,9 +42,9 @@ function fmt(v: any): string {
 type Status = "ok" | "warn" | "bad";
 
 function badgeTone(kind: Status) {
-  if (kind === "bad") return { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.28)", tx: Colors.dangerText };
-  if (kind === "warn") return { bg: "rgba(249,115,22,0.14)", bd: "rgba(249,115,22,0.30)", tx: Colors.text };
-  return { bg: "rgba(34,197,94,0.14)", bd: "rgba(34,197,94,0.30)", tx: Colors.text };
+  if (kind === "bad") return { bg: Colors.status.badBg, bd: Colors.status.badBd, tx: Colors.dangerText };
+  if (kind === "warn") return { bg: Colors.status.warnBg, bd: Colors.status.warnBd, tx: Colors.text };
+  return { bg: Colors.status.okBg, bd: Colors.status.okBd, tx: Colors.text };
 }
 
 function statusOfItem(it: any): Status {
@@ -68,14 +66,7 @@ function modeTitle(data: any) {
 
 type FieldKey = "currentQty" | "pendingOutQty" | "pendingInQty" | "inQty" | "outQty";
 
-const FIELD_META: Record<
-  FieldKey,
-  {
-    title: string;
-    beforeKey: string;
-    afterKey: string;
-  }
-> = {
+const FIELD_META: Record<FieldKey, { title: string; beforeKey: string; afterKey: string }> = {
   currentQty: { title: "Trenutna zaliha", beforeKey: "beforeCurrentQty", afterKey: "afterCurrentQty" },
   pendingOutQty: { title: "Neproknjiženo (OUT)", beforeKey: "beforePendingOutQty", afterKey: "afterPendingOutQty" },
   pendingInQty: { title: "Neproknjiženo (IN)", beforeKey: "beforePendingInQty", afterKey: "afterPendingInQty" },
@@ -99,7 +90,6 @@ function renderBeforeAfterRow(key: string, label: string, beforeVal: any, afterV
         </View>
 
         <View style={s.rowCell}>
-          <Text style={s.rowLabel}>Poslije</Text>
           <Text style={[s.rowValue, emphasize && { color: Colors.text }]}>{fmt(afterVal)}</Text>
         </View>
       </View>
@@ -108,9 +98,10 @@ function renderBeforeAfterRow(key: string, label: string, beforeVal: any, afterV
 }
 
 export default function ValidateImpactModal(props: Props) {
-  const { visible, onClose, disableClose, loading, error, data, onConfirm, confirmText, showConfirm = true, bulkHint } = props;
+  const { visible, onClose, disableClose, loading, error, data, onConfirm, confirmText, showConfirm = true, bulkHint } =
+    props;
 
-  const [onlyChanges] = useState(true);
+  const onlyChanges = true;
 
   const items: BookingImpactItemDTO[] = (((data as any)?.items ?? []) as BookingImpactItemDTO[]) ?? [];
 
@@ -147,7 +138,11 @@ export default function ValidateImpactModal(props: Props) {
               )}
             </View>
 
-            <Pressable style={[s.iconBtn, disableClose && { opacity: 0.5 }]} onPress={disableClose ? undefined : onClose} disabled={disableClose}>
+            <Pressable
+              style={[s.iconBtn, disableClose && { opacity: 0.5 }]}
+              onPress={disableClose ? undefined : onClose}
+              disabled={disableClose}
+            >
               <FontAwesome name="close" size={18} color={Colors.text} />
             </Pressable>
           </View>
@@ -160,18 +155,13 @@ export default function ValidateImpactModal(props: Props) {
                 <Text style={s.stateSub}>Analiziram stavke i očekivane promjene.</Text>
               </View>
             ) : error ? (
-              <View style={s.errBox}>
-                <View style={s.errHeader}>
-                  <FontAwesome name="exclamation-triangle" size={16} color={Colors.dangerText} />
-                  <Text style={s.errTitle}>Validacija nije uspjela</Text>
-                </View>
-
-                <Text style={s.errText}>{error}</Text>
-
-                <Pressable style={s.secondary} onPress={onClose} disabled={disableClose}>
-                  <Text style={s.secondaryText}>Zatvori</Text>
-                </Pressable>
-              </View>
+              <ErrorCard
+                title="Validacija nije uspjela"
+                message={error}
+                primaryText="Zatvori"
+                onPrimary={onClose}
+                disabled={!!disableClose}
+              />
             ) : !data ? (
               <View style={s.stateBox}>
                 <Text style={s.stateTitle}>Nema podataka</Text>
@@ -201,13 +191,13 @@ export default function ValidateImpactModal(props: Props) {
                   </View>
 
                   <View style={s.kpiRow}>
-                    <View style={[s.kpiPill, { backgroundColor: "rgba(34,197,94,0.14)", borderColor: "rgba(34,197,94,0.30)" }]}>
+                    <View style={[s.kpiPill, { backgroundColor: Colors.status.okBg, borderColor: Colors.status.okBd }]}>
                       <Text style={s.kpiText}>OK: {counts.ok}</Text>
                     </View>
-                    <View style={[s.kpiPill, { backgroundColor: "rgba(249,115,22,0.14)", borderColor: "rgba(249,115,22,0.30)" }]}>
+                    <View style={[s.kpiPill, { backgroundColor: Colors.status.warnBg, borderColor: Colors.status.warnBd }]}>
                       <Text style={s.kpiText}>U minus: {counts.warn}</Text>
                     </View>
-                    <View style={[s.kpiPill, { backgroundColor: "rgba(239,68,68,0.12)", borderColor: "rgba(239,68,68,0.28)" }]}>
+                    <View style={[s.kpiPill, { backgroundColor: Colors.status.badBg, borderColor: Colors.status.badBd }]}>
                       <Text style={s.kpiText}>Nema u skladištu: {counts.bad}</Text>
                     </View>
                   </View>
@@ -242,7 +232,9 @@ export default function ValidateImpactModal(props: Props) {
                     const name = String(it?.name ?? "").trim();
                     const code = String(it?.itemCode ?? "").trim();
                     const unit = String(it?.unit ?? "").trim();
-                    const metaLine = [code ? `Šifra: ${code}` : null, unit ? `JMJ: ${unit}` : null].filter(Boolean).join(" • ");
+                    const metaLine = [code ? `Šifra: ${code}` : null, unit ? `JMJ: ${unit}` : null]
+                      .filter(Boolean)
+                      .join(" • ");
 
                     const changedFields: string[] = (it?.changedFields ?? []) as string[];
 
@@ -299,9 +291,12 @@ export default function ValidateImpactModal(props: Props) {
 
                 {/* Actions */}
                 <View style={{ gap: 10, marginTop: 6 }}>
-                  {/* ✅ Only render confirm when showConfirm=true */}
                   {showConfirm ? (
-                    <Pressable style={[s.primary, !canConfirm && { opacity: 0.5 }]} onPress={onConfirm} disabled={!canConfirm}>
+                    <Pressable
+                      style={[s.primary, !canConfirm && { opacity: 0.5 }]}
+                      onPress={onConfirm}
+                      disabled={!canConfirm}
+                    >
                       <Text style={s.primaryText}>{counts.bad > 0 ? "Ne mogu kreirati" : confirmText ?? "Kreiraj"}</Text>
                     </Pressable>
                   ) : null}
@@ -318,215 +313,3 @@ export default function ValidateImpactModal(props: Props) {
     </Modal>
   );
 }
-
-const s = StyleSheet.create({
-  wrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
-
-  card: {
-    width: "100%",
-    maxWidth: 560,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    overflow: "hidden",
-    maxHeight: "88%",
-  },
-
-  header: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  title: { fontWeight: "900", color: Colors.text, fontSize: 16, lineHeight: 20 },
-  subtitle: { marginTop: 2, color: Colors.sub, fontWeight: "800", fontSize: 12, lineHeight: 16 },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "rgba(148,163,184,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  body: { padding: 14, gap: 12, paddingBottom: 18 },
-
-  stateBox: {
-    paddingVertical: 18,
-    paddingHorizontal: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  stateTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-  stateSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, textAlign: "center" },
-
-  errBox: {
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: Colors.dangerBg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.dangerText,
-    gap: 10,
-  },
-  errHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  errTitle: { fontWeight: "900", color: Colors.dangerText, fontSize: 14 },
-  errText: { fontWeight: "800", color: Colors.dangerText, opacity: 0.95 },
-
-  summaryCard: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: "rgba(148,163,184,0.10)",
-    padding: 12,
-    gap: 10,
-  },
-
-  // ✅ NEW
-  bulkHint: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(148,163,184,0.10)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(2, 6, 23, 0.08)",
-  },
-  bulkHintText: { flex: 1, fontWeight: "800", color: Colors.sub, fontSize: 12, lineHeight: 16 },
-
-  summaryRow: { flexDirection: "row", gap: 10 },
-  summaryCell: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: Colors.bg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    gap: 2,
-  },
-  summaryLabel: { color: Colors.sub, fontWeight: "800", fontSize: 12 },
-  summaryValue: { color: Colors.text, fontWeight: "900", fontSize: 14 },
-
-  kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  kpiPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  kpiText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
-
-  togglePill: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: "rgba(148,163,184,0.18)",
-  },
-  toggleText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
-
-  noticeBad: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(239,68,68,0.10)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(239,68,68,0.25)",
-  },
-  noticeBadText: { flex: 1, fontWeight: "900", color: Colors.dangerText, fontSize: 12, lineHeight: 16 },
-
-  noticeWarn: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(249,115,22,0.10)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(249,115,22,0.25)",
-  },
-  noticeWarnText: { flex: 1, fontWeight: "900", color: Colors.text, fontSize: 12, lineHeight: 16 },
-
-  noticeOk: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(34,197,94,0.10)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(34,197,94,0.22)",
-  },
-  noticeOkText: { flex: 1, fontWeight: "900", color: Colors.text, fontSize: 12, lineHeight: 16 },
-
-  listHeader: { marginTop: 2, gap: 2 },
-  listTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-  listSub: { fontWeight: "800", color: Colors.sub, fontSize: 12 },
-
-  itemCard: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    padding: 12,
-    gap: 10,
-  },
-  itemTop: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  itemName: { fontWeight: "900", color: Colors.text, fontSize: 15, lineHeight: 18 },
-  itemMeta: { color: Colors.sub, fontWeight: "800", fontSize: 12, marginTop: 2 },
-
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: { fontWeight: "900", fontSize: 11 },
-
-  rowCard: {
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: "rgba(148,163,184,0.08)",
-    padding: 10,
-    gap: 8,
-  },
-  rowTitle: { fontWeight: "900", color: Colors.text, fontSize: 13 },
-  rowGrid: { flexDirection: "row", alignItems: "center", gap: 10 },
-  rowCell: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: Colors.bg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    gap: 2,
-  },
-  rowLabel: { color: Colors.sub, fontWeight: "800", fontSize: 12 },
-  rowValue: { color: Colors.text, fontWeight: "900", fontSize: 14 },
-  rowArrow: { width: 22, alignItems: "center", justifyContent: "center" },
-
-  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
-  primaryText: { color: "#fff", fontWeight: "900" },
-
-  secondary: {
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(148,163,184,0.18)",
-    alignItems: "center",
-  },
-  secondaryText: { fontWeight: "900", color: Colors.text },
-});

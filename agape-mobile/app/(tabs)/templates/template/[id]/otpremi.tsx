@@ -48,7 +48,7 @@ import { ApiError } from "@/app/api/apiClient";
 // ✅ NEW: used for background prefetch of item names by itemId
 // If your service is named differently, adjust this import to your project.
 import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
-import { toLocalDateString } from "@/app/utils/format";
+import { toLocalDateString } from "@/app/utils/dateIso";
 
 const MAX_W = 560;
 const ITEMS_PAGE_SIZE = 10;

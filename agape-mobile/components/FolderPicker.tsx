@@ -23,14 +23,17 @@ function buildPath(byId: Map<number, FolderLike>, id: number): string {
   const parts: string[] = [];
   let cur: FolderLike | undefined = byId.get(id);
   let guard = 0;
+
   while (cur && guard++ < 50) {
     const nm = (cur.name ?? "").trim();
     if (nm) parts.push(nm);
+
     const pid = cur.parentId == null ? null : Number(cur.parentId);
     if (pid == null) break;
     cur = byId.get(pid);
   }
-  return parts.length ? `Root › ${parts.reverse().join(" › ")}` : "Root";
+
+  return parts.length ? `Root > ${parts.reverse().join(" > ")}` : "Root";
 }
 
 export function FolderPicker(props: {
@@ -43,10 +46,8 @@ export function FolderPicker(props: {
   rootLabel?: string;
   excludeIds?: Set<number> | number[];
 
-  /** ✅ kada je u ekranu koji treba da lista zauzme sav prostor */
   fill?: boolean;
 
-  /** optional wrapper style */
   style?: ViewStyle;
 }) {
   const {
@@ -78,7 +79,6 @@ export function FolderPicker(props: {
       children.set(pid, arr);
     }
 
-    // sort children by name
     for (const [pid, arr] of children.entries()) {
       arr.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "hr", { sensitivity: "base" }));
       children.set(pid, arr);
@@ -86,7 +86,6 @@ export function FolderPicker(props: {
 
     const needle = norm(q);
 
-    // flatten (preorder)
     const out: Array<{ id: number; name: string; depth: number; path: string }> = [];
     const walk = (pid: number | null, depth: number) => {
       const arr = children.get(pid) ?? [];
@@ -102,7 +101,6 @@ export function FolderPicker(props: {
 
     if (!needle) return out;
 
-    // when searching: keep matches + ancestors
     const keep = new Set<number>();
     const parentOf = new Map<number, number | null>();
     for (const f of folders ?? []) {
@@ -161,7 +159,6 @@ export function FolderPicker(props: {
         autoCapitalize="none"
       />
 
-      {/* ✅ ROOT je sada dio liste (scroll), ne uzima fixed visinu */}
       <FlatList
         style={[fill && { flex: 1, minHeight: 0 }]}
         data={model}
@@ -178,25 +175,24 @@ export function FolderPicker(props: {
         }
         renderItem={({ item }) => {
           const active = Number(selectedId) === item.id;
-          const indent = Math.min(6 + item.depth * 14, 160);
+          const indent = Math.min(item.depth * 14, 160);
 
           return (
             <Pressable style={[s.row, active && s.rowActive]} onPress={() => onSelect(item.id)}>
-              <View style={[s.indentRail, { width: indent }]} />
-              <View style={[s.rowLeft, { paddingLeft: indent }]}>
+              <View style={s.rowLeft}>
+                <View style={{ width: indent }} />
+
                 <View style={s.iconBox}>
                   <FontAwesome name="folder" size={16} color={Colors.text} />
                 </View>
+
                 <View style={{ flex: 1 }}>
-                  <Text style={s.name} numberOfLines={1}>
-                    {item.name}
-                  </Text>
+                  <Text style={s.name} numberOfLines={1}>{item.name}</Text>
                   {showBreadcrumb && (
-                    <Text style={s.path} numberOfLines={1}>
-                      {item.path}
-                    </Text>
+                    <Text style={s.path} numberOfLines={1}>{item.path}</Text>
                   )}
                 </View>
+
                 <Text style={s.id}>#{item.id}</Text>
               </View>
             </Pressable>

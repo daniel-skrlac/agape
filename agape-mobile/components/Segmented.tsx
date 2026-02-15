@@ -26,7 +26,10 @@ export function Segmented<T extends string>({
 }
 
 const s = StyleSheet.create({
-  wrap: { flexDirection: "row", borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, overflow: "hidden", backgroundColor: Colors.bg },
+  wrap: {
+    flexDirection: "row", borderRadius: 14, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border, overflow: "hidden", backgroundColor: Colors.bg
+  },
   item: { flex: 1, paddingVertical: 10, alignItems: "center" },
   on: { backgroundColor: "rgba(249,115,22,0.12)" },
   text: { fontWeight: "900", color: Colors.sub },

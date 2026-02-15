@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Colors from "@/constants/Colors";
+import { ErrorCard } from "./ErrorCard";
 
 type PageResult<T> = { items: T[]; page: number; size: number; total: number };
 type FetchPage<T> = (args: { page: number; size: number; q?: string }) => Promise<PageResult<T>>;
@@ -125,13 +126,11 @@ export function SearchPickerSheet<T>(props: Props<T>) {
     return () => {
       mountedRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
     resetAndLoad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ]);
 
   return (
@@ -144,13 +143,11 @@ export function SearchPickerSheet<T>(props: Props<T>) {
       onRequestClose={close}
     >
       <View style={s.backdrop}>
-        {/* ✅ pravi backdrop layer */}
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={closeOnBackdropPress ? close : undefined}
         />
 
-        {/* ✅ card je običan View, ne Pressable wrapper */}
         <View style={s.card} pointerEvents="auto">
           <View style={s.header}>
             <Text style={s.title} numberOfLines={1}>
@@ -187,10 +184,14 @@ export function SearchPickerSheet<T>(props: Props<T>) {
             </View>
           ) : error ? (
             <View style={s.center}>
-              <Text style={s.error}>{error}</Text>
-              <Pressable style={s.retry} onPress={resetAndLoad}>
-                <Text style={s.retryText}>Pokušaj ponovno</Text>
-              </Pressable>
+              <ErrorCard
+                title="Greška prilikom učitavanja"
+                message={error}
+                primaryText="Pokušaj ponovno"
+                onPrimary={resetAndLoad}
+                secondaryText="Zatvori"
+                onSecondary={close}
+              />
             </View>
           ) : (
             <FlatList
