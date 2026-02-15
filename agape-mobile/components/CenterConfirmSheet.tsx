@@ -13,7 +13,7 @@ export function CenterConfirmSheet({
   loading,
   onClose,
   onConfirm,
-  closeOnBackdrop = true, // ✅ NEW
+  closeOnBackdrop = true,
 }: {
   visible: boolean;
   title: string;
@@ -24,14 +24,14 @@ export function CenterConfirmSheet({
   loading?: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void> | void;
-  closeOnBackdrop?: boolean; // ✅ NEW
+  closeOnBackdrop?: boolean;
 }) {
   return (
     <CenterSheet
       visible={visible}
       title={title}
       onClose={onClose}
-      closeOnBackdrop={closeOnBackdrop} // ✅ forward
+      closeOnBackdrop={closeOnBackdrop}
     >
       {!!description && <Text style={s.desc}>{description}</Text>}
 

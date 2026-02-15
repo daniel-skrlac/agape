@@ -8,17 +8,16 @@ export function CenterSheet({
   onClose,
   children,
   width = 360,
-  closeOnBackdrop = false,  // ✅ NEW
-  disableClose = false,    // ✅ optional: blocks backdrop + header close + back button
+  closeOnBackdrop = false,
+  disableClose = false,
 }: {
   visible: boolean;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   width?: number;
-
-  closeOnBackdrop?: boolean; // ✅ NEW
-  disableClose?: boolean;     // ✅ optional
+  closeOnBackdrop?: boolean; 
+  disableClose?: boolean;
 }) {
   const canClose = !disableClose;
 
@@ -34,14 +33,13 @@ export function CenterSheet({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={canClose ? onClose : undefined} // ✅ Android back button
+      onRequestClose={canClose ? onClose : undefined}
     >
       <View style={s.backdropWrap}>
-        {/* ✅ Backdrop */}
         <Pressable
           style={s.backdrop}
           onPress={backdropCloses ? handleClose : undefined}
-          pointerEvents={backdropCloses ? "auto" : "none"} // ✅ ignore outside taps when disabled
+          pointerEvents={backdropCloses ? "auto" : "none"}
         />
 
         <View style={s.centerWrap} pointerEvents="box-none">
@@ -49,7 +47,6 @@ export function CenterSheet({
             <View style={s.header}>
               <Text style={s.title}>{title}</Text>
 
-              {/* ✅ Header close */}
               <Pressable
                 style={[s.closeBtn, !canClose && { opacity: 0.5 }]}
                 onPress={canClose ? handleClose : undefined}

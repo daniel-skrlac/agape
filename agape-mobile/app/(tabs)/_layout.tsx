@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Tabs, useRouter } from "expo-router";
 
-import { useColorScheme } from "@/components/useColorScheme";
 import { getToken } from "../api/sessionStore";
 import AuthBackground from "@/components/auth/AuthBackground";
 import TopBar from "@/components/ui/TopBar";

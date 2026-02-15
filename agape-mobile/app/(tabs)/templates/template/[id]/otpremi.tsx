@@ -23,7 +23,6 @@ import { Banner } from "@/components/Banner";
 import { Sheet } from "@/components/Sheet";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
-import { toLocalDateString } from "@/components/date";
 import { CenterSheet } from "@/components/CenterSheet";
 
 import ValidateImpactModal from "@/components/ValidateImpactModal";
@@ -49,6 +48,7 @@ import { ApiError } from "@/app/api/apiClient";
 // ✅ NEW: used for background prefetch of item names by itemId
 // If your service is named differently, adjust this import to your project.
 import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
+import { toLocalDateString } from "@/app/utils/format";
 
 const MAX_W = 560;
 const ITEMS_PAGE_SIZE = 10;

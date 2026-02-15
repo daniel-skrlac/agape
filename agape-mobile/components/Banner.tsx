@@ -1,12 +1,21 @@
-import Colors from "@/constants/Colors";
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import Colors from "@/constants/Colors";
 
-export function Banner({ type, text }: { type: "info" | "error" | "success"; text: string }) {
-  const bg =
-    type === "error" ? Colors.dangerBg : type === "success" ? "rgba(34,197,94,0.12)" : "rgba(59,130,246,0.10)";
-  const fg =
-    type === "error" ? Colors.dangerText : type === "success" ? "#166534" : Colors.sharedText;
+type BannerType = "info" | "error" | "success";
+
+export function Banner({ type, text }: { type: BannerType; text: string }) {
+  const { bg, fg } = useMemo(() => {
+    switch (type) {
+      case "error":
+        return { bg: Colors.dangerBg, fg: Colors.dangerText };
+      case "success":
+        return { bg: Colors.successBg, fg: Colors.successText };
+      case "info":
+      default:
+        return { bg: Colors.infoBg, fg: Colors.infoText };
+    }
+  }, [type]);
 
   return (
     <View style={[s.wrap, { backgroundColor: bg, borderColor: Colors.border }]}>
