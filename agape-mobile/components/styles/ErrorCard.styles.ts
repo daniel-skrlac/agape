@@ -2,42 +2,54 @@ import { StyleSheet } from "react-native";
 import Colors from "@/constants/Colors";
 
 export const styles = StyleSheet.create({
-    wrap: {
-        padding: 12,
-        borderRadius: 16,
-        backgroundColor: Colors.dangerBg,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: Colors.dangerText,
-        gap: 10,
-    },
+  wrap: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(239,68,68,0.08)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(239,68,68,0.22)",
+  },
 
-    header: { flexDirection: "row", alignItems: "center", gap: 8 },
-    title: { fontWeight: "900", color: Colors.dangerText, fontSize: 14 },
-    message: { fontWeight: "800", color: Colors.dangerText, opacity: 0.95 },
+  icon: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(239,68,68,0.14)",
+  },
 
-    actions: { flexDirection: "row", gap: 10 },
+  textWrap: { flex: 1, gap: 2 },
 
-    primaryBtn: {
-        flex: 1,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 14,
-        backgroundColor: Colors.orange,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    primaryText: { color: Colors.onPrimaryText ?? "#fff", fontWeight: "900" },
+  title: {
+    fontWeight: "900",
+    color: Colors.dangerText,
+    fontSize: 13,
+  },
 
-    secondaryBtn: {
-        flex: 1,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 14,
-        backgroundColor: "rgba(148,163,184,0.18)",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    secondaryText: { fontWeight: "900", color: Colors.text },
+  message: {
+    fontWeight: "800",
+    color: Colors.dangerText,
+    fontSize: 12,
+    opacity: 0.9,
+  },
 
-    btnDisabled: { opacity: 0.5 },
+  btn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2,6,23,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
+
+  disabled: { opacity: 0.5 },
 });

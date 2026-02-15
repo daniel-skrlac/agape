@@ -8,58 +8,53 @@ type Props = {
   title?: string;
   message: string;
 
-  // primary action (npr. Retry ili Close)
-  primaryText?: string;
-  onPrimary?: () => void;
-
-  // optional secondary action (npr. Close)
-  secondaryText?: string;
-  onSecondary?: () => void;
+  actionText?: string;
+  onAction?: () => void;
 
   disabled?: boolean;
   iconName?: React.ComponentProps<typeof FontAwesome>["name"];
+
+  titleLines?: number;
+  messageLines?: number;
 };
 
 export function ErrorCard({
-  title = "Došlo je do greške",
+  title,
   message,
-  primaryText = "Zatvori",
-  onPrimary,
-  secondaryText,
-  onSecondary,
+  actionText = "Pokušaj ponovno",
+  onAction,
   disabled,
   iconName = "exclamation-triangle",
+  titleLines = 1,
+  messageLines = 1,
 }: Props) {
   return (
     <View style={s.wrap}>
-      <View style={s.header}>
-        <FontAwesome name={iconName} size={16} color={Colors.dangerText} />
-        <Text style={s.title}>{title}</Text>
+      <View style={s.icon}>
+        <FontAwesome name={iconName} size={14} color={Colors.dangerText} />
       </View>
 
-      <Text style={s.message}>{message}</Text>
-
-      <View style={s.actions}>
-        {!!secondaryText && !!onSecondary && (
-          <Pressable
-            style={[s.secondaryBtn, disabled && s.btnDisabled]}
-            onPress={disabled ? undefined : onSecondary}
-            disabled={disabled}
-          >
-            <Text style={s.secondaryText}>{secondaryText}</Text>
-          </Pressable>
+      <View style={s.textWrap}>
+        {!!title && (
+          <Text style={s.title} numberOfLines={titleLines}>
+            {title}
+          </Text>
         )}
-
-        {!!onPrimary && (
-          <Pressable
-            style={[s.primaryBtn, disabled && s.btnDisabled]}
-            onPress={disabled ? undefined : onPrimary}
-            disabled={disabled}
-          >
-            <Text style={s.primaryText}>{primaryText}</Text>
-          </Pressable>
-        )}
+        <Text style={s.message} numberOfLines={messageLines}>
+          {message}
+        </Text>
       </View>
+
+      {!!onAction ? (
+        <Pressable
+          style={[s.btn, disabled && s.disabled]}
+          onPress={disabled ? undefined : onAction}
+          disabled={disabled}
+          hitSlop={8}
+        >
+          <Text style={s.btnText}>{actionText}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

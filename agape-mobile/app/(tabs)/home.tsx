@@ -14,6 +14,7 @@ import { useUserProfile } from "../api/hooks/useUserProfile";
 import { usePullToRefresh } from "../api/hooks/usePullToRefresh";
 import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
 import { styles, RIPPLE, T } from "./styles/HomeScreen.styles";
+import { ErrorCard } from "@/components/ErrorCard";
 
 type SectionKey = "missing" | "needsFill" | "most";
 
@@ -32,9 +33,27 @@ function useDefaultWarehouseId() {
   return { session, profile, defaultWarehouseId };
 }
 
+function errMsg(e: any) {
+  return String(e?.message ?? e?.error?.message ?? "Greška prilikom učitavanja.");
+}
+
 export default function HomeScreen() {
   const router = useRouter();
-  const { data: warehouses, isLoading: isWarehousesLoading, refetch: refetchWarehouses } = useWarehouses();
+
+  const warehousesQuery = useWarehouses();
+
+  const {
+    data: warehousesRaw,
+    isLoading: isWarehousesLoading,
+    refetch: refetchWarehouses,
+  } = warehousesQuery as unknown as {
+    data: number[] | undefined;
+    isLoading: boolean;
+    refetch: () => Promise<any>;
+  };
+
+  const warehouses: number[] = warehousesRaw ?? [];
+  const warehousesError = (warehousesQuery as any)?.error;
 
   const { session, profile, defaultWarehouseId } = useDefaultWarehouseId();
 
@@ -83,7 +102,8 @@ export default function HomeScreen() {
   };
 
   const stats = useStockStatistics(warehouseId);
-  const { data, isLoading, isFetching, dataUpdatedAt } = stats;
+  const { data, isLoading, isFetching, dataUpdatedAt } = stats as any;
+  const statsError = (stats as any)?.error;
 
   const totals = data?.totals;
 
@@ -197,13 +217,23 @@ export default function HomeScreen() {
                     <ActivityIndicator size="small" />
                     <Text style={styles.whDropdownLoadingText}>{Strings.home.warehouse.loading}</Text>
                   </View>
-                ) : (warehouses ?? []).length === 0 ? (
+                ) : warehousesError ? (
+                  <View style={styles.whDropdownLoading}>
+                    <ErrorCard
+                      title="Ne mogu učitati skladišta"
+                      message={errMsg(warehousesError)}
+                      actionText="Pokušaj ponovno"
+                      onAction={() => refetchWarehouses?.()}
+                      messageLines={1}
+                    />
+                  </View>
+                ) : warehouses.length === 0 ? (
                   <View style={styles.whDropdownEmpty}>
                     <Text style={styles.whDropdownEmptyText}>{Strings.home.warehouse.empty}</Text>
                   </View>
                 ) : (
                   <View style={styles.whDropdownList}>
-                    {(warehouses ?? []).map((id) => {
+                    {warehouses.map((id: number) => {
                       const active = id === warehouseId;
                       return (
                         <Pressable
@@ -269,11 +299,27 @@ export default function HomeScreen() {
           >
             {isLoading ? (
               <EmptyLine text={Strings.home.empty.loading} />
+            ) : warehouseId == null && warehousesError ? (
+              <ErrorCard
+                title="Ne mogu učitati skladišta"
+                message={errMsg(warehousesError)}
+                actionText="Pokušaj ponovno"
+                onAction={() => refetchWarehouses?.()}
+                messageLines={1}
+              />
+            ) : statsError ? (
+              <ErrorCard
+                title="Ne mogu učitati statistiku"
+                message={errMsg(statsError)}
+                actionText="Pokušaj ponovno"
+                onAction={() => stats.refetch()}
+                messageLines={1}
+              />
             ) : missingItems.length === 0 ? (
               <EmptyLine text={Strings.home.empty.bySegment.missing} />
             ) : (
               <ListCard>
-                {missingItems.map((it, idx) => (
+                {missingItems.map((it: any, idx: number) => (
                   <StockRow
                     key={`${it.itemId}-${it.warehouseId}`}
                     name={it.name}
@@ -299,11 +345,27 @@ export default function HomeScreen() {
           >
             {isLoading ? (
               <EmptyLine text={Strings.home.empty.loading} />
+            ) : warehouseId == null && warehousesError ? (
+              <ErrorCard
+                title="Ne mogu učitati skladišta"
+                message={errMsg(warehousesError)}
+                actionText="Pokušaj ponovno"
+                onAction={() => refetchWarehouses?.()}
+                messageLines={1}
+              />
+            ) : statsError ? (
+              <ErrorCard
+                title="Ne mogu učitati statistiku"
+                message={errMsg(statsError)}
+                actionText="Pokušaj ponovno"
+                onAction={() => stats.refetch()}
+                messageLines={1}
+              />
             ) : needsFillItems.length === 0 ? (
               <EmptyLine text={Strings.home.empty.bySegment.needsFill} />
             ) : (
               <ListCard>
-                {needsFillItems.map((it, idx) => (
+                {needsFillItems.map((it: any, idx: number) => (
                   <StockRow
                     key={`${it.itemId}-${it.warehouseId}`}
                     name={it.name}
@@ -329,11 +391,27 @@ export default function HomeScreen() {
           >
             {isLoading ? (
               <EmptyLine text={Strings.home.empty.loading} />
+            ) : warehouseId == null && warehousesError ? (
+              <ErrorCard
+                title="Ne mogu učitati skladišta"
+                message={errMsg(warehousesError)}
+                actionText="Pokušaj ponovno"
+                onAction={() => refetchWarehouses?.()}
+                messageLines={1}
+              />
+            ) : statsError ? (
+              <ErrorCard
+                title="Ne mogu učitati statistiku"
+                message={errMsg(statsError)}
+                actionText="Pokušaj ponovno"
+                onAction={() => stats.refetch()}
+                messageLines={1}
+              />
             ) : mostItems.length === 0 ? (
               <EmptyLine text={Strings.home.empty.bySegment.most} />
             ) : (
               <ListCard>
-                {mostItems.map((it, idx) => (
+                {mostItems.map((it: any, idx: number) => (
                   <StockRow
                     key={`${it.itemId}-${it.warehouseId}`}
                     name={it.name}
@@ -421,10 +499,16 @@ function MetricTile(props: {
   tone: "neutral" | "warm" | "cool";
   fullWidth?: boolean;
 }) {
-  const bg = props.tone === "warm" ? styles.metricWarm : props.tone === "cool" ? styles.metricCool : styles.metricNeutral;
-  const iconBg = props.tone === "warm" ? styles.metricIconWarm : props.tone === "cool" ? styles.metricIconCool : styles.metricIconNeut;
+  const bg =
+    props.tone === "warm" ? styles.metricWarm : props.tone === "cool" ? styles.metricCool : styles.metricNeutral;
+  const iconBg =
+    props.tone === "warm" ? styles.metricIconWarm : props.tone === "cool" ? styles.metricIconCool : styles.metricIconNeut;
   const border =
-    props.tone === "warm" ? styles.metricBorderWarm : props.tone === "cool" ? styles.metricBorderCool : styles.metricBorderNeutral;
+    props.tone === "warm"
+      ? styles.metricBorderWarm
+      : props.tone === "cool"
+        ? styles.metricBorderCool
+        : styles.metricBorderNeutral;
 
   return (
     <View style={[styles.metricTile, bg, border, props.fullWidth && styles.fullWidthCard]}>
