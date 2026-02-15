@@ -79,7 +79,6 @@ export function createApiClient(config: ApiClientConfig) {
       }
 
       if (!res.ok) {
-        // try to surface backend message if present
         let msg = `HTTP ${res.status}`;
         try {
           if (json && typeof json === "object") {
@@ -91,7 +90,6 @@ export function createApiClient(config: ApiClientConfig) {
             if (m) msg = String(m);
           }
         } catch {
-          // ignore
         }
 
         throw new ApiError(msg, res.status, json);
@@ -103,7 +101,6 @@ export function createApiClient(config: ApiClientConfig) {
 
       const envelope = json as ServiceResponseDTO<T>;
 
-      // if it looks like ServiceResponseDTO, unwrap it
       if (envelope && typeof envelope === "object" && "success" in envelope) {
         if (!envelope.success) {
           const sc = envelope.statusCode ?? res.status;
@@ -115,7 +112,6 @@ export function createApiClient(config: ApiClientConfig) {
         return envelope.data;
       }
 
-      // fallback: raw JSON
       return json as T;
     } finally {
       clearTimeout(timeoutId);
