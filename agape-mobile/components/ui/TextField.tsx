@@ -19,7 +19,7 @@ const TextField: React.FC<TextFieldProps> = ({ label, style, onFocus, onBlur, ..
           focused && styles.inputFocused,
           style,
         ]}
-        placeholderTextColor="#9CA3AF"
+        placeholderTextColor={Colors.light.inputPlaceholder}
         onFocus={(e) => {
           setFocused(true);
           onFocus?.(e);

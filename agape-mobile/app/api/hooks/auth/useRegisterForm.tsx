@@ -1,18 +1,10 @@
 import Strings from "@/constants/Strings";
 import { useMemo, useState } from "react";
-import { ApiError } from "../apiClient";
-import { authService } from "../services/authService";
+import { authService } from "@/app/api/services/authService";
+import { toUserMessage } from "../apiClient";
 
 type Touched = { fullName: boolean; oib: boolean; username: boolean; password: boolean };
-
-function getBackendMessage(e: unknown) {
-  if (e instanceof ApiError) {
-    const body = e.body as any;
-    return body?.message || e.message;
-  }
-  if (e instanceof Error) return e.message;
-  return Strings.auth.errors.generic;
-}
+export type SubmitResult = { ok: true } | { ok: false };
 
 const USERNAME_MIN = 3;
 const PASSWORD_MIN = 6;
@@ -36,18 +28,19 @@ export function useRegisterForm() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const clearError = () => setFormError(null);
+
   const fullNameError = useMemo(() => {
     if (!touched.fullName) return null;
     if (!fullName.trim()) return Strings.auth.validation.fullNameRequired;
     return null;
   }, [fullName, touched.fullName]);
 
-  // NEW: OIB validation (exactly 11 digits)
   const oibError = useMemo(() => {
     if (!touched.oib) return null;
     const v = onlyDigits(oib);
-    if (!v) return (Strings.auth.validation as any)?.oibRequired ?? "OIB je obavezan.";
-    if (v.length !== OIB_LEN) return (Strings.auth.validation as any)?.oibLength ?? "OIB mora imati 11 znamenki.";
+    if (!v) return "OIB je obavezan.";
+    if (v.length !== OIB_LEN) return "OIB mora imati 11 znamenki.";
     return null;
   }, [oib, touched.oib]);
 
@@ -68,30 +61,24 @@ export function useRegisterForm() {
 
   const canSubmit = useMemo(() => {
     const o = onlyDigits(oib);
-    const ok =
+    return (
       !!fullName.trim() &&
-      !!o &&
       o.length === OIB_LEN &&
-      !!username.trim() &&
       username.trim().length >= USERNAME_MIN &&
-      !!password &&
-      password.length >= PASSWORD_MIN;
-
-    return ok && !submitting;
+      password.length >= PASSWORD_MIN &&
+      !submitting
+    );
   }, [fullName, oib, username, password, submitting]);
 
-  const markTouched = (field: keyof Touched) =>
-    setTouched((t) => ({ ...t, [field]: true }));
+  const markTouched = (field: keyof Touched) => setTouched((t) => ({ ...t, [field]: true }));
 
   const setFullNameSafe = (v: string) => {
     setFullName(v);
     setFormError(null);
   };
 
-  // NEW: keep OIB digits-only and max 11
   const setOibSafe = (v: string) => {
-    const digits = onlyDigits(v).slice(0, OIB_LEN);
-    setOib(digits);
+    setOib(onlyDigits(v).slice(0, OIB_LEN));
     setFormError(null);
   };
 
@@ -105,23 +92,20 @@ export function useRegisterForm() {
     setFormError(null);
   };
 
-  const submit = async () => {
+  const submit = async (): Promise<SubmitResult> => {
+    if (submitting) return { ok: false };
+
     setTouched({ fullName: true, oib: true, username: true, password: true });
     setFormError(null);
 
-    // Re-evaluate using current values (avoid any stale memo edge cases)
     const o = onlyDigits(oib);
-    const submitOk =
+    const valid =
       !!fullName.trim() &&
-      !!o &&
       o.length === OIB_LEN &&
-      !!username.trim() &&
       username.trim().length >= USERNAME_MIN &&
-      !!password &&
-      password.length >= PASSWORD_MIN &&
-      !submitting;
+      password.length >= PASSWORD_MIN;
 
-    if (!submitOk) return { ok: false as const };
+    if (!valid) return { ok: false };
 
     try {
       setSubmitting(true);
@@ -133,27 +117,10 @@ export function useRegisterForm() {
         password,
       });
 
-      return { ok: true as const };
+      return { ok: true };
     } catch (e) {
-      const msg = getBackendMessage(e);
-
-      if (e instanceof ApiError) {
-        const body = e.body as any;
-        const backendMsg: string | undefined = body?.message;
-
-        if (e.status === 0) setFormError(Strings.auth.errors.network);
-        else if (
-          backendMsg &&
-          /username/i.test(backendMsg) &&
-          /exist|taken|zauzet/i.test(backendMsg)
-        )
-          setFormError(Strings.auth.errors.usernameTaken);
-        else setFormError(backendMsg || msg || Strings.auth.errors.generic);
-      } else {
-        setFormError(msg || Strings.auth.errors.generic);
-      }
-
-      return { ok: false as const };
+      setFormError(toUserMessage(e));
+      return { ok: false };
     } finally {
       setSubmitting(false);
     }
@@ -161,6 +128,7 @@ export function useRegisterForm() {
 
   return {
     values: { fullName, oib, username, password },
+
     setFullName: setFullNameSafe,
     setOib: setOibSafe,
     setUsername: setUsernameSafe,
@@ -169,10 +137,11 @@ export function useRegisterForm() {
     touched,
     markTouched,
 
+    clearError,
     errors: { fullNameError, oibError, usernameError, passwordError, formError },
+
     submitting,
     canSubmit,
-
     submit,
   };
 }

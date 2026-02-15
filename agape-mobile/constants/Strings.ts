@@ -147,6 +147,7 @@ const Strings = {
       passwordMin: "Lozinka mora imati barem 6 znakova.",
     },
     errors: {
+      title: "Greška",
       generic: "Nešto je pošlo po zlu. Pokušajte ponovno.",
       invalidCredentials: "Neispravno korisničko ime ili lozinka.",
       network: "Nema internetske veze s poslužiteljem. Provjerite internet i pokušajte ponovno.",

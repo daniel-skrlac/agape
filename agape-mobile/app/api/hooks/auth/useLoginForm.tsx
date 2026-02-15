@@ -1,6 +1,6 @@
 import Strings from "@/constants/Strings";
 import { useMemo, useState } from "react";
-import { ApiError } from "../apiClient";
+import { ApiError, toUserMessage } from "../apiClient";
 import { authService } from "../services/authService";
 
 type Touched = { username: boolean; password: boolean };
@@ -21,6 +21,8 @@ export function useLoginForm() {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const clearError = () => setFormError(null);
 
   const usernameError = useMemo(() => {
     if (!touched.username) return null;
@@ -56,17 +58,7 @@ export function useLoginForm() {
 
       return { ok: true as const };
     } catch (e) {
-      const msg = getBackendMessage(e);
-
-      if (e instanceof ApiError) {
-        if (e.status === 0) setFormError(Strings.auth.errors.network);
-        else if (e.status === 401 || e.status === 403 || e.status === 400)
-          setFormError(Strings.auth.errors.invalidCredentials);
-        else setFormError(msg || Strings.auth.errors.generic);
-      } else {
-        setFormError(msg || Strings.auth.errors.generic);
-      }
-
+      setFormError(toUserMessage(e));
       return { ok: false as const };
     } finally {
       setSubmitting(false);
@@ -84,6 +76,7 @@ export function useLoginForm() {
       setFormError(null);
     },
     markTouched,
+    clearError,
     errors: { usernameError, passwordError, formError },
     submitting,
     canSubmit,

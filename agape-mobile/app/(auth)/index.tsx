@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Link, useRouter } from "expo-router";
-import Screen from "../components/ui/Screen";
-import AuthHeader from "../components/auth/AuthHeader";
-import TextField from "../components/ui/TextField";
-import PrimaryButton from "../components/ui/PrimaryButton";
-import Strings from "../constants/Strings";
-import Colors from "../constants/Colors";
-import AuthBackground from "@/components/auth/AuthBackground";
+
+import Screen from "@/components/ui/Screen";
+import AuthHeader from "@/components/auth/AuthHeader";
+import TextField from "@/components/ui/TextField";
+import PrimaryButton from "@/components/ui/PrimaryButton";
 import FormCard from "@/components/ui/FormCard";
-import { useLoginForm } from "./api/hooks/useLoginForm";
-import { getToken } from "./api/sessionStore";
+import TabScroll from "@/components/ui/TabScroll";
+
+import Strings from "@/constants/Strings";
+
+import { getToken } from "@/app/api/sessionStore";
+import { ErrorCard } from "@/components/ErrorCard";
+import { styles } from "./styles/LoginScreen.styles";
+import { useLoginForm } from "../api/hooks/auth/useLoginForm";
 
 export default function Index() {
     const router = useRouter();
@@ -54,8 +58,8 @@ export default function Index() {
     }
 
     return (
-        <AuthBackground>
-            <Screen edges={["top", "bottom", "left", "right"]}>
+        <TabScroll contentContainerStyle={styles.scroll} withScreen={false}>
+            <Screen edges={["top", "bottom", "left", "right"]} style={styles.screenTransparent}>
                 <View style={styles.container}>
                     <View style={styles.top}>
                         <AuthHeader />
@@ -67,11 +71,14 @@ export default function Index() {
                         <FormCard>
                             <View style={styles.form}>
                                 {!!form.errors.formError && (
-                                    <View style={styles.errorBanner}>
-                                        <Text style={styles.errorBannerText}>
-                                            {form.errors.formError}
-                                        </Text>
-                                    </View>
+                                    <ErrorCard
+                                        title={Strings.auth.errors.title}
+                                        message={form.errors.formError}
+                                        actionText="Zatvori"
+                                        onAction={form.clearError}
+                                        titleLines={1}
+                                        messageLines={2}
+                                    />
                                 )}
 
                                 <TextField
@@ -83,9 +90,7 @@ export default function Index() {
                                     onBlur={() => form.markTouched("username")}
                                     returnKeyType="next"
                                 />
-                                {!!form.errors.usernameError && (
-                                    <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
-                                )}
+                                {!!form.errors.usernameError && <Text style={styles.fieldError}>{form.errors.usernameError}</Text>}
 
                                 <TextField
                                     label={Strings.auth.passwordLabel}
@@ -96,12 +101,11 @@ export default function Index() {
                                     onBlur={() => form.markTouched("password")}
                                     returnKeyType="done"
                                 />
-                                {!!form.errors.passwordError && (
-                                    <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
-                                )}
+                                {!!form.errors.passwordError && <Text style={styles.fieldError}>{form.errors.passwordError}</Text>}
                             </View>
                         </FormCard>
                     </View>
+
                     <View style={styles.bottom}>
                         <PrimaryButton
                             label={Strings.auth.loginButton}
@@ -111,60 +115,14 @@ export default function Index() {
                         />
 
                         <View style={styles.switchRow}>
-                            <Text style={styles.switchText}>
-                                {Strings.auth.loginToRegisterQuestion}{" "}
-                            </Text>
-                            <Link href="/register" style={styles.switchLink}>
-                                {Strings.auth.loginToRegisterLink}
-                            </Link>
+                            <Text style={styles.switchText}>{Strings.auth.loginToRegisterQuestion} </Text>
+                            <Pressable onPress={() => router.replace("/(auth)/register")}>
+                                <Text style={styles.switchLink}>Registrirajte se.</Text>
+                            </Pressable>
                         </View>
                     </View>
                 </View>
             </Screen>
-        </AuthBackground>
+        </TabScroll>
     );
 }
-
-const styles = StyleSheet.create({
-    center: { flex: 1, alignItems: "center", justifyContent: "center" },
-    container: {
-        flexGrow: 1,
-        justifyContent: "space-between",
-        width: "100%",
-        maxWidth: 520,
-        alignSelf: "center",
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 16,
-    },
-    top: { flex: 1, justifyContent: "flex-start" },
-    header: { width: "100%", alignItems: "center", marginBottom: 16 },
-    title: { fontSize: 26, fontWeight: "800", color: Colors.light.text },
-    form: { gap: 6 },
-    errorBanner: {
-        borderRadius: 14,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        backgroundColor: "#FEF3C7",
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: "#F59E0B",
-        marginBottom: 8,
-    },
-    errorBannerText: { fontSize: 13, fontWeight: "700", color: "#92400E" },
-    fieldError: {
-        marginTop: 2,
-        marginBottom: 6,
-        fontSize: 12,
-        fontWeight: "600",
-        color: "#B91C1C",
-    },
-    bottom: { gap: 12 },
-    switchRow: {
-        flexDirection: "row",
-        justifyContent: "center",
-        marginTop: 8,
-        flexWrap: "wrap",
-    },
-    switchText: { fontSize: 14, color: "#4B5563" },
-    switchLink: { fontSize: 14, fontWeight: "600", color: Colors.tintColor },
-});

@@ -13,24 +13,19 @@ import { useCurrentUser } from "../api/hooks/useCurrentUser";
 import { useUserProfile } from "../api/hooks/useUserProfile";
 import { usePullToRefresh } from "../api/hooks/usePullToRefresh";
 import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
-import { styles, RIPPLE, T } from "./styles/HomeScreen.styles";
+import { styles, RIPPLE, T } from "../(auth)/styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
 
 type SectionKey = "missing" | "needsFill" | "most";
 
 function useDefaultWarehouseId() {
   const { session } = useCurrentUser();
-  const profile = useUserProfile();
 
   const defaultWarehouseId = useMemo(() => {
-    return (
-      ((session?.defaultWarehouseId ?? null) as number | null) ??
-      ((profile.data?.defaultWarehouseId ?? null) as number | null) ??
-      null
-    );
-  }, [session?.defaultWarehouseId, profile.data?.defaultWarehouseId]);
+    return (session?.defaultWarehouseId ?? null) as number | null;
+  }, [session?.defaultWarehouseId]);
 
-  return { session, profile, defaultWarehouseId };
+  return { session, defaultWarehouseId };
 }
 
 function errMsg(e: any) {
@@ -55,7 +50,7 @@ export default function HomeScreen() {
   const warehouses: number[] = warehousesRaw ?? [];
   const warehousesError = (warehousesQuery as any)?.error;
 
-  const { session, profile, defaultWarehouseId } = useDefaultWarehouseId();
+  const { session, defaultWarehouseId } = useDefaultWarehouseId();
 
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
@@ -148,7 +143,7 @@ export default function HomeScreen() {
       setWarehouseId(null);
       setWarehouseOpen(false);
 
-      await Promise.all([refetchWarehouses?.(), profile.refetch?.()]);
+      await Promise.all([refetchWarehouses?.()]);
       await stats.refetch();
     },
   ]);

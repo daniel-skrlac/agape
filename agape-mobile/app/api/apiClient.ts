@@ -1,3 +1,4 @@
+import Strings from "@/constants/Strings";
 import type { ServiceResponseDTO } from "../models/generated";
 
 export class ApiError extends Error {
@@ -10,6 +11,22 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+
+  get userMessage(): string {
+    const b: any = this.body;
+    const msg =
+      b?.message ??
+      b?.error ??
+      b?.detail ??
+      (typeof b === "string" ? b : null);
+
+    if (msg) return String(msg);
+
+    if (this.status === 0) return "Network error.";
+    if (this.status === 401 || this.status === 403) return "Unauthorized.";
+    return this.message || `HTTP ${this.status}`;
+  }
+
 }
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -31,6 +48,12 @@ type ApiClientConfig = {
   getToken?: TokenProvider;
   onUnauthorized?: () => Promise<void> | void;
 };
+
+export function toUserMessage(e: unknown, fallback = Strings.auth.errors.generic) {
+  if (e instanceof ApiError) return e.userMessage || fallback;
+  if (e instanceof Error) return e.message || fallback;
+  return fallback;
+}
 
 export function createApiClient(config: ApiClientConfig) {
   const { baseUrl, getToken, onUnauthorized } = config;
