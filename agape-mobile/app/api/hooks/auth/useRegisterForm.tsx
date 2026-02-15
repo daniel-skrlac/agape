@@ -1,7 +1,7 @@
 import Strings from "@/constants/Strings";
 import { useMemo, useState } from "react";
 import { authService } from "@/app/api/services/authService";
-import { toUserMessage } from "../apiClient";
+import { toUserMessage } from "../../apiClient";
 
 type Touched = { fullName: boolean; oib: boolean; username: boolean; password: boolean };
 export type SubmitResult = { ok: true } | { ok: false };

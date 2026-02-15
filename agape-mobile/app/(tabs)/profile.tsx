@@ -1,37 +1,37 @@
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
-import Strings from "@/constants/Strings";
 import Colors from "@/constants/Colors";
+import Strings from "@/constants/Strings";
+import { ErrorCard } from "@/components/ErrorCard";
 
 import { clearSession } from "@/app/api/sessionStore";
+import { usePullToRefresh } from "@/app/api/hooks/usePullToRefresh";
 import { useUserProfile } from "@/app/api/hooks/useUserProfile";
 import { useUserProfileForm } from "@/app/api/hooks/useUserProfileForm";
-import { usePullToRefresh } from "../api/hooks/usePullToRefresh";
-import { ErrorCard } from "@/components/ErrorCard";
+
 import { styles } from "./styles/ProfileScreen.styles";
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
 
   const profile = useUserProfile();
-  const { userId, data: user, loading, error, setData } = profile as any;
+  const { userId, user, loading, errorMessage, refetch, setUser } = profile;
 
   const [edit, setEdit] = useState(false);
 
-  const form = useUserProfileForm({
-    user,
-    setUser: (u: any) => setData?.(u),
-  });
+  const form = useUserProfileForm({ userId, user });
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
       form.clearStatus();
-      await profile.refetch?.();
+      await refetch?.();
     },
   ]);
 
@@ -42,13 +42,16 @@ export default function ProfileScreen() {
 
   const onLogout = async () => {
     await clearSession();
+    qc.clear();
     router.replace("/");
   };
 
   const onSaveAndClose = async () => {
-    if (!userId) return;
-    const res = await form.submit(userId);
-    if (res.ok) setEdit(false);
+    const res = await form.submit();
+    if (res.ok) {
+      setEdit(false);
+      if (profile.user) setUser(profile.user);
+    }
   };
 
   const onCancel = () => {
@@ -56,12 +59,12 @@ export default function ProfileScreen() {
     form.clearStatus();
 
     if (!user) return;
-    form.setName((user as any)?.name ?? "");
-    form.setUsername((user as any)?.username ?? "");
+    form.setName(String((user as any)?.name ?? ""));
+    form.setUsername(String((user as any)?.username ?? ""));
     form.setPassword("");
   };
 
-  if (loading) {
+  if (loading && !user) {
     return (
       <Screen>
         <View style={styles.center}>
@@ -71,19 +74,18 @@ export default function ProfileScreen() {
     );
   }
 
-  // ✅ keep pull-to-refresh even on error
   return (
-    <TabScroll refreshing={refreshing} onRefresh={onRefresh} contentContainerStyle={styles.container}>
+    <TabScroll refreshing={refreshing} onRefresh={onRefresh} contentContainerStyle={styles.container} withScreen={false}>
       <Screen edges={["bottom", "left", "right"]}>
         <View style={styles.container}>
-          {error ? (
+          {errorMessage ? (
             <>
               <View style={styles.card}>
                 <ErrorCard
                   title={Strings.profile.errors.title}
-                  message={String(error)}
+                  message={errorMessage}
                   actionText="Pokušaj ponovno"
-                  onAction={() => profile.refetch?.()}
+                  onAction={() => refetch?.()}
                   titleLines={1}
                   messageLines={2}
                 />
@@ -120,14 +122,12 @@ export default function ProfileScreen() {
                     style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}
                   >
                     <FontAwesome name={edit ? "close" : "pencil"} size={16} color={Colors.orange} />
-                    <Text style={styles.editBtnText}>
-                      {edit ? Strings.profile.buttons.close : Strings.profile.buttons.edit}
-                    </Text>
+                    <Text style={styles.editBtnText}>{edit ? Strings.profile.buttons.close : Strings.profile.buttons.edit}</Text>
                   </Pressable>
                 </View>
               </View>
 
-              {/* Status (success / error) */}
+              {/* Status */}
               {form.statusMessage ? (
                 form.statusTone === "success" ? (
                   <View style={[styles.banner, styles.bannerSuccess]}>
@@ -139,7 +139,7 @@ export default function ProfileScreen() {
                       title="Neuspješno"
                       message={form.statusMessage}
                       actionText="Zatvori"
-                      onAction={() => form.clearStatus()}
+                      onAction={form.clearStatus}
                       titleLines={1}
                       messageLines={2}
                     />
@@ -242,11 +242,7 @@ function Field(props: {
         editable={props.editable}
         secureTextEntry={props.secureTextEntry}
         autoCapitalize={props.autoCapitalize}
-        style={[
-          styles.input,
-          !props.editable && styles.inputDisabled,
-          props.error ? styles.inputError : null,
-        ]}
+        style={[styles.input, !props.editable && styles.inputDisabled, props.error ? styles.inputError : null]}
         placeholderTextColor={Colors.sub}
       />
 

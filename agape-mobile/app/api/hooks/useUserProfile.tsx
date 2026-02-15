@@ -1,73 +1,43 @@
-import { useEffect, useMemo, useState } from "react";
-import { ApiError } from "../apiClient";
+import Strings from "@/constants/Strings";
+import { useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { userService } from "../services/userService";
 import { useCurrentUser } from "./useCurrentUser";
+import { toUserMessage } from "../apiClient";
+import type { UserResponseDTO } from "@/app/models/generated";
 
-import type { UserResponseDTO } from "../../models/generated";
+const qk = {
+    profile: (id: number) => ["userProfile", id] as const,
+};
 
 export function useUserProfile() {
+    const qc = useQueryClient();
     const { session } = useCurrentUser();
-    const userId = session?.userId ?? null;
+    const userId = (session?.userId ?? null) as number | null;
 
-    const [data, setData] = useState<UserResponseDTO | null>(null);
-    const [loading, setLoading] = useState<boolean>(!!userId);
-    const [error, setError] = useState<string | null>(null);
+    const query = useQuery({
+        queryKey: userId ? qk.profile(userId) : ["userProfile", "null"],
+        enabled: !!userId,
+        queryFn: ({ signal }) => userService.getById(Number(userId), signal),
+    });
 
-    const canLoad = useMemo(() => !!userId, [userId]);
+    const errorMessage = useMemo(() => {
+        if (!query.error) return null;
+        return toUserMessage(query.error, Strings.settings.errors.generic);
+    }, [query.error]);
 
-    const refetch = async () => {
+    const setUser = (u: UserResponseDTO) => {
         if (!userId) return;
-
-        const ctrl = new AbortController();
-        setLoading(true);
-        setError(null);
-
-        try {
-            const u = await userService.getById(userId, ctrl.signal);
-            setData(u);
-        } catch (e: any) {
-            if (e instanceof ApiError) setError((e.body as any)?.message || e.message);
-            else setError(e?.message || "Failed to load profile.");
-        } finally {
-            setLoading(false);
-        }
-
-        return () => ctrl.abort();
+        qc.setQueryData(qk.profile(userId), u);
     };
 
-    useEffect(() => {
-        let mounted = true;
-        const ctrl = new AbortController();
-
-        (async () => {
-            if (!userId) {
-                setLoading(false);
-                setData(null);
-                setError(null);
-                return;
-            }
-
-            setLoading(true);
-            setError(null);
-
-            try {
-                const u = await userService.getById(userId, ctrl.signal);
-                if (!mounted) return;
-                setData(u);
-            } catch (e: any) {
-                if (!mounted) return;
-                if (e instanceof ApiError) setError((e.body as any)?.message || e.message);
-                else setError(e?.message || "Failed to load profile.");
-            } finally {
-                if (mounted) setLoading(false);
-            }
-        })();
-
-        return () => {
-            mounted = false;
-            ctrl.abort();
-        };
-    }, [userId]);
-
-    return { userId, data, loading, error, canLoad, refetch, setData };
+    return {
+        userId,
+        user: query.data ?? null,
+        loading: query.isLoading,
+        fetching: query.isFetching,
+        errorMessage,
+        refetch: query.refetch,
+        setUser,
+    };
 }

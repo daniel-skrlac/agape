@@ -1,18 +1,9 @@
 import Strings from "@/constants/Strings";
 import { useMemo, useState } from "react";
-import { ApiError, toUserMessage } from "../apiClient";
-import { authService } from "../services/authService";
+import { ApiError, toUserMessage } from "../../apiClient";
+import { authService } from "../../services/authService";
 
 type Touched = { username: boolean; password: boolean };
-
-function getBackendMessage(e: unknown) {
-  if (e instanceof ApiError) {
-    const body = e.body as any;
-    return body?.message || e.message;
-  }
-  if (e instanceof Error) return e.message;
-  return Strings.auth.errors.generic;
-}
 
 export function useLoginForm() {
   const [username, setUsername] = useState("");
