@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import { ActivityIndicator, LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { ErrorCard } from "@/components/ErrorCard";
@@ -39,21 +39,27 @@ export default function WarehousePickerCard(props: Props) {
         changeHintText,
         loadingText,
         emptyText,
+
         open,
         onToggle,
+
         warehouses,
         loading,
+
         error,
         onRetry,
+
         selectedId,
         selectedLabel,
+
         onSelect,
         itemLabel,
+
         inlineLoading,
         style,
     } = props;
 
-    const isEmpty = !loading && !error && warehouses.length === 0;
+    const isEmpty = useMemo(() => !loading && !error && warehouses.length === 0, [loading, error, warehouses.length]);
 
     const onPressItem = useCallback(
         (id: number) => {
@@ -64,46 +70,48 @@ export default function WarehousePickerCard(props: Props) {
     );
 
     return (
-        <View style={[P.surface, style]}>
-            <Pressable onPress={onToggle} style={({ pressed }) => [P.row, pressed && P.pressed]}>
-                <View style={P.iconBox}>
-                    <FontAwesome name="building" size={16} color={PTheme.text} />
+        <View style={[S.surface, style]}>
+            {/* Header row */}
+            <Pressable onPress={onToggle} style={({ pressed }) => [S.row, pressed && S.pressed]}>
+                <View style={S.iconBox}>
+                    <FontAwesome name="building" size={16} color={Theme.text} />
                 </View>
 
                 <View style={{ flex: 1 }}>
-                    <Text style={P.label}>{labelText}</Text>
+                    <Text style={S.label}>{labelText}</Text>
 
-                    <Text style={P.value} numberOfLines={2}>
+                    <Text style={S.value} numberOfLines={2}>
                         {loading ? loadingText : selectedLabel}
                     </Text>
 
                     {!!inlineLoading ? (
-                        <View style={P.inlineLoadingRow}>
+                        <View style={S.inlineLoadingRow}>
                             <ActivityIndicator size="small" />
-                            <Text style={P.inlineLoadingText} numberOfLines={1} />
+                            <Text style={S.inlineLoadingText} numberOfLines={1} />
                         </View>
                     ) : null}
                 </View>
 
-                <View style={P.right}>
-                    <Text style={P.hint} numberOfLines={1}>
+                <View style={S.right}>
+                    <Text style={S.hint} numberOfLines={1}>
                         {changeHintText}
                     </Text>
-                    <FontAwesome name={open ? "chevron-up" : "chevron-down"} size={16} color={PTheme.muted} />
+                    <FontAwesome name={open ? "chevron-up" : "chevron-down"} size={16} color={Theme.muted} />
                 </View>
             </Pressable>
 
-            {open ? <View style={P.divider} /> : null}
+            {open ? <View style={S.divider} /> : null}
 
+            {/* Dropdown */}
             {open ? (
-                <View style={P.dropdown}>
+                <View style={S.dropdown}>
                     {loading ? (
-                        <View style={P.dropdownRow}>
+                        <View style={S.dropdownRow}>
                             <ActivityIndicator size="small" />
-                            <Text style={P.dropdownRowText}>{loadingText}</Text>
+                            <Text style={S.dropdownRowText}>{loadingText}</Text>
                         </View>
                     ) : error ? (
-                        <View style={P.dropdownErrorWrap}>
+                        <View style={S.dropdownErrorWrap}>
                             <ErrorCard
                                 title="Ne mogu učitati skladišta"
                                 message={errMsg(error)}
@@ -114,26 +122,39 @@ export default function WarehousePickerCard(props: Props) {
                             />
                         </View>
                     ) : isEmpty ? (
-                        <View style={P.emptyWrap}>
-                            <Text style={P.emptyText}>{emptyText}</Text>
+                        <View style={S.emptyWrap}>
+                            <Text style={S.emptyText}>{emptyText}</Text>
                         </View>
                     ) : (
-                        <View style={P.list}>
-                            {warehouses.map((id) => {
+                        <View style={S.list}>
+                            {warehouses.map((id, idx) => {
                                 const active = id === selectedId;
+                                const showDivider = idx < warehouses.length - 1;
+
                                 return (
-                                    <Pressable
-                                        key={id}
-                                        onPress={() => onPressItem(id)}
-                                        style={({ pressed }) => [
-                                            P.item,
-                                            active ? P.itemActive : P.itemIdle,
-                                            pressed && P.pressed,
-                                        ]}
-                                    >
-                                        <Text style={P.itemText}>{itemLabel(id)}</Text>
-                                        {active ? <FontAwesome name="check" size={16} color={PTheme.text} /> : null}
-                                    </Pressable>
+                                    <View key={id} style={S.itemWrap}>
+                                        <Pressable
+                                            onPress={() => onPressItem(id)}
+                                            style={({ pressed }) => [
+                                                S.item,
+                                                active ? S.itemActive : S.itemIdle,
+                                                pressed && S.itemPressed,
+                                            ]}
+                                            hitSlop={8}
+                                        >
+                                            <Text style={[S.itemText, active && S.itemTextActive]}>{itemLabel(id)}</Text>
+
+                                            {active ? (
+                                                <View style={S.checkPill}>
+                                                    <FontAwesome name="check" size={14} color={Theme.text} />
+                                                </View>
+                                            ) : (
+                                                <View style={S.checkPillGhost} />
+                                            )}
+                                        </Pressable>
+
+                                        {showDivider ? <View style={S.itemDivider} /> : null}
+                                    </View>
                                 );
                             })}
                         </View>
@@ -144,31 +165,42 @@ export default function WarehousePickerCard(props: Props) {
     );
 }
 
-const PTheme = {
+const Theme = {
     text: "#0f172a",
     muted: "rgba(15,23,42,0.55)",
+
     card: "rgba(255,255,255,0.92)",
     border: "rgba(15,23,42,0.10)",
     shadow: "rgba(15,23,42,0.10)",
+
     pressed: "rgba(15,23,42,0.04)",
+    pressedStrong: "rgba(15,23,42,0.07)",
+
+    divider: "rgba(15,23,42,0.08)",
+    dividerSoft: "rgba(15,23,42,0.06)",
+
+    accentBorder: "rgba(251,146,60,0.35)",
+    accentFill: "rgba(251,146,60,0.10)",
+
+    activeFill: "rgba(15,23,42,0.04)",
 };
 
-const P = StyleSheet.create({
+const S = StyleSheet.create({
     surface: {
-        backgroundColor: PTheme.card,
+        backgroundColor: Theme.card,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: PTheme.border,
+        borderColor: Theme.border,
 
-        shadowColor: PTheme.shadow,
+        shadowColor: Theme.shadow,
         shadowOpacity: 1,
         shadowRadius: 14,
         shadowOffset: { width: 0, height: 8 },
 
         elevation: 2,
-
         overflow: "hidden",
     },
+
     row: {
         paddingHorizontal: 14,
         paddingVertical: 12,
@@ -176,100 +208,154 @@ const P = StyleSheet.create({
         alignItems: "center",
         gap: 12,
     },
+
     pressed: {
-        backgroundColor: PTheme.pressed,
+        backgroundColor: Theme.pressed,
     },
+
     iconBox: {
         width: 38,
         height: 38,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: "rgba(251,146,60,0.35)",
-        backgroundColor: "rgba(251,146,60,0.10)",
+        borderColor: Theme.accentBorder,
+        backgroundColor: Theme.accentFill,
         alignItems: "center",
         justifyContent: "center",
     },
+
     label: {
         fontSize: 12,
         fontWeight: "700",
         color: "rgba(15,23,42,0.70)",
     },
+
     value: {
         fontSize: 14,
         fontWeight: "800",
-        color: PTheme.text,
+        color: Theme.text,
         marginTop: 2,
-        lineHeight: 22,
+        lineHeight: 18,
     },
+
     right: {
         alignItems: "flex-end",
         justifyContent: "center",
         gap: 4,
     },
+
     hint: {
         fontSize: 12,
         fontWeight: "700",
-        color: PTheme.muted,
+        color: Theme.muted,
     },
+
     divider: {
         height: 1,
-        backgroundColor: "rgba(15,23,42,0.08)",
+        backgroundColor: Theme.divider,
     },
+
     dropdown: {
-        paddingVertical: 8,
+        paddingTop: 6,
+        paddingBottom: 10,
     },
+
     dropdownRow: {
         paddingHorizontal: 14,
-        paddingVertical: 10,
+        paddingVertical: 12,
         flexDirection: "row",
         alignItems: "center",
         gap: 10,
     },
+
     dropdownRowText: {
         fontSize: 13,
         fontWeight: "700",
-        color: "rgba(15,23,42,0.55)",
+        color: Theme.muted,
     },
+
     dropdownErrorWrap: {
         paddingHorizontal: 12,
         paddingVertical: 10,
     },
+
     emptyWrap: {
         paddingHorizontal: 14,
         paddingVertical: 12,
     },
+
     emptyText: {
         fontSize: 13,
         fontWeight: "700",
-        color: "rgba(15,23,42,0.55)",
+        color: Theme.muted,
     },
+
     list: {
-        paddingHorizontal: 8,
-        paddingBottom: 8,
+        paddingHorizontal: 10,
     },
+
+    itemWrap: {
+        borderRadius: 14,
+        overflow: "hidden",
+    },
+
     item: {
         paddingHorizontal: 12,
-        paddingVertical: 12,
-        borderRadius: 14,
+        paddingVertical: 14,
+        minHeight: 50,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
     },
+
     itemIdle: {},
+
     itemActive: {
-        backgroundColor: "rgba(15,23,42,0.04)",
+        backgroundColor: Theme.activeFill,
     },
+
+    itemPressed: {
+        backgroundColor: Theme.pressedStrong,
+    },
+
     itemText: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: "800",
-        color: PTheme.text,
+        color: Theme.text,
     },
+
+    itemTextActive: {
+        color: Theme.text,
+    },
+
+    itemDivider: {
+        height: 1,
+        backgroundColor: Theme.dividerSoft,
+        marginLeft: 12,
+        marginRight: 12,
+    },
+
+    checkPill: {
+        width: 28,
+        height: 28,
+        borderRadius: 10,
+        backgroundColor: "rgba(15,23,42,0.06)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+
+    checkPillGhost: {
+        width: 28,
+        height: 28,
+    },
+
     inlineLoadingRow: {
         marginTop: 8,
         flexDirection: "row",
         alignItems: "center",
         gap: 8,
     },
+
     inlineLoadingText: {
         fontSize: 12,
         color: "rgba(15,23,42,0.45)",
