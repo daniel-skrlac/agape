@@ -95,7 +95,7 @@ public class DispatchBookingRepository {
                    OR LOWER(z.NAZIVDOKUMENTA) LIKE ?
                    OR LOWER(z.DOKUMENTID) LIKE ?
                    OR LOWER(p.NAZIV) LIKE ?
-                   OR TO_CHAR(p.PARTNERID) LIKE ?
+                   OR TO_CHAR(g.PARTNER_ID) LIKE ?
               )
               AND (
                    ? = 'ALL'
