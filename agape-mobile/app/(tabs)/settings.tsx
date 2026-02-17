@@ -52,22 +52,17 @@ export default function SettingsScreen() {
     setOpen((prev) => !prev);
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
-    if (form.submitting) return;
-    if (form.dirty) return;
-
-    if (form.values.warehouseId === savedDefault) return;
-    form.syncToSaved(savedDefault);
-  }, [ready, savedDefault, form.submitting, form.dirty, form.values.warehouseId, form.syncToSaved]);
-
   useFocusEffect(
     useCallback(() => {
+      if (ready && !whLoading && warehouses.length === 0) {
+        void Promise.resolve(refetchWarehouses?.());
+      }
+
       return () => {
         setOpen(false);
         resetToSavedRef.current(savedDefaultRef.current);
       };
-    }, [])
+    }, [ready, whLoading, warehouses.length, refetchWarehouses])
   );
 
   const { refreshing, onRefresh } = usePullToRefresh([
@@ -79,14 +74,15 @@ export default function SettingsScreen() {
     },
   ]);
 
-  const warehousesEmpty = useMemo(() => !whLoading && !whError && warehouses.length === 0, [whLoading, whError, warehouses.length]);
+  const warehousesEmpty = useMemo(
+    () => !whLoading && !whError && warehouses.length === 0,
+    [whLoading, whError, warehouses.length]
+  );
   const whErrorMessage = useMemo(() => (whError ? toUserMessage(whError) : null), [whError]);
 
   const topError = useMemo(() => form.errors.formError || whErrorMessage, [form.errors.formError, whErrorMessage]);
 
-  const topErrorActionText = useMemo(() => {
-    return whErrorMessage ? "Pokušaj ponovno" : "Zatvori";
-  }, [whErrorMessage]);
+  const topErrorActionText = useMemo(() => (whErrorMessage ? "Pokušaj ponovno" : "Zatvori"), [whErrorMessage]);
 
   const onTopErrorAction = useCallback(() => {
     if (whErrorMessage) return refetchWarehouses?.();
@@ -168,11 +164,7 @@ export default function SettingsScreen() {
               (!form.canSubmit || form.submitting) && S.disabled,
             ]}
           >
-            {form.submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={S.saveText}>{Strings.settings.mainWarehouse.save}</Text>
-            )}
+            {form.submitting ? <ActivityIndicator color="#fff" /> : <Text style={S.saveText}>{Strings.settings.mainWarehouse.save}</Text>}
           </Pressable>
         </View>
       </TabScroll>

@@ -7,12 +7,12 @@ import type {
 } from "@/app/models/generated";
 
 export type DispatchBookingsPageArgs = {
-  warehouseId?: number | null; // ✅ optional now
+  warehouseId?: number | null;
   q?: string;
   documentCode?: string | null;
   status?: DispatchBookingStatus | "ALL" | "DRAFT" | "FINAL" | "CANCELLED";
-  dateFrom?: string; // YYYY-MM-DD
-  dateTo?: string;   // YYYY-MM-DD
+  dateFrom?: string;
+  dateTo?: string;
   page?: number;
   size?: number;
 };
@@ -21,7 +21,6 @@ export const dispatchBookingService = {
   async page(args: DispatchBookingsPageArgs, signal?: AbortSignal): Promise<PagedResultDTO<DispatchBookingListItemDTO>> {
     const qs = new URLSearchParams();
 
-    // ✅ only send warehouseId if provided
     if (args.warehouseId != null) qs.set("warehouseId", String(args.warehouseId));
 
     if (args.q) qs.set("q", args.q);

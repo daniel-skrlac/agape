@@ -5,7 +5,7 @@ const Strings = {
     title: "Postavke",
     mainWarehouse: {
       title: "Glavno skladište",
-      subtitle: "Odabrano skladište koristi se defaultno u aplikaciji.",
+      subtitle: "Odabrano skladište koristi se automatski u aplikaciji.",
       label: "Odabir skladišta",
       save: "Spremi",
       saved: "Glavno skladište je spremljeno.",

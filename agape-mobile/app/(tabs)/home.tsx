@@ -22,6 +22,8 @@ import { toUserMessage } from "../api/apiClient";
 
 type SectionKey = "missing" | "needsFill" | "most";
 
+const TOP_N = 10;
+const TOP_N_HINT = `Prikazano je samo prvih ${TOP_N} stavki u ovoj kategoriji.`;
 const TOP_ERR_HINT = "Greška - pogledaj poruku iznad.";
 
 export default function HomeScreen() {
@@ -256,6 +258,8 @@ export default function HomeScreen() {
                 open={openAcc.missing}
                 onPress={() => toggleAcc("missing")}
               >
+                <Text style={styles.accHintText}>{TOP_N_HINT}</Text>
+
                 {isLoading ? (
                   <EmptyLine text={Strings.home.empty.loading} />
                 ) : topError ? (
@@ -288,6 +292,7 @@ export default function HomeScreen() {
                 open={openAcc.needsFill}
                 onPress={() => toggleAcc("needsFill")}
               >
+                <Text style={styles.accHintText}>{TOP_N_HINT}</Text>
                 {isLoading ? (
                   <EmptyLine text={Strings.home.empty.loading} />
                 ) : topError ? (
@@ -320,6 +325,7 @@ export default function HomeScreen() {
                 open={openAcc.most}
                 onPress={() => toggleAcc("most")}
               >
+                <Text style={styles.accHintText}>{TOP_N_HINT}</Text>
                 {isLoading ? (
                   <EmptyLine text={Strings.home.empty.loading} />
                 ) : topError ? (

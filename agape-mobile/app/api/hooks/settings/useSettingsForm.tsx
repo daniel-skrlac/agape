@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Strings from "@/constants/Strings";
 import { updateSession } from "@/app/api/sessionStore";
 import { userService } from "@/app/api/services/profile/userService";
@@ -10,7 +10,11 @@ export function useMainWarehouseSettingsForm(opts: {
     userId: number | null;
     savedWarehouseId: number | null;
 }) {
+    const savedRef = useRef<number | null>(opts.savedWarehouseId ?? null);
+
     const [warehouseId, setWarehouseIdState] = useState<number | null>(opts.savedWarehouseId ?? null);
+    const [touched, setTouched] = useState(false);
+
     const [submitting, setSubmitting] = useState(false);
 
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -23,9 +27,33 @@ export function useMainWarehouseSettingsForm(opts: {
         setWarehouseError(null);
     }, []);
 
+    useEffect(() => {
+        const nextSaved = opts.savedWarehouseId ?? null;
+        savedRef.current = nextSaved;
+        setWarehouseIdState(nextSaved);
+        setTouched(false);
+        clearStatus();
+    }, [opts.userId]);
+
+    useEffect(() => {
+        const nextSaved = opts.savedWarehouseId ?? null;
+
+        savedRef.current = nextSaved;
+
+        if (submitting) return;
+        if (touched) return;
+
+        setWarehouseIdState((prev) => (prev === nextSaved ? prev : nextSaved));
+
+        setFormError(null);
+        setWarehouseError(null);
+    }, [opts.savedWarehouseId, submitting, touched]);
+
     const syncToSaved = useCallback(
         (saved: number | null) => {
-            setWarehouseIdState(saved);
+            savedRef.current = saved ?? null;
+            setWarehouseIdState(saved ?? null);
+            setTouched(false);
             clearStatus();
         },
         [clearStatus]
@@ -33,23 +61,26 @@ export function useMainWarehouseSettingsForm(opts: {
 
     const resetToSaved = useCallback(
         (saved: number | null) => {
-            setWarehouseIdState(saved);
+            savedRef.current = saved ?? null;
+            setWarehouseIdState(saved ?? null);
+            setTouched(false);
             clearStatus();
         },
         [clearStatus]
     );
 
-    const setWarehouseId = useCallback(
-        (id: number | null) => {
-            setWarehouseIdState(id);
-            setWarehouseError(null);
-            setSuccessMessage(null);
-            setFormError(null);
-        },
-        []
-    );
+    const setWarehouseId = useCallback((id: number | null) => {
+        setWarehouseIdState(id);
+        setTouched(true);
+        setWarehouseError(null);
+        setSuccessMessage(null);
+        setFormError(null);
+    }, []);
 
-    const dirty = useMemo(() => warehouseId !== (opts.savedWarehouseId ?? null), [warehouseId, opts.savedWarehouseId]);
+    const dirty = useMemo(() => {
+        if (!touched) return false;
+        return warehouseId !== (savedRef.current ?? null);
+    }, [touched, warehouseId]);
 
     const canSubmit = useMemo(() => {
         if (!opts.userId) return false;
@@ -77,12 +108,13 @@ export function useMainWarehouseSettingsForm(opts: {
             await userService.update(opts.userId, { defaultWarehouseId: warehouseId } as any);
             await updateSession({ defaultWarehouseId: warehouseId });
 
+            savedRef.current = warehouseId;
+            setTouched(false);
+
             setSuccessMessage(Strings.settings.mainWarehouse.saved);
             return { ok: true };
         } catch (e) {
-            setFormError(
-                toUserMessage(e)
-            );
+            setFormError(toUserMessage(e));
             return { ok: false };
         } finally {
             setSubmitting(false);

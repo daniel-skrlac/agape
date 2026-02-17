@@ -155,8 +155,15 @@ export default function TabLayout() {
 
         <Tabs.Screen
           name="dispatch-bookings"
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.replace("/(tabs)/dispatch-bookings");
+            },
+          }}
           options={{
             title: "Pregled",
+            sceneStyle: { backgroundColor: "transparent" },
             tabBarIcon: ({ color, size }) => (
               <MaterialCommunityIcons name="clipboard-check-outline" size={size} color={color} />
             ),

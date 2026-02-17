@@ -1,32 +1,29 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
-import { Banner } from "@/components/Banner";
+import { ErrorCard } from "@/components/ErrorCard";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
 
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
+import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
 import { useDispatchBookings } from "@/app/api/hooks/useDispatchBookings";
+import { useWarehouses } from "@/app/api/hooks/dashboard/useWarehouses";
 import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
-import { ApiError } from "@/app/api/apiClient";
+import { toUserMessage } from "@/app/api/apiClient";
 
 import type { DocumentDescriptorResponseDTO, DispatchBookingListItemDTO } from "@/app/models/generated";
-import { useWarehouses } from "@/app/api/hooks/dashboard/useWarehouses";
+import { styles as s } from "./styles/DispatchBookingsIndex.styles";
+import { fmtHrFromIso } from "@/app/utils/dateIso";
 
 type DispatchBookingStatusFilter = "ALL" | "FINAL" | "DRAFT" | "CANCELLED";
 type WarehousePick = { id: number | null; label: string };
 
-function fmtHrDateFromIso(iso?: string | null): string {
-  if (!iso) return "";
-  const s = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
-  const [y, m, d] = s.split("-");
-  return `${d}.${m}.${y}`;
-}
+const STATUS_KEYS: DispatchBookingStatusFilter[] = ["ALL", "FINAL", "DRAFT", "CANCELLED"];
 
 function statusOfRow(d: any): "DRAFT" | "FINAL" | "CANCELLED" {
   if (d?.cancelled === true || d?.storno === 1) return "CANCELLED";
@@ -35,42 +32,50 @@ function statusOfRow(d: any): "DRAFT" | "FINAL" | "CANCELLED" {
 }
 
 function statusPillStyle(st: ReturnType<typeof statusOfRow>) {
-  if (st === "CANCELLED") return { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.28)", tx: Colors.dangerText ?? "#ef4444" };
+  if (st === "CANCELLED")
+    return { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.28)", tx: Colors.dangerText ?? "#ef4444" };
   if (st === "FINAL") return { bg: "rgba(34,197,94,0.14)", bd: "rgba(34,197,94,0.30)", tx: Colors.text };
   return { bg: "rgba(59,130,246,0.10)", bd: "rgba(59,130,246,0.22)", tx: Colors.text };
 }
 
-/**
- * Treat 404 / Not found from LIST as "empty list" for this screen.
- * (Useful while backend might respond 404 for status=CANCELLED or other edge-cases.)
- */
-function isNoResultsError(err: any): boolean {
-  if (!err) return false;
+function statusLabel(k: DispatchBookingStatusFilter) {
+  if (k === "ALL") return "Sve";
+  if (k === "FINAL") return "Final";
+  if (k === "DRAFT") return "Draft";
+  return "Storno";
+}
 
-  // If your api layer throws ApiError with HTTP status:
-  if (err instanceof ApiError) {
-    if (err.status === 404) return true;
-    const msg = String((err.body as any)?.message ?? err.message ?? "").toLowerCase();
-    if (msg.includes("not found") || msg.includes("nema")) return true;
-    return false;
-  }
+function buildRowSubLines(item: any): string[] {
+  const code = String(item?.documentCode ?? "").trim();
+  const br = String(item?.documentBr ?? "").trim();
 
-  // Fallback string checks
-  const s = String(err).toLowerCase();
-  if (s.includes("404")) return true;
-  if (s.includes("not found")) return true;
-  if (s.includes("nema")) return true;
-  return false;
+  const bookedAtIso = String(item?.bookedAt ?? item?.documentDate ?? "").slice(0, 10);
+  const dt = fmtHrFromIso(bookedAtIso);
+
+  const partnerName = String(item?.partnerName ?? "").trim();
+  const partnerId = item?.partnerId != null ? String(item.partnerId).trim() : "";
+
+  const line1 = [code ? `Šifra: ${code}` : null, dt ? `Datum: ${dt}` : null].filter(Boolean).join(" • ");
+  const line2 = br ? `Dokument Br: ${br}` : "";
+  const line3 = partnerName
+    ? `Partner: ${partnerName}${partnerId ? ` (#${partnerId})` : ""}`
+    : partnerId
+      ? `Partner (#${partnerId})`
+      : "";
+
+  return [line1, line2, line3].filter(Boolean);
 }
 
 export default function DispatchBookingsIndex() {
   const { session, ready } = useCurrentUser();
   const defaultWhId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
 
-  const whQ = useWarehouses();
-  const warehouses: number[] = (whQ.data ?? []) as any;
+  const whQ = useWarehouses() as any;
+  const warehouses: number[] = (whQ?.data ?? []) as any;
+  const whLoading = !!whQ?.isLoading;
+  const whError = whQ?.error;
+  const refetchWarehouses = whQ?.refetch;
 
-  // null => "Sva skladišta"
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
 
@@ -93,23 +98,81 @@ export default function DispatchBookingsIndex() {
   }, [q]);
 
   const listQ = useDispatchBookings({
-    warehouseId, // null => all
+    warehouseId,
     documentCode: pickedDoc?.documentCode ?? documentCode,
-    status: status as any, // hook might be typed narrower; runtime OK
+    status: status as any,
     q: debouncedQ || undefined,
     dateFrom: dateFromIso || undefined,
     dateTo: dateToIso || undefined,
     size: 20,
-  });
+  }) as any;
 
-  const noResults = useMemo(() => isNoResultsError(listQ.error), [listQ.error]);
-  const showErrorBanner = !!listQ.error && !noResults;
+  const listData: DispatchBookingListItemDTO[] = useMemo(() => {
+    return ((listQ?.items as DispatchBookingListItemDTO[]) ?? []) as DispatchBookingListItemDTO[];
+  }, [listQ?.items]);
+
+  const listHasData = listData.length > 0;
+
+  const listErrorMessage = useMemo(() => {
+    if (!listQ?.error) return null;
+    if (listHasData) return null;
+    return String(listQ.error);
+  }, [listQ?.error, listHasData]);
+
+  const whErrorMessage = useMemo(() => {
+    if (!whError) return null;
+    if ((warehouses?.length ?? 0) > 0) return null;
+    return typeof whError === "string" ? whError : toUserMessage(whError, "Greška prilikom učitavanja.");
+  }, [whError, warehouses?.length]);
+
+  const topError = useMemo(() => listErrorMessage || whErrorMessage || null, [listErrorMessage, whErrorMessage]);
+
+  const topErrorActionText = useMemo(() => (topError ? "Pokušaj ponovno" : "Zatvori"), [topError]);
+
+  const closePickers = useCallback(() => {
+    setWarehouseOpen(false);
+    setDocPickerOpen(false);
+    setDateOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!listHasData) return;
+    if (!listQ?.error) return;
+    listQ?.clearStatus?.();
+  }, [listHasData, listQ?.error]);
+
+  const onTopErrorAction = useCallback(() => {
+    if (!topError) return;
+
+    closePickers();
+
+    listQ?.clearStatus?.();
+
+    const jobs: Promise<any>[] = [];
+    if (listErrorMessage) jobs.push(Promise.resolve(listQ?.refresh?.()));
+    if (whErrorMessage) jobs.push(Promise.resolve(refetchWarehouses?.()));
+
+    if (!jobs.length) {
+      jobs.push(Promise.resolve(refetchWarehouses?.()));
+      jobs.push(Promise.resolve(listQ?.refresh?.()));
+    }
+
+    return Promise.all(jobs);
+  }, [topError, closePickers, listErrorMessage, whErrorMessage, listQ, refetchWarehouses]);
+
+  const { refreshing, onRefresh } = usePullToRefresh([
+    async () => {
+      closePickers();
+      listQ?.clearStatus?.();
+      await Promise.all([Promise.resolve(refetchWarehouses?.()), Promise.resolve(listQ?.refresh?.())]);
+    },
+  ]);
 
   const dateActive = !!dateFromIso && !!dateToIso;
 
   const dateLabel = useMemo(() => {
-    if (!dateActive) return "Period";
-    return `${fmtHrDateFromIso(dateFromIso)} → ${fmtHrDateFromIso(dateToIso)}`;
+    if (!dateActive) return "Datum";
+    return `${fmtHrFromIso(dateFromIso)} → ${fmtHrFromIso(dateToIso)}`;
   }, [dateActive, dateFromIso, dateToIso]);
 
   const warehouseLabel = useMemo(() => {
@@ -121,8 +184,14 @@ export default function DispatchBookingsIndex() {
     const needle = (q ?? "").trim().toLowerCase();
     const base: WarehousePick[] = [{ id: null, label: "Sva skladišta" }];
 
-    const list: WarehousePick[] = (warehouses ?? []).map((id) => ({ id: Number(id), label: `Skladište #${id}` }));
-    const filtered = !needle ? list : list.filter((w) => w.label.toLowerCase().includes(needle) || String(w.id ?? "").includes(needle));
+    const list: WarehousePick[] = (warehouses ?? []).map((id) => ({
+      id: Number(id),
+      label: `Skladište #${Number(id)}`,
+    }));
+
+    const filtered = !needle
+      ? list
+      : list.filter((w) => w.label.toLowerCase().includes(needle) || String(w.id ?? "").includes(needle));
 
     const items = base.concat(filtered);
     const start = page * size;
@@ -160,7 +229,7 @@ export default function DispatchBookingsIndex() {
 
   if (!ready) {
     return (
-      <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
+      <Screen style={s.screen} edges={["left", "right"]}>
         <View style={s.center}>
           <ActivityIndicator />
         </View>
@@ -168,12 +237,11 @@ export default function DispatchBookingsIndex() {
     );
   }
 
-  const listData = noResults ? [] : ((listQ.items as DispatchBookingListItemDTO[]) ?? []);
+  const showFullScreenLoading = !!listQ?.loading && listData.length === 0 && !refreshing;
 
   return (
-    <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
+    <Screen style={s.screen} edges={["left", "right"]}>
       <View style={s.pad}>
-        {/* Search */}
         <View style={s.searchWrap}>
           <FontAwesome name="search" size={14} color={Colors.sub} />
           <TextInput
@@ -193,7 +261,6 @@ export default function DispatchBookingsIndex() {
           )}
         </View>
 
-        {/* Filters */}
         <View style={s.filtersRow}>
           <Pressable style={s.filterPill} onPress={() => setWarehouseOpen(true)}>
             <FontAwesome name="building" size={14} color={Colors.text} />
@@ -217,7 +284,7 @@ export default function DispatchBookingsIndex() {
               {dateLabel}
             </Text>
 
-            {dateActive && (
+            {dateActive ? (
               <Pressable
                 onPressIn={(e) => e.stopPropagation?.()}
                 onPress={() => {
@@ -228,30 +295,38 @@ export default function DispatchBookingsIndex() {
               >
                 <FontAwesome name="times-circle" size={16} color={Colors.sub} />
               </Pressable>
+            ) : (
+              <FontAwesome name="chevron-down" size={12} color={Colors.sub} />
             )}
           </Pressable>
         </View>
 
-        {/* Status segmented */}
         <View style={s.segment}>
-          {(["ALL", "FINAL", "DRAFT", "CANCELLED"] as DispatchBookingStatusFilter[]).map((k) => {
+          {STATUS_KEYS.map((k) => {
             const active = status === k;
-            const label = k === "ALL" ? "Sve" : k === "FINAL" ? "Final" : k === "DRAFT" ? "Draft" : "Storno";
             return (
               <Pressable key={k} style={[s.segBtn, active && s.segBtnActive]} onPress={() => setStatus(k)}>
-                <Text style={[s.segText, active && s.segTextActive]}>{label}</Text>
+                <Text style={[s.segText, active && s.segTextActive]}>{statusLabel(k)}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        {/* ✅ real errors only; suppress 404/not found => show empty */}
-        {showErrorBanner && <Banner type="error" text={String(listQ.error)} />}
-        {!!whQ.error && <Banner type="error" text={String(whQ.error)} />}
+        {!!topError ? (
+          <View style={s.topErrorWrap}>
+            <ErrorCard
+              title="Greška"
+              message={topError}
+              actionText={topErrorActionText}
+              onAction={onTopErrorAction}
+              titleLines={1}
+              messageLines={2}
+            />
+          </View>
+        ) : null}
       </View>
 
-      {/* List */}
-      {listQ.loading ? (
+      {showFullScreenLoading ? (
         <View style={s.center}>
           <ActivityIndicator />
           <Text style={s.muted}>Učitavam…</Text>
@@ -261,33 +336,15 @@ export default function DispatchBookingsIndex() {
           data={listData}
           keyExtractor={(it) => String((it as any)?.headerId ?? (it as any)?.id)}
           contentContainerStyle={s.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           onEndReachedThreshold={0.35}
-          onEndReached={() => {
-            if (noResults) return;
-            listQ.loadMore?.();
-          }}
+          onEndReached={() => listQ?.loadMore?.()}
           renderItem={({ item }) => {
             const st = statusOfRow(item as any);
             const tone = statusPillStyle(st);
 
-            const code = String((item as any)?.documentCode ?? "");
-            const name = String((item as any)?.documentName ?? "");
-            const br = String((item as any)?.documentBr ?? "");
-            const bookedAtIso = String((item as any)?.bookedAt ?? (item as any)?.documentDate ?? "").slice(0, 10);
-            const dt = fmtHrDateFromIso(bookedAtIso);
-
-            const partnerName = String((item as any)?.partnerName ?? "");
-            const partnerId = (item as any)?.partnerId != null ? String((item as any)?.partnerId) : "";
-
-            const title = name || code || "Dokument";
-            const sub = [
-              code ? `Šifra: ${code}` : null,
-              br ? `Br: ${br}` : null,
-              dt ? `Datum: ${dt}` : null,
-              partnerName ? `Partner: ${partnerName}${partnerId ? ` (#${partnerId})` : ""}` : partnerId ? `Partner #${partnerId}` : null,
-            ]
-              .filter(Boolean)
-              .join(" • ");
+            const title = String((item as any)?.documentName ?? (item as any)?.documentCode ?? "Dokument");
+            const subLines = buildRowSubLines(item);
 
             return (
               <Pressable
@@ -302,11 +359,16 @@ export default function DispatchBookingsIndex() {
                   <Text style={s.rowTitle} numberOfLines={2}>
                     {title}
                   </Text>
-                  {!!sub && (
-                    <Text style={s.rowSub} numberOfLines={3}>
-                      {sub}
-                    </Text>
-                  )}
+
+                  {subLines.length ? (
+                    <View style={{ marginTop: 4, gap: 2 }}>
+                      {subLines.map((line, idx) => (
+                        <Text key={idx} style={s.rowSub} numberOfLines={1}>
+                          {line}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
 
                 <View style={[s.badge, { backgroundColor: tone.bg, borderColor: tone.bd }]}>
@@ -315,10 +377,10 @@ export default function DispatchBookingsIndex() {
               </Pressable>
             );
           }}
-          ListEmptyComponent={<Text style={s.empty}>Nema rezultata.</Text>}
+          ListEmptyComponent={listErrorMessage ? null : <Text style={s.empty}>Nema rezultata.</Text>}
           ListFooterComponent={
-            !noResults && listQ.loadingMore ? (
-              <View style={{ paddingVertical: 14 }}>
+            listQ?.loadingMore ? (
+              <View style={s.footerLoading}>
                 <ActivityIndicator />
               </View>
             ) : null
@@ -326,7 +388,6 @@ export default function DispatchBookingsIndex() {
         />
       )}
 
-      {/* Warehouse picker */}
       <SearchPickerSheet<WarehousePick>
         visible={warehouseOpen}
         title="Skladište"
@@ -347,7 +408,6 @@ export default function DispatchBookingsIndex() {
         )}
       />
 
-      {/* Document picker */}
       <SearchPickerSheet<DocumentDescriptorResponseDTO>
         visible={docPickerOpen}
         title="Odaberi dokument"
@@ -364,12 +424,13 @@ export default function DispatchBookingsIndex() {
             }}
           >
             <Text style={s.pickTitle}>{d.displayName}</Text>
-            <Text style={s.pickSub}>Šifra: {d.documentCode} • ID: {d.documentId}</Text>
+            <Text style={s.pickSub}>
+              Šifra: {d.documentCode} • ID: {d.documentId}
+            </Text>
           </Pressable>
         )}
       />
 
-      {/* Date range */}
       <DateRangeSheet
         visible={dateOpen}
         onClose={() => setDateOpen(false)}
@@ -383,99 +444,3 @@ export default function DispatchBookingsIndex() {
     </Screen>
   );
 }
-
-const s = StyleSheet.create({
-  pad: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 12, gap: 10 },
-  h1: { fontWeight: "900", color: Colors.text, fontSize: 18 },
-
-  searchWrap: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: "rgba(148,163,184,0.14)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  search: {
-    flex: 1,
-    height: 25,
-    paddingVertical: 0,
-    fontWeight: "800",
-    color: Colors.text,
-    fontSize: 14,
-  },
-
-  filtersRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
-  filterPill: {
-    flexGrow: 1,
-    minWidth: 170,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: "rgba(148,163,184,0.10)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  filterPillActive: { backgroundColor: "rgba(249,115,22,0.10)", borderColor: "rgba(249,115,22,0.25)" },
-  filterText: { flex: 1, fontWeight: "900", color: Colors.text, fontSize: 12 },
-
-  segment: {
-    flexDirection: "row",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    overflow: "hidden",
-    backgroundColor: "rgba(148,163,184,0.08)",
-  },
-  segBtn: { flex: 1, paddingVertical: 10, alignItems: "center", justifyContent: "center" },
-  segBtnActive: { backgroundColor: "rgba(249,115,22,0.14)" },
-  segText: { fontWeight: "900", color: Colors.sub, fontSize: 12 },
-  segTextActive: { color: Colors.text },
-
-  list: { paddingHorizontal: 14, paddingBottom: 18, gap: 10 },
-  row: {
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  rowTitle: { fontWeight: "900", color: Colors.text, fontSize: 14, lineHeight: 18 },
-  rowSub: { marginTop: 4, fontWeight: "800", color: Colors.sub, fontSize: 12 },
-
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: { fontWeight: "900", fontSize: 11 },
-
-  empty: { textAlign: "center", color: Colors.sub, fontWeight: "800", paddingVertical: 18 },
-
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 16 },
-  muted: { color: Colors.sub, fontWeight: "800" },
-
-  pickRow: {
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    gap: 4,
-  },
-  pickTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-  pickSub: { fontWeight: "800", color: Colors.sub, fontSize: 12 },
-});

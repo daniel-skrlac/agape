@@ -203,7 +203,7 @@ const S = StyleSheet.create({
 
     row: {
         paddingHorizontal: 14,
-        paddingVertical: 12,
+        paddingVertical: 18,
         flexDirection: "row",
         alignItems: "center",
         gap: 12,

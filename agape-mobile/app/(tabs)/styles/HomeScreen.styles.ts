@@ -47,6 +47,12 @@ export const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
+  accHintText: {
+    marginBottom: 8,
+    fontSize: 12,
+    color: T.muted,
+  },
+
   heroWrap: { borderRadius: 26, overflow: "hidden" },
   heroBgCard: {
     borderRadius: 26,
