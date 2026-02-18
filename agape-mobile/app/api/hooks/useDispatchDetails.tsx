@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/app/api/apiClient";
 import type { DispatchBookingDetailDTO } from "@/app/models/generated";
 import { dispatchBookingService } from "../services/dispatchBookingService";
@@ -12,11 +12,17 @@ export function useDispatchDetails(headerId: number | null) {
 
   const mountedRef = useRef(true);
   const reqIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const refetch = async () => {
+  const clearStatus = useCallback(() => setError(null), []);
+
+  const refetch = useCallback(async () => {
     if (!headerId) return;
+
     const rid = ++reqIdRef.current;
+    abortRef.current?.abort();
     const ctrl = new AbortController();
+    abortRef.current = ctrl;
 
     setLoading(true);
     setError(null);
@@ -27,20 +33,21 @@ export function useDispatchDetails(headerId: number | null) {
       setData(d);
     } catch (e: any) {
       if (!mountedRef.current || rid !== reqIdRef.current) return;
+      if (e?.name === "AbortError") return;
+
       if (e instanceof ApiError) setError((e.body as any)?.message || e.message);
       else setError(e?.message || "Greška prilikom učitavanja detalja.");
     } finally {
       if (!mountedRef.current || rid !== reqIdRef.current) return;
       setLoading(false);
     }
-
-    return () => ctrl.abort();
-  };
+  }, [headerId]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -51,9 +58,8 @@ export function useDispatchDetails(headerId: number | null) {
       setError(null);
       return;
     }
-    refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [headerId]);
+    void refetch();
+  }, [canLoad, refetch]);
 
-  return { data, loading, error, canLoad, refetch, setData, setError };
+  return { data, loading, error, canLoad, refetch, setData, setError, clearStatus };
 }

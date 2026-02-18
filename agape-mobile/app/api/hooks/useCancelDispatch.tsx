@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ApiError } from "@/app/api/apiClient";
 import { api } from "@/app/api/api";
 import type { DispatchResponseDTO, DispatchUpdateRequestDTO } from "@/app/models/generated";
@@ -7,7 +7,9 @@ export function useCancelDispatch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cancel = async (headerId: number, cancelReason?: string) => {
+  const clearStatus = useCallback(() => setError(null), []);
+
+  const cancel = useCallback(async (headerId: number, cancelReason?: string) => {
     setLoading(true);
     setError(null);
 
@@ -15,8 +17,6 @@ export function useCancelDispatch() {
       const payload: DispatchUpdateRequestDTO = {
         cancel: true,
         cancelReason: cancelReason?.trim() || undefined,
-        // do NOT send actorUserId (JsonIgnore on backend)
-        // other fields omitted
       } as any;
 
       return await api.request<DispatchResponseDTO>(`/api/v1/dispatch-note/${headerId}`, {
@@ -30,7 +30,7 @@ export function useCancelDispatch() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  return { loading, error, setError, cancel };
+  return { loading, error, setError, clearStatus, cancel };
 }

@@ -1,51 +1,33 @@
-// app/(tabs)/bookings/[id].tsx
-import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useLocalSearchParams, router } from "expo-router";
-import { useMutation } from "@tanstack/react-query";
+import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import TabScroll from "@/components/ui/TabScroll";
 import { Banner } from "@/components/Banner";
 import ValidateImpactModal from "@/components/ValidateImpactModal";
 
-import { useCancelDispatch } from "@/app/api/hooks/useCancelDispatch";
-import { useDispatchDetails } from "@/app/api/hooks/useDispatchDetails";
-import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
+import Colors from "@/constants/Colors";
+import Strings from "@/constants/Strings";
+
+
+import { styles as s } from "./styles/DispatchBookingsDetails.styles";
 
 import type { DispatchBookingDetailDTO, DispatchBookingItemDTO, DispatchRequestValidationDTO } from "@/app/models/generated";
-import { ApiError } from "@/app/api/apiClient";
-import { api } from "@/app/api/api";
-// ✅ USE YOUR EXISTING api (createApiClient). Adjust path if needed.
 
-const MAX_W = 560;
+import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
+import { toUserMessage } from "@/app/api/apiClient";
 
-// ✅ Adjust if your backend path differs
-const POST_ENDPOINT = (id: number) => `/api/v1/dispatch-bookings/${id}/post`;
+import {
+  useCancelDispatchBooking,
+  useDispatchBookingDetail,
+  useDispatchBookingValidate,
+  usePostDispatchBooking,
+} from "@/app/api/hooks/dispatch-bookings/dispatchBookingHooks";
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function toDateSafe(x: any): Date | null {
-  if (!x) return null;
-  if (x instanceof Date && !Number.isNaN(x.getTime())) return x;
-  const d = new Date(String(x));
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
-}
-
-function fmtHrDateTime(x: any): string {
-  const d = toDateSafe(x);
-  if (!d) return "—";
-  const dd = pad2(d.getDate());
-  const mm = pad2(d.getMonth() + 1);
-  const yyyy = d.getFullYear();
-  const hh = pad2(d.getHours());
-  const mi = pad2(d.getMinutes());
-  return `${dd}.${mm}.${yyyy} ${hh}:${mi}`;
-}
+import { formatQtyHR, formatTimeHR } from "@/app/utils/format";
+import { fmtHrDateTime } from "@/app/utils/dateIso";
 
 function statusOf(dto: DispatchBookingDetailDTO): "DRAFT" | "FINAL" | "CANCELLED" {
   if ((dto as any)?.cancelled) return "CANCELLED";
@@ -64,21 +46,6 @@ function kv(label: string, value: any) {
   return { label, value: v };
 }
 
-/** Show only backend "message" (no JSON dump). */
-function getBackendMessage(e: unknown): string {
-  if (e instanceof ApiError) {
-    const body = e.body as any;
-    return (body?.message as string) || e.message || "Request failed";
-  }
-  if (e instanceof Error) return e.message || "Request failed";
-  return "Request failed";
-}
-
-/**
- * Same idea as Otpremi:
- * - validate needs: warehouseId + partnerId + items[]
- * - draft flag should be false because we are going to POST/knjiži
- */
 function buildValidatePayloadFromBooking(dto: DispatchBookingDetailDTO): DispatchRequestValidationDTO | null {
   const warehouseId = Number((dto as any)?.warehouseId);
   const partnerId = Number((dto as any)?.partnerId);
@@ -86,7 +53,6 @@ function buildValidatePayloadFromBooking(dto: DispatchBookingDetailDTO): Dispatc
 
   const lines: any[] = Array.isArray((dto as any)?.items) ? ((dto as any).items as any[]) : [];
 
-  // IMPORTANT: prefer line.itemId (NOT line.id which is often row-id)
   const items = lines
     .map((ln) => {
       const itemId = Number(ln?.itemId);
@@ -102,32 +68,32 @@ function buildValidatePayloadFromBooking(dto: DispatchBookingDetailDTO): Dispatc
   return {
     warehouseId,
     partnerId,
-    documentDate: undefined as any,
     draft: false,
+    documentDate: undefined as any,
     note: undefined as any,
     items: items as any,
   } as any;
 }
 
 export default function DispatchBookingDetails() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const numericId = Number(id);
-  const validId = Number.isFinite(numericId) ? numericId : null;
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const idRaw = Array.isArray(params.id) ? params.id[0] : params.id;
+  const numericId = Number(idRaw);
+  const headerId = Number.isFinite(numericId) ? numericId : null;
 
-  const q = useDispatchDetails(validId);
-  const cancelM = useCancelDispatch();
-  const validateM = useDispatchValidate();
+  const detailsQ = useDispatchBookingDetail(headerId);
+  const validateM = useDispatchBookingValidate();
+  const postM = usePostDispatchBooking();
+  const cancelM = useCancelDispatchBooking();
+
+  const dto = detailsQ.booking as DispatchBookingDetailDTO | null;
 
   const [cancelReason, setCancelReason] = useState("");
-
-  // ✅ like Otpremi: modal visible state + confirm callback
   const [validateOpen, setValidateOpen] = useState(false);
-  const [postError, setPostError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const dto = q.data as DispatchBookingDetailDTO | null;
-
-  const st = useMemo(() => (dto ? statusOf(dto) : null), [dto]);
-  const tone = useMemo(() => (st ? statusTone(st) : null), [st]);
+  const st = useMemo(() => (dto ? statusOf(dto) : "DRAFT"), [dto]);
+  const tone = useMemo(() => statusTone(st), [st]);
 
   const partnerLabel = useMemo(() => {
     if (!dto) return "—";
@@ -142,6 +108,13 @@ export default function DispatchBookingDetails() {
     return (dto as any)?.warehouseId != null ? `Skladište #${(dto as any).warehouseId}` : "—";
   }, [dto]);
 
+  const canPost = useMemo(() => {
+    if (!dto) return false;
+    if ((dto as any)?.posted) return false;
+    if ((dto as any)?.cancelled) return false;
+    return true;
+  }, [dto]);
+
   const canCancel = useMemo(() => {
     if (!dto) return false;
     if (cancelM.loading) return false;
@@ -154,74 +127,84 @@ export default function DispatchBookingDetails() {
     return Array.isArray(a) ? (a as DispatchBookingItemDTO[]) : [];
   }, [dto]);
 
-  // ✅ this is your "submit" action after validate confirm
-  const postM = useMutation({
-    mutationFn: async (bookingId: number) => {
-      // using YOUR api client (with onUnauthorized etc)
-      return api.request(POST_ENDPOINT(bookingId), {} as any);
+  const topError = useMemo(() => {
+    return detailsQ.errorMessage || null;
+  }, [detailsQ.errorMessage]);
+
+  const modalError = useMemo(() => {
+    return validateM.errorMessage || postM.errorMessage || cancelM.errorMessage || localError || null;
+  }, [validateM.errorMessage, postM.errorMessage, cancelM.errorMessage, localError]);
+
+  const { refreshing, onRefresh } = usePullToRefresh([
+    async () => {
+      setLocalError(null);
+      validateM.reset();
+      postM.reset();
+      cancelM.reset();
+      await Promise.resolve(detailsQ.refetch());
     },
-  });
+  ]);
 
-  const validateLoading = validateM.isPending;
-  const validateData = validateM.data ?? null;
-  const validateError = validateM.error ? getBackendMessage(validateM.error) : null;
-  const posting = postM.isPending;
+  const openValidate = useCallback(async () => {
+    setLocalError(null);
+    validateM.reset();
+    postM.reset();
 
-  const openValidate = async () => {
-    setPostError(null);
+    if (!dto || !headerId) return;
 
-    if (!validId || !dto) return;
-
-    // only if draft and not cancelled
-    if ((dto as any)?.cancelled) {
-      setPostError("Dokument je već storniran.");
-      return;
-    }
-    if ((dto as any)?.posted) {
-      setPostError("Dokument je već knjižen.");
+    if (!canPost) {
+      setLocalError((dto as any)?.cancelled ? "Dokument je već storniran." : "Dokument je već knjižen.");
       return;
     }
 
     const payload = buildValidatePayloadFromBooking(dto);
     if (!payload) {
-      setPostError("Nedostaju podaci za validaciju (warehouseId/partnerId/stavke).");
-      return;
-    }
-
-    if (!(payload.items as any[])?.length) {
-      setPostError("Nema stavki za validaciju.");
+      setLocalError("Nedostaju podaci za validaciju (warehouseId/partnerId/stavke).");
       return;
     }
 
     setValidateOpen(true);
-    validateM.reset();
 
     try {
-      await validateM.mutateAsync(payload as any);
+      await validateM.validate(payload);
     } catch {
-      // error shown via validateError in modal
     }
-  };
+  }, [dto, headerId, canPost, validateM, postM]);
 
-  const confirmValidateAndPost = async () => {
-    if (!validId || !dto) return;
-    if (posting || validateLoading) return;
+  const confirmValidateAndPost = useCallback(async () => {
+    setLocalError(null);
 
-    setPostError(null);
+    if (!dto || !headerId) return;
+
+    if (!canPost) {
+      setLocalError((dto as any)?.cancelled ? "Dokument je već storniran." : "Dokument je već knjižen.");
+      return;
+    }
 
     try {
-      const res: any = await postM.mutateAsync(validId);
-
-      // if backend returns updated booking details -> apply, else refetch
-      if (res) q.setData(res as any);
-      else q.refetch();
-
+      const res: any = await postM.post(headerId);
+      if (res && typeof res === "object" && "headerId" in res) detailsQ.setBooking(res as any);
+      else await Promise.resolve(detailsQ.refetch());
       setValidateOpen(false);
     } catch (e) {
-      setPostError(getBackendMessage(e));
-      // keep modal open to show error
+      setLocalError(toUserMessage(e, Strings.settings.errors.generic));
     }
-  };
+  }, [dto, headerId, canPost, postM, detailsQ]);
+
+  const onCancel = useCallback(async () => {
+    setLocalError(null);
+    cancelM.reset();
+
+    if (!headerId) return;
+
+    try {
+      const res: any = await cancelM.cancel(headerId, cancelReason);
+      if (res && typeof res === "object" && "headerId" in res) detailsQ.setBooking(res as any);
+      else await Promise.resolve(detailsQ.refetch());
+    } catch (e) {
+      setLocalError(toUserMessage(e, Strings.settings.errors.generic));
+    }
+  }, [headerId, cancelReason, cancelM, detailsQ]);
 
   const TopBar = ({ subtitle }: { subtitle: string }) => (
     <View style={s.topBar}>
@@ -231,24 +214,24 @@ export default function DispatchBookingDetails() {
 
       <View style={{ flex: 1 }}>
         <Text style={s.h1} numberOfLines={1}>
-          Dispatch #{String(validId ?? "")}
+          Dispatch #{String(headerId ?? "")}
         </Text>
         <Text style={s.h2} numberOfLines={2}>
           {subtitle}
         </Text>
       </View>
 
-      <Pressable style={s.iconBtn} onPress={q.refetch}>
+      <Pressable style={s.iconBtn} onPress={() => detailsQ.refetch()}>
         <FontAwesome name="refresh" size={16} color={Colors.text} />
       </Pressable>
     </View>
   );
 
-  if (!validId) {
+  if (!headerId) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
         <TopBar subtitle="Neispravan ID" />
-        <View style={s.pad}>
+        <View style={s.padPlain}>
           <Banner type="error" text="Neispravan ID." />
           <Pressable style={s.secondary} onPress={() => router.back()}>
             <Text style={s.secondaryText}>Nazad</Text>
@@ -258,7 +241,7 @@ export default function DispatchBookingDetails() {
     );
   }
 
-  if (q.loading) {
+  if (detailsQ.loading) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
         <TopBar subtitle="Učitavam…" />
@@ -270,13 +253,13 @@ export default function DispatchBookingDetails() {
     );
   }
 
-  if (q.error) {
+  if (!dto) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-        <TopBar subtitle="Greška" />
-        <View style={s.pad}>
-          <Banner type="error" text={q.error} />
-          <Pressable style={s.secondary} onPress={q.refetch}>
+        <TopBar subtitle={detailsQ.errorMessage ? "Greška" : "Nema podataka"} />
+        <View style={s.padPlain}>
+          {detailsQ.errorMessage ? <Banner type="error" text={detailsQ.errorMessage} /> : <Banner type="info" text="Nema podataka." />}
+          <Pressable style={s.secondary} onPress={() => detailsQ.refetch()}>
             <Text style={s.secondaryText}>Pokušaj ponovno</Text>
           </Pressable>
         </View>
@@ -284,21 +267,14 @@ export default function DispatchBookingDetails() {
     );
   }
 
-  if (!dto) {
-    return (
-      <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-        <TopBar subtitle="Nema podataka" />
-        <View style={s.pad}>
-          <Banner type="info" text="Nema podataka." />
-        </View>
-      </Screen>
-    );
-  }
+  const stHuman = st === "CANCELLED" ? "STORNO" : st;
 
-  const stLabel = st ?? "DRAFT";
-  const stHuman = stLabel === "CANCELLED" ? "STORNO" : stLabel;
-
-  const headerSubtitle = [stHuman, (dto as any)?.documentCode ? (dto as any).documentCode : null, partnerLabel !== "—" ? partnerLabel : null, warehouseLabel !== "—" ? warehouseLabel : null]
+  const headerSubtitle = [
+    stHuman,
+    (dto as any)?.documentCode ? String((dto as any).documentCode) : null,
+    partnerLabel !== "—" ? partnerLabel : null,
+    warehouseLabel !== "—" ? warehouseLabel : null,
+  ]
     .filter(Boolean)
     .join(" • ");
 
@@ -313,7 +289,7 @@ export default function DispatchBookingDetails() {
   ];
 
   const timeRows = [
-    kv("Datum dokumenta", fmtHrDateTime((dto as any)?.documentDate)),
+    kv("Datum dokumenta", formatTimeHR((dto as any)?.documentDate)),
     kv("Knjigovano/izrađeno", fmtHrDateTime((dto as any)?.bookedAt)),
     kv("Kreirano", fmtHrDateTime((dto as any)?.createdAt)),
     kv("Kreirao", (dto as any)?.createdBy),
@@ -323,18 +299,16 @@ export default function DispatchBookingDetails() {
     kv("Stornirano", fmtHrDateTime((dto as any)?.cancelledAt)),
   ];
 
-  const canPost = !(dto as any)?.posted && !(dto as any)?.cancelled;
-
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
       <TopBar subtitle={headerSubtitle} />
 
-      <ScrollView contentContainerStyle={s.pad}>
-        {!!(cancelM.error || postError) && <Banner type="error" text={(cancelM.error || postError) as string} />}
+      <TabScroll withScreen={false} refreshing={refreshing} onRefresh={onRefresh} contentContainerStyle={s.pad}>
+        {!!topError && <Banner type="error" text={topError} />}
 
         <View style={s.statusRow}>
-          <View style={[s.statusPill, { backgroundColor: tone?.bg, borderColor: tone?.bd }]}>
-            <Text style={[s.statusText, { color: tone?.tx }]}>{stHuman}</Text>
+          <View style={[s.statusPill, { backgroundColor: tone.bg, borderColor: tone.bd }]}>
+            <Text style={[s.statusText, { color: tone.tx }]}>{stHuman}</Text>
           </View>
 
           <View style={{ flex: 1 }} />
@@ -356,10 +330,9 @@ export default function DispatchBookingDetails() {
           )}
         </View>
 
-        {/* ✅ Validate + Post (same flow as Otpremi) */}
         {canPost && (
-          <Pressable style={[s.primary, (posting || validateLoading) && { opacity: 0.5 }]} disabled={posting || validateLoading} onPress={openValidate}>
-            <Text style={s.primaryText}>{posting || validateLoading ? "Radim…" : "Validiraj i knjiži"}</Text>
+          <Pressable style={[s.primary, (validateM.loading || postM.loading) && { opacity: 0.5 }]} disabled={validateM.loading || postM.loading} onPress={openValidate}>
+            <Text style={s.primaryText}>{validateM.loading || postM.loading ? "Radim…" : "Validiraj i knjiži"}</Text>
           </Pressable>
         )}
 
@@ -403,7 +376,7 @@ export default function DispatchBookingDetails() {
                 const key = String(ln?.id ?? ln?.itemRowId ?? ln?.itemId ?? `${idx}`);
                 const name = String(ln?.name ?? ln?.itemName ?? "");
                 const code = String(ln?.itemCode ?? "");
-                const qty = ln?.quantity != null ? String(ln.quantity) : "";
+                const qty = ln?.quantity != null ? formatQtyHR(Number(ln.quantity)) : "—";
                 const unit = String(ln?.unit ?? ln?.unitOfMeasure ?? ln?.jmj ?? "");
 
                 return (
@@ -422,7 +395,7 @@ export default function DispatchBookingDetails() {
                     </View>
 
                     <View style={s.qtyBox}>
-                      <Text style={s.qty}>{qty || "—"}</Text>
+                      <Text style={s.qty}>{qty}</Text>
                     </View>
                   </View>
                 );
@@ -431,7 +404,6 @@ export default function DispatchBookingDetails() {
           )}
         </View>
 
-        {/* Storno / delete draft (your existing logic) */}
         <View style={s.card}>
           <Text style={s.cardTitle}>Storno</Text>
 
@@ -447,147 +419,25 @@ export default function DispatchBookingDetails() {
             autoCorrect={false}
           />
 
-          <Pressable
-            style={[s.danger, !canCancel && { opacity: 0.5 }]}
-            disabled={!canCancel}
-            onPress={async () => {
-              cancelM.setError(null);
-              const res = await cancelM.cancel(validId, cancelReason);
-              if (res) q.setData(res as any);
-            }}
-          >
-            {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>{stLabel === "DRAFT" ? "Obriši draft" : "Storniraj dokument"}</Text>}
+          <Pressable style={[s.danger, !canCancel && { opacity: 0.5 }]} disabled={!canCancel} onPress={onCancel}>
+            {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>{st === "DRAFT" ? "Obriši draft" : "Storniraj dokument"}</Text>}
           </Pressable>
         </View>
-
-        <Pressable style={s.secondary} onPress={() => router.back()}>
-          <Text style={s.secondaryText}>Nazad</Text>
-        </Pressable>
-      </ScrollView>
+      </TabScroll>
 
       <ValidateImpactModal
         visible={validateOpen}
         onClose={() => {
-          if (posting || validateLoading) return;
+          if (validateM.loading || postM.loading) return;
           setValidateOpen(false);
         }}
-        disableClose={posting || validateLoading}
-        loading={validateLoading || posting}
-        error={validateError || postError}
-        data={validateData}
+        disableClose={validateM.loading || postM.loading}
+        loading={validateM.loading || postM.loading}
+        error={modalError}
+        data={validateM.data}
         onConfirm={confirmValidateAndPost}
-        confirmText={posting ? "Knjižim…" : "Knjiži"}
+        confirmText={postM.loading ? "Knjižim…" : "Knjiži"}
       />
     </Screen>
   );
 }
-
-const s = StyleSheet.create({
-  topBar: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "rgba(148,163,184,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  pad: { padding: 14, gap: 12 },
-  h1: { fontWeight: "900", color: Colors.text, fontSize: 16 },
-  h2: { fontWeight: "800", color: Colors.sub, fontSize: 12 },
-
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 16 },
-  muted: { color: Colors.sub, fontWeight: "800" },
-
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  statusPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
-  statusText: { fontWeight: "900", fontSize: 12 },
-
-  miniPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
-  miniText: { fontWeight: "900", color: Colors.text, fontSize: 11 },
-
-  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
-  primaryText: { color: "#fff", fontWeight: "900" },
-
-  card: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    padding: 12,
-    gap: 10,
-  },
-  cardTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-
-  kvGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  kvCell: {
-    width: "48%",
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: "rgba(148,163,184,0.08)",
-    padding: 10,
-    gap: 4,
-  },
-  k: { color: Colors.sub, fontWeight: "900", fontSize: 11 },
-  v: { color: Colors.text, fontWeight: "900", fontSize: 12 },
-
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  countPill: {
-    minWidth: 34,
-    height: 26,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(249,115,22,0.12)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(249,115,22,0.30)",
-  },
-  countText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
-
-  empty: { color: Colors.sub, fontWeight: "800", paddingVertical: 6 },
-
-  lineRow: {
-    padding: 10,
-    borderRadius: 14,
-    backgroundColor: "rgba(148,163,184,0.08)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  lineTitle: { fontWeight: "900", color: Colors.text, fontSize: 13, lineHeight: 17 },
-  lineSub: { marginTop: 2, fontWeight: "800", color: Colors.sub, fontSize: 12 },
-
-  qtyBox: { minWidth: 52, alignItems: "flex-end", justifyContent: "center" },
-  qty: { fontWeight: "900", color: Colors.text, fontSize: 14, textAlign: "right" },
-
-  lbl: { color: Colors.sub, fontWeight: "900", fontSize: 12, marginTop: 4 },
-  input: {
-    minHeight: 76,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: "rgba(148,163,184,0.10)",
-    padding: 12,
-    color: Colors.text,
-    fontWeight: "800",
-  },
-
-  danger: { padding: 12, borderRadius: 14, backgroundColor: "rgba(239,68,68,0.95)", alignItems: "center" },
-  dangerTextBtn: { color: "#fff", fontWeight: "900" },
-
-  secondary: { padding: 12, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center" },
-  secondaryText: { fontWeight: "900", color: Colors.text },
-});

@@ -70,3 +70,22 @@ export function toLocalDateString(d: Date): string {
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
 }
+
+export function fmtHrDateTime(x: unknown): string {
+    if (!x) return "—";
+
+    const d =
+        x instanceof Date ? x :
+            typeof x === "number" ? new Date(x) :
+                new Date(String(x));
+
+    if (Number.isNaN(d.getTime())) return "—";
+
+    const dd = pad2(d.getDate());
+    const mm = pad2(d.getMonth() + 1);
+    const yyyy = d.getFullYear();
+    const hh = pad2(d.getHours());
+    const mi = pad2(d.getMinutes());
+
+    return `${dd}.${mm}.${yyyy} ${hh}:${mi}`;
+}
