@@ -288,7 +288,7 @@ export default function DispatchBookingDetails() {
     kv("Knjiženo/izrađeno", fmtHrDateTime((dto as any)?.bookedAt)),
     kv("Kreirano", fmtHrDateTime((dto as any)?.createdAt)),
     kv("Kreirao", (dto as any)?.createdBy),
-    kv("Knjigovao", (dto as any)?.postedBy),
+    kv("Knjižio", (dto as any)?.postedBy),
     kv("Knjiženo", fmtHrDateTime((dto as any)?.postedAt)),
     kv("Stornirao", (dto as any)?.cancelledBy),
     kv("Stornirano", fmtHrDateTime((dto as any)?.cancelledAt)),
