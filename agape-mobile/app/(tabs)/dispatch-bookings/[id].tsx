@@ -220,10 +220,6 @@ export default function DispatchBookingDetails() {
           {subtitle}
         </Text>
       </View>
-
-      <Pressable style={s.iconBtn} onPress={() => detailsQ.refetch()}>
-        <FontAwesome name="refresh" size={16} color={Colors.text} />
-      </Pressable>
     </View>
   );
 
@@ -273,7 +269,6 @@ export default function DispatchBookingDetails() {
     stHuman,
     (dto as any)?.documentCode ? String((dto as any).documentCode) : null,
     partnerLabel !== "—" ? partnerLabel : null,
-    warehouseLabel !== "—" ? warehouseLabel : null,
   ]
     .filter(Boolean)
     .join(" • ");
