@@ -274,7 +274,7 @@ export default function DispatchBookingDetails() {
     .join(" • ");
 
   const metaRows = [
-    kv("Header ID", (dto as any)?.headerId),
+    kv("Glava ID", (dto as any)?.headerId),
     kv("Skladište ID", (dto as any)?.warehouseId),
     kv("Dokument ID", (dto as any)?.documentId),
     kv("Šifra", (dto as any)?.documentCode),
@@ -285,11 +285,11 @@ export default function DispatchBookingDetails() {
 
   const timeRows = [
     kv("Datum dokumenta", formatTimeHR((dto as any)?.documentDate)),
-    kv("Knjigovano/izrađeno", fmtHrDateTime((dto as any)?.bookedAt)),
+    kv("Knjiženo/izrađeno", fmtHrDateTime((dto as any)?.bookedAt)),
     kv("Kreirano", fmtHrDateTime((dto as any)?.createdAt)),
     kv("Kreirao", (dto as any)?.createdBy),
     kv("Knjigovao", (dto as any)?.postedBy),
-    kv("Knjigovano", fmtHrDateTime((dto as any)?.postedAt)),
+    kv("Knjiženo", fmtHrDateTime((dto as any)?.postedAt)),
     kv("Stornirao", (dto as any)?.cancelledBy),
     kv("Stornirano", fmtHrDateTime((dto as any)?.cancelledAt)),
   ];
