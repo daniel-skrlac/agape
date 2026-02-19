@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -10,7 +10,6 @@ import ValidateImpactModal from "@/components/ValidateImpactModal";
 
 import Colors from "@/constants/Colors";
 import Strings from "@/constants/Strings";
-
 
 import { styles as s } from "./styles/DispatchBookingsDetails.styles";
 
@@ -36,9 +35,23 @@ function statusOf(dto: DispatchBookingDetailDTO): "DRAFT" | "FINAL" | "CANCELLED
 }
 
 function statusTone(st: "DRAFT" | "FINAL" | "CANCELLED") {
-  if (st === "CANCELLED") return { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.28)", tx: Colors.dangerText ?? "#ef4444" };
-  if (st === "FINAL") return { bg: "rgba(34,197,94,0.14)", bd: "rgba(34,197,94,0.30)", tx: Colors.text };
-  return { bg: "rgba(59,130,246,0.10)", bd: "rgba(59,130,246,0.22)", tx: Colors.text };
+  if (st === "CANCELLED")
+    return {
+      bg: "rgba(239,68,68,0.12)",
+      bd: "rgba(239,68,68,0.28)",
+      tx: Colors.dangerText ?? "#ef4444",
+    };
+  if (st === "FINAL")
+    return {
+      bg: "rgba(34,197,94,0.14)",
+      bd: "rgba(34,197,94,0.30)",
+      tx: Colors.text,
+    };
+  return {
+    bg: "rgba(59,130,246,0.10)",
+    bd: "rgba(59,130,246,0.22)",
+    tx: Colors.text,
+  };
 }
 
 function kv(label: string, value: any) {
@@ -88,6 +101,7 @@ export default function DispatchBookingDetails() {
 
   const dto = detailsQ.booking as DispatchBookingDetailDTO | null;
 
+  // NOTE: reason is ONLY for storno (FINAL docs)
   const [cancelReason, setCancelReason] = useState("");
   const [validateOpen, setValidateOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -103,11 +117,6 @@ export default function DispatchBookingDetails() {
     return `${name || "Partner"}${pid ? ` (#${pid})` : ""}`;
   }, [dto]);
 
-  const warehouseLabel = useMemo(() => {
-    if (!dto) return "—";
-    return (dto as any)?.warehouseId != null ? `Skladište #${(dto as any).warehouseId}` : "—";
-  }, [dto]);
-
   const canPost = useMemo(() => {
     if (!dto) return false;
     if ((dto as any)?.posted) return false;
@@ -115,10 +124,21 @@ export default function DispatchBookingDetails() {
     return true;
   }, [dto]);
 
-  const canCancel = useMemo(() => {
+  // ✅ delete draft allowed only when draft (not posted, not cancelled)
+  const canDeleteDraft = useMemo(() => {
     if (!dto) return false;
     if (cancelM.loading) return false;
     if ((dto as any)?.cancelled) return false;
+    if ((dto as any)?.posted) return false; // must be draft
+    return true;
+  }, [dto, cancelM.loading]);
+
+  // ✅ storno allowed only when booked/final (posted, not cancelled)
+  const canStorno = useMemo(() => {
+    if (!dto) return false;
+    if (cancelM.loading) return false;
+    if ((dto as any)?.cancelled) return false;
+    if (!(dto as any)?.posted) return false; // must be final
     return true;
   }, [dto, cancelM.loading]);
 
@@ -127,9 +147,7 @@ export default function DispatchBookingDetails() {
     return Array.isArray(a) ? (a as DispatchBookingItemDTO[]) : [];
   }, [dto]);
 
-  const topError = useMemo(() => {
-    return detailsQ.errorMessage || null;
-  }, [detailsQ.errorMessage]);
+  const topError = useMemo(() => detailsQ.errorMessage || null, [detailsQ.errorMessage]);
 
   const modalError = useMemo(() => {
     return validateM.errorMessage || postM.errorMessage || cancelM.errorMessage || localError || null;
@@ -168,6 +186,7 @@ export default function DispatchBookingDetails() {
     try {
       await validateM.validate(payload);
     } catch {
+      // error exposed via validateM.errorMessage
     }
   }, [dto, headerId, canPost, validateM, postM]);
 
@@ -191,11 +210,38 @@ export default function DispatchBookingDetails() {
     }
   }, [dto, headerId, canPost, postM, detailsQ]);
 
-  const onCancel = useCallback(async () => {
+  const onDeleteDraft = useCallback(async () => {
     setLocalError(null);
     cancelM.reset();
 
-    if (!headerId) return;
+    if (!headerId || !dto) return;
+
+    // hard-guard: draft only
+    if ((dto as any)?.posted || (dto as any)?.cancelled) {
+      setLocalError("Brisanje je moguće samo za draft dokumente.");
+      return;
+    }
+
+    try {
+      const res: any = await cancelM.cancel(headerId, "");
+      if (res && typeof res === "object" && "headerId" in res) detailsQ.setBooking(res as any);
+      else await Promise.resolve(detailsQ.refetch());
+    } catch (e) {
+      setLocalError(toUserMessage(e, Strings.settings.errors.generic));
+    }
+  }, [headerId, dto, cancelM, detailsQ]);
+
+  const onStorno = useCallback(async () => {
+    setLocalError(null);
+    cancelM.reset();
+
+    if (!headerId || !dto) return;
+
+    // hard-guard: FINAL only
+    if (!(dto as any)?.posted || (dto as any)?.cancelled) {
+      setLocalError("Storno je moguće samo za knjižene dokumente.");
+      return;
+    }
 
     try {
       const res: any = await cancelM.cancel(headerId, cancelReason);
@@ -204,7 +250,7 @@ export default function DispatchBookingDetails() {
     } catch (e) {
       setLocalError(toUserMessage(e, Strings.settings.errors.generic));
     }
-  }, [headerId, cancelReason, cancelM, detailsQ]);
+  }, [headerId, dto, cancelReason, cancelM, detailsQ]);
 
   const TopBar = ({ subtitle }: { subtitle: string }) => (
     <View style={s.topBar}>
@@ -325,11 +371,15 @@ export default function DispatchBookingDetails() {
           )}
         </View>
 
-        {canPost && (
-          <Pressable style={[s.primary, (validateM.loading || postM.loading) && { opacity: 0.5 }]} disabled={validateM.loading || postM.loading} onPress={openValidate}>
+        {canPost ? (
+          <Pressable
+            style={[s.primary, (validateM.loading || postM.loading) && { opacity: 0.5 }]}
+            disabled={validateM.loading || postM.loading}
+            onPress={openValidate}
+          >
             <Text style={s.primaryText}>{validateM.loading || postM.loading ? "Radim…" : "Validiraj i knjiži"}</Text>
           </Pressable>
-        )}
+        ) : null}
 
         <View style={s.card}>
           <Text style={s.cardTitle}>Podaci</Text>
@@ -399,25 +449,39 @@ export default function DispatchBookingDetails() {
           )}
         </View>
 
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Storno</Text>
+        {/* ✅ Draft: allow delete, NO reason input */}
+        {canDeleteDraft ? (
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Draft</Text>
 
-          <Text style={s.lbl}>Razlog (opcionalno)</Text>
-          <TextInput
-            value={cancelReason}
-            onChangeText={setCancelReason}
-            placeholder="Upiši razlog…"
-            placeholderTextColor={Colors.sub}
-            style={s.input}
-            multiline
-            textAlignVertical="top"
-            autoCorrect={false}
-          />
+            <Pressable style={[s.danger, cancelM.loading && { opacity: 0.5 }]} disabled={cancelM.loading} onPress={onDeleteDraft}>
+              {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Obriši draft</Text>}
+            </Pressable>
+          </View>
+        ) : null}
 
-          <Pressable style={[s.danger, !canCancel && { opacity: 0.5 }]} disabled={!canCancel} onPress={onCancel}>
-            {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>{st === "DRAFT" ? "Obriši draft" : "Storniraj dokument"}</Text>}
-          </Pressable>
-        </View>
+        {/* ✅ Final: allow storno, reason input shown ONLY here */}
+        {canStorno ? (
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Storno</Text>
+
+            <Text style={s.lbl}>Razlog (opcionalno)</Text>
+            <TextInput
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              placeholder="Upiši razlog…"
+              placeholderTextColor={Colors.sub}
+              style={s.input}
+              multiline
+              textAlignVertical="top"
+              autoCorrect={false}
+            />
+
+            <Pressable style={[s.danger, cancelM.loading && { opacity: 0.5 }]} disabled={cancelM.loading} onPress={onStorno}>
+              {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Storniraj dokument</Text>}
+            </Pressable>
+          </View>
+        ) : null}
       </TabScroll>
 
       <ValidateImpactModal
