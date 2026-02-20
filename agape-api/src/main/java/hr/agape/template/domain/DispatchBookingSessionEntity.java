@@ -24,7 +24,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -51,9 +50,6 @@ public class DispatchBookingSessionEntity extends PanacheEntityBase {
 
     @Column(name = "warehouse_id", nullable = false)
     private Long warehouseId;
-
-    @Column(name = "document_date", nullable = false)
-    private LocalDate documentDate;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

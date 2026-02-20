@@ -17,13 +17,8 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
-
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
 
 @Getter
 @Setter
@@ -52,9 +47,6 @@ public class DispatchBookingSessionEntryEntity extends PanacheEntityBase {
     @Enumerated(EnumType.STRING)
     @Column(name = "draft_mode", nullable = false, length = 10)
     private DraftMode draftMode;
-
-    @Column(name = "document_date")
-    private LocalDate documentDate;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "doc_patches", nullable = false, columnDefinition = "jsonb")

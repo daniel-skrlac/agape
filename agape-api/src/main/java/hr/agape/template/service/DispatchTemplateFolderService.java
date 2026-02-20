@@ -59,7 +59,7 @@ public class DispatchTemplateFolderService {
         try {
             Long userId = authUtil.requireUserId();
 
-            if (parentId != null && !folderRepo.belongsToOwner(parentId, userId)) {
+            if (parentId != null && folderRepo.doesNotBelongToOwner(parentId, userId)) {
                 return ServiceResponseDirector.errorBadRequest("Parent folder not found.");
             }
 

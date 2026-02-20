@@ -16,4 +16,8 @@ public class DispatchBookingSessionEntryRepository implements PanacheRepository<
     public DispatchBookingSessionEntryEntity findBySessionAndPartner(Long sessionId, Long partnerId) {
         return find("bookingSession.id = ?1 and partnerId = ?2", sessionId, partnerId).firstResult();
     }
+
+    public void deleteForSession(Long sessionId) {
+        delete("bookingSession.id = ?1", sessionId);
+    }
 }

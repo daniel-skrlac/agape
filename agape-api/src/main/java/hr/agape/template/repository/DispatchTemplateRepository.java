@@ -7,7 +7,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 
-import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -77,17 +76,6 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
         return cnt != null && cnt > 0;
     }
 
-    public int touchUpdatedAt(Long templateId, OffsetDateTime now) {
-        return em.createQuery("""
-                        UPDATE DispatchTemplateEntity t
-                        SET t.updatedAt = :now
-                        WHERE t.id = :id
-                        """)
-                .setParameter("now", now)
-                .setParameter("id", templateId)
-                .executeUpdate();
-    }
-
     public List<String> listNamesForOwnerAndFolder(Long ownerUserId, Long folderId, Long excludeTemplateId) {
         if (folderId == null) {
             if (excludeTemplateId == null) {
@@ -108,10 +96,6 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
         return find("SELECT t.name FROM DispatchTemplateEntity t WHERE t.owner.id = ?1 AND t.folder.id = ?2 AND t.id <> ?3",
                 ownerUserId, folderId, excludeTemplateId)
                 .project(String.class).list();
-    }
-
-    public List<DispatchTemplateEntity> listByOwnerAndFolder(Long ownerUserId, Long folderId) {
-        return find("owner.id = ?1 AND folder.id = ?2 ORDER BY id ASC", ownerUserId, folderId).list();
     }
 
     public DispatchTemplateEntity findFull(Long templateId, Long ownerUserId) {
@@ -172,6 +156,32 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
                 """ + order, userId, like).list();
     }
 
+    public List<DispatchTemplateEntity> listFullAccessibleByIds(Long userId, Collection<Long> templateIds) {
+        if (templateIds == null || templateIds.isEmpty()) {
+            return List.of();
+        }
+
+        return em.createQuery("""
+                        SELECT DISTINCT t
+                        FROM DispatchTemplateEntity t
+                        LEFT JOIN FETCH t.documents d
+                        LEFT JOIN FETCH d.items i
+                        WHERE t.id IN :templateIds
+                          AND (
+                                t.owner.id = :userId
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM DispatchTemplateShareEntity s
+                                    WHERE s.template = t
+                                      AND s.sharedWith.id = :userId
+                                )
+                          )
+                        """, DispatchTemplateEntity.class)
+                .setParameter("templateIds", templateIds)
+                .setParameter("userId", userId)
+                .getResultList();
+    }
+
     public List<DispatchTemplateEntity> listHeaders(Long ownerUserId, Long folderId, String q, Boolean rootOnly) {
         String base = "owner.id = ?1";
         String order = " ORDER BY householdSize ASC, LOWER(name) ASC, id DESC";
@@ -215,5 +225,4 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
                 templateId, documentId, excludeDocId
         ) > 0;
     }
-
 }

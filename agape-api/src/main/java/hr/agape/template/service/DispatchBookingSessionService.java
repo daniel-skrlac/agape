@@ -1,9 +1,11 @@
 package hr.agape.template.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import hr.agape.common.dto.BaseSearchFilter;
+import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
+import hr.agape.common.util.JsonUtil;
 import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.service.DispatchBookingService;
@@ -29,10 +31,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static hr.agape.common.util.DateTimeUtil.ZAGREB;
 
@@ -40,6 +44,8 @@ import static hr.agape.common.util.DateTimeUtil.ZAGREB;
 public class DispatchBookingSessionService {
 
     private final AuthUtil authUtil;
+    private final JsonUtil jsonUtil;
+
     private final UserRepository userRepo;
 
     private final DispatchBookingSessionRepository sessionRepo;
@@ -47,25 +53,23 @@ public class DispatchBookingSessionService {
 
     private final DispatchTemplateRepository templateRepo;
 
-
     private final TemplateBookingRequestBuilder bookingRequestBuilder;
 
     private final DispatchBookingService oracleBooking;
     private final BookingSessionMapper mapper;
-    private final ObjectMapper om;
 
     @Inject
     public DispatchBookingSessionService(
-            AuthUtil authUtil,
+            AuthUtil authUtil, JsonUtil jsonUtil,
             UserRepository userRepo,
             DispatchBookingSessionRepository sessionRepo,
             DispatchBookingSessionEntryRepository entryRepo,
             DispatchTemplateRepository templateRepo, TemplateBookingRequestBuilder bookingRequestBuilder,
             DispatchBookingService oracleBooking,
-            BookingSessionMapper mapper,
-            ObjectMapper om
+            BookingSessionMapper mapper
     ) {
         this.authUtil = authUtil;
+        this.jsonUtil = jsonUtil;
         this.userRepo = userRepo;
         this.sessionRepo = sessionRepo;
         this.entryRepo = entryRepo;
@@ -73,57 +77,56 @@ public class DispatchBookingSessionService {
         this.bookingRequestBuilder = bookingRequestBuilder;
         this.oracleBooking = oracleBooking;
         this.mapper = mapper;
-        this.om = om;
     }
 
-    @Transactional
-    public ServiceResponseDTO<Void> deleteSession(Long sessionId) {
+    public ServiceResponseDTO<PagedResultDTO<BookingSessionResponseDTO>> listSessions(
+            String statusRaw,
+            BaseSearchFilter f
+    ) {
         try {
             Long userId = authUtil.requireUserId();
 
-            DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
-            if (s == null) return ServiceResponseDirector.errorNotFound("Session not found.");
+            int page = (f == null) ? 0 : f.getPage();
+            int size = (f == null) ? 10 : f.getSize();
 
-            if (s.getStatus() != BookingSessionStatus.DRAFT) {
-                return ServiceResponseDirector.errorBadRequest("Session cannot be deleted.");
-            }
-
-            entryRepo.delete("bookingSession.id = ?1", sessionId);
-
-            s.delete();
-
-            return ServiceResponseDirector.successOk(null, "Session deleted.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to delete session: " + e.getMessage());
-        }
-    }
-
-    public ServiceResponseDTO<List<BookingSessionResponseDTO>> listSessions(String statusRaw) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            List<DispatchBookingSessionEntity> list;
-            if (statusRaw == null || statusRaw.isBlank()) {
-                list = sessionRepo.listForOwner(userId);
-            } else {
-                BookingSessionStatus st;
+            BookingSessionStatus status = null;
+            if (statusRaw != null && !statusRaw.isBlank()) {
                 try {
-                    st = BookingSessionStatus.valueOf(statusRaw.trim().toUpperCase());
+                    status = BookingSessionStatus.valueOf(statusRaw.trim().toUpperCase());
                 } catch (Exception e) {
                     return ServiceResponseDirector.errorBadRequest("Invalid status: " + statusRaw);
                 }
-                list = sessionRepo.listForOwnerByStatus(userId, st);
             }
 
-            List<BookingSessionResponseDTO> out = new ArrayList<>();
-            for (var s : list) {
-                BookingSessionResponseDTO dto = mapper.toDto(s);
-                dto.setEntries(null); // light list
-                out.add(dto);
+            long total;
+            List<DispatchBookingSessionEntity> list;
+
+            if (status == null) {
+                total = sessionRepo.countForOwner(userId);
+                list = sessionRepo.pageForOwner(userId, page, size);
+            } else {
+                total = sessionRepo.countForOwnerByStatus(userId, status);
+                list = sessionRepo.pageForOwnerByStatus(userId, status, page, size);
             }
-            return ServiceResponseDirector.successOk(out, "OK");
+
+            List<BookingSessionResponseDTO> items = list.stream()
+                    .map(s -> {
+                        BookingSessionResponseDTO dto = mapper.toDto(s);
+                        dto.setEntries(null);
+                        return dto;
+                    })
+                    .toList();
+
+            PagedResultDTO<BookingSessionResponseDTO> result = PagedResultDTO.<BookingSessionResponseDTO>builder()
+                    .items(items)
+                    .page(page)
+                    .size(size)
+                    .total(total)
+                    .build();
+
+            return ServiceResponseDirector.successOk(result, "OK");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to list sessions: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to list sessions.");
         }
     }
 
@@ -140,7 +143,6 @@ public class DispatchBookingSessionService {
             s.setTitle(req.getTitle().trim());
             s.setNote(req.getNote());
             s.setWarehouseId(req.getWarehouseId());
-            s.setDocumentDate(req.getDocumentDate() != null ? req.getDocumentDate() : LocalDate.now(ZAGREB));
             s.setStatus(BookingSessionStatus.DRAFT);
 
             s.persist();
@@ -149,7 +151,7 @@ public class DispatchBookingSessionService {
             dto.setEntries(List.of());
             return ServiceResponseDirector.successOk(dto, "Session created.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to create session: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to create session.");
         }
     }
 
@@ -166,7 +168,29 @@ public class DispatchBookingSessionService {
             dto.setEntries(entries.stream().map(mapper::toDto).toList());
             return ServiceResponseDirector.successOk(dto, "OK");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to fetch session: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to fetch session.");
+        }
+    }
+
+    @Transactional
+    public ServiceResponseDTO<Void> deleteSession(Long sessionId) {
+        try {
+            Long userId = authUtil.requireUserId();
+
+            DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
+            if (s == null) return ServiceResponseDirector.errorNotFound("Session not found.");
+
+            if (s.getStatus() != BookingSessionStatus.DRAFT) {
+                return ServiceResponseDirector.errorBadRequest("Session cannot be deleted.");
+            }
+
+            entryRepo.deleteForSession(sessionId);
+
+            s.delete();
+
+            return ServiceResponseDirector.successOk(null, "Session deleted.");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to delete session.");
         }
     }
 
@@ -180,7 +204,6 @@ public class DispatchBookingSessionService {
             if (s.getStatus() != BookingSessionStatus.DRAFT)
                 return ServiceResponseDirector.errorBadRequest("Session is not editable.");
 
-            // validate template accessible now
             DispatchTemplateEntity t = templateRepo.findFullAccessible(req.getTemplateId(), userId);
             if (t == null) return ServiceResponseDirector.errorBadRequest("Template not accessible.");
 
@@ -193,21 +216,20 @@ public class DispatchBookingSessionService {
 
             e.setTemplateId(req.getTemplateId());
             e.setDraftMode(req.getDraftMode());
-            e.setDocumentDate(req.getDocumentDate());
             e.setNote(req.getNote());
 
             if (req.getDocPatches() != null) {
-                e.setDocPatchesJson(mapper.toJson(req.getDocPatches()));
+                e.setDocPatchesJson(jsonUtil.write(req.getDocPatches()));
             }
             if (req.getExtraItems() != null) {
-                e.setExtraItemsJson(mapper.toJson(req.getExtraItems()));
+                e.setExtraItemsJson(jsonUtil.write(req.getExtraItems()));
             }
 
             e.persist();
 
             return ServiceResponseDirector.successOk(mapper.toDto(e), "Entry saved.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to save entry: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to save entry.");
         }
     }
 
@@ -227,7 +249,7 @@ public class DispatchBookingSessionService {
             e.delete();
             return ServiceResponseDirector.successOk(null, "Entry removed.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to remove entry: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to remove entry.");
         }
     }
 
@@ -238,26 +260,46 @@ public class DispatchBookingSessionService {
 
             DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
             if (s == null) return ServiceResponseDirector.errorNotFound("Session not found.");
-            if (s.getStatus() != BookingSessionStatus.DRAFT)
+            if (s.getStatus() != BookingSessionStatus.DRAFT) {
                 return ServiceResponseDirector.errorBadRequest("Session cannot be finalized.");
+            }
 
             List<DispatchBookingSessionEntryEntity> entries = entryRepo.listForSession(sessionId);
-            if (entries.isEmpty()) return ServiceResponseDirector.errorBadRequest("Session has no entries.");
+            if (entries.isEmpty()) {
+                return ServiceResponseDirector.errorBadRequest("Session has no entries.");
+            }
+
+            List<Long> templateIds = entries.stream()
+                    .map(DispatchBookingSessionEntryEntity::getTemplateId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            Map<Long, DispatchTemplateEntity> templateById = templateRepo
+                    .listFullAccessibleByIds(userId, templateIds)
+                    .stream()
+                    .filter(t -> t.getId() != null)
+                    .collect(Collectors.toMap(
+                            DispatchTemplateEntity::getId,
+                            t -> t
+                    ));
 
             List<DispatchRequestDTO> allRequests = new ArrayList<>();
 
             for (DispatchBookingSessionEntryEntity e : entries) {
-                DispatchTemplateEntity t = templateRepo.findFullAccessible(e.getTemplateId(), userId);
-                if (t == null)
+                DispatchTemplateEntity t = templateById.get(e.getTemplateId());
+
+                if (t == null) {
                     return ServiceResponseDirector.errorBadRequest("Template not accessible: " + e.getTemplateId());
+                }
                 if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
                     return ServiceResponseDirector.errorBadRequest("Template has no documents: " + e.getTemplateId());
                 }
 
                 boolean draft = e.getDraftMode().asDraftFlag();
 
-                List<TemplateBookDocPatchDTO> patches = readList(e.getDocPatchesJson(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
-                List<TemplateBookItemDTO> extraItems = readList(e.getExtraItemsJson(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
+                List<TemplateBookDocPatchDTO> patches = jsonUtil.readList(e.getDocPatchesJson(), new TypeReference<>() {});
+                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(e.getExtraItemsJson(), new TypeReference<>() {});
 
                 allRequests.addAll(
                         bookingRequestBuilder.buildRequestsForPartner(
@@ -273,18 +315,22 @@ public class DispatchBookingSessionService {
 
             ServiceResponseDTO<DispatchBulkResponseDTO> res = oracleBooking.bookBulk(allRequests);
 
+            if (!res.isSuccess()) {
+                return res;
+            }
+
             s.setStatus(BookingSessionStatus.FINALIZED);
+            s.setFinalResultJson(jsonUtil.write(res.getData()));
             s.setFinalizedAt(OffsetDateTime.now(ZAGREB));
-            try { s.setFinalResultJson(om.writeValueAsString(res.getData())); }
-            catch (Exception ignore) { s.setFinalResultJson(null); }
 
             return res;
 
+        } catch (IllegalArgumentException e) {
+            return ServiceResponseDirector.errorBadRequest(e.getMessage());
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to finalize session: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to finalize session.");
         }
     }
-
 
     @Transactional
     public ServiceResponseDTO<Void> cancelSession(Long sessionId) {
@@ -299,16 +345,7 @@ public class DispatchBookingSessionService {
             s.setStatus(BookingSessionStatus.CANCELLED);
             return ServiceResponseDirector.successOk(null, "Session cancelled.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to cancel session: " + e.getMessage());
-        }
-    }
-
-    private <T> List<T> readList(String json, TypeReference<List<T>> type) {
-        if (json == null || json.isBlank()) return List.of();
-        try {
-            return om.readValue(json, type);
-        } catch (Exception e) {
-            return List.of();
+            return ServiceResponseDirector.errorInternal("Failed to cancel session.");
         }
     }
 }

@@ -1,6 +1,6 @@
 package hr.agape.template.mapper;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import hr.agape.common.util.JsonUtil;
 import hr.agape.template.domain.DispatchBookingSessionEntity;
 import hr.agape.template.domain.DispatchBookingSessionEntryEntity;
 import hr.agape.template.dto.BookingSessionEntryResponseDTO;
@@ -13,31 +13,18 @@ import org.mapstruct.Mapping;
 public abstract class BookingSessionMapper {
 
     @Inject
-    ObjectMapper om;
+    JsonUtil jsonUtil;
 
     @Mapping(target = "entries", ignore = true)
-    @Mapping(target = "finalResult", expression = "java(parse(entity.getFinalResultJson()))")
+    @Mapping(target = "finalResult", expression = "java(parseJson(entity.getFinalResultJson()))")
     public abstract BookingSessionResponseDTO toDto(DispatchBookingSessionEntity entity);
 
-    @Mapping(target = "docPatches", expression = "java(parse(entry.getDocPatchesJson()))")
-    @Mapping(target = "extraItems", expression = "java(parse(entry.getExtraItemsJson()))")
+    @Mapping(target = "docPatches", expression = "java(parseJson(entry.getDocPatchesJson()))")
+    @Mapping(target = "extraItems", expression = "java(parseJson(entry.getExtraItemsJson()))")
     public abstract BookingSessionEntryResponseDTO toDto(DispatchBookingSessionEntryEntity entry);
 
-    protected Object parse(String json) {
-        if (json == null || json.isBlank()) return null;
-        try {
-            return om.readValue(json, Object.class);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    public String toJson(Object obj) {
-        if (obj == null) return "[]";
-        try {
-            return om.writeValueAsString(obj);
-        } catch (Exception e) {
-            return "[]";
-        }
+    @SuppressWarnings("unused")
+    protected Object parseJson(String json) {
+        return jsonUtil.readObjectOrNull(json);
     }
 }

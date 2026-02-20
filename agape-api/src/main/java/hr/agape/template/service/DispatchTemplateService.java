@@ -98,7 +98,7 @@ public class DispatchTemplateService {
                 return ServiceResponseDirector.errorBadRequest("Use either folderId or rootOnly, not both.");
             }
 
-            if (folderId != null && !folderRepo.belongsToOwner(folderId, userId)) {
+            if (folderId != null && folderRepo.doesNotBelongToOwner(folderId, userId)) {
                 return ServiceResponseDirector.errorBadRequest("Folder not found.");
             }
 

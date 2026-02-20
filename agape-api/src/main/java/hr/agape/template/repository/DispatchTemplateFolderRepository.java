@@ -50,15 +50,15 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
 
     public List<DispatchTemplateFolderEntity> listTreeForOwner(Long ownerUserId) {
         return find("""
-            SELECT f
-            FROM DispatchTemplateFolderEntity f
-            LEFT JOIN FETCH f.parent
-            WHERE f.owner.id = ?1
-            ORDER BY
-                CASE WHEN f.parent IS NULL THEN 0 ELSE 1 END,
-                LOWER(f.name),
-                f.id
-            """, ownerUserId)
+                SELECT f
+                FROM DispatchTemplateFolderEntity f
+                LEFT JOIN FETCH f.parent
+                WHERE f.owner.id = ?1
+                ORDER BY
+                    CASE WHEN f.parent IS NULL THEN 0 ELSE 1 END,
+                    LOWER(f.name),
+                    f.id
+                """, ownerUserId)
                 .list();
     }
 
@@ -70,8 +70,8 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
         return find("id = ?1 and owner.id = ?2", folderId, ownerUserId).firstResult();
     }
 
-    public boolean belongsToOwner(Long folderId, Long ownerUserId) {
-        return count("id = ?1 and owner.id = ?2", folderId, ownerUserId) > 0;
+    public boolean doesNotBelongToOwner(Long folderId, Long ownerUserId) {
+        return count("id = ?1 and owner.id = ?2", folderId, ownerUserId) == 0;
     }
 
     public List<String> listChildNames(Long ownerUserId, Long parentId) {

@@ -11,10 +11,6 @@ import java.util.Set;
 @ApplicationScoped
 public class DispatchTemplateShareRepository implements PanacheRepository<DispatchTemplateShareEntity> {
 
-    public List<DispatchTemplateShareEntity> listForTemplate(Long templateId) {
-        return find("template.id = ?1 ORDER BY createdAt DESC, id DESC", templateId).list();
-    }
-
     public List<DispatchTemplateShareEntity> listForSharedWithAndTemplateIds(Long userId, Set<Long> templateIds) {
         return find("""
                 SELECT s
@@ -46,9 +42,5 @@ public class DispatchTemplateShareRepository implements PanacheRepository<Dispat
 
     public boolean existsByTemplateAndUser(Long templateId, Long userId) {
         return count("template.id = ?1 AND sharedWith.id = ?2", templateId, userId) > 0;
-    }
-
-    public List<DispatchTemplateShareEntity> listForSharedWith(Long userId) {
-        return find("sharedWith.id = ?1", userId).list();
     }
 }
