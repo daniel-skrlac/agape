@@ -17,6 +17,7 @@ import hr.agape.template.dto.BookingSessionResponseDTO;
 import hr.agape.template.dto.TemplateBookDocPatchDTO;
 import hr.agape.template.dto.TemplateBookItemDTO;
 import hr.agape.template.enumeration.BookingSessionStatus;
+import hr.agape.template.integration.TemplateBookingRequestBuilder;
 import hr.agape.template.mapper.BookingSessionMapper;
 import hr.agape.template.repository.DispatchBookingSessionEntryRepository;
 import hr.agape.template.repository.DispatchBookingSessionRepository;
@@ -46,6 +47,9 @@ public class DispatchBookingSessionService {
 
     private final DispatchTemplateRepository templateRepo;
 
+
+    private final TemplateBookingRequestBuilder bookingRequestBuilder;
+
     private final DispatchBookingService oracleBooking;
     private final BookingSessionMapper mapper;
     private final ObjectMapper om;
@@ -56,7 +60,7 @@ public class DispatchBookingSessionService {
             UserRepository userRepo,
             DispatchBookingSessionRepository sessionRepo,
             DispatchBookingSessionEntryRepository entryRepo,
-            DispatchTemplateRepository templateRepo,
+            DispatchTemplateRepository templateRepo, TemplateBookingRequestBuilder bookingRequestBuilder,
             DispatchBookingService oracleBooking,
             BookingSessionMapper mapper,
             ObjectMapper om
@@ -66,6 +70,7 @@ public class DispatchBookingSessionService {
         this.sessionRepo = sessionRepo;
         this.entryRepo = entryRepo;
         this.templateRepo = templateRepo;
+        this.bookingRequestBuilder = bookingRequestBuilder;
         this.oracleBooking = oracleBooking;
         this.mapper = mapper;
         this.om = om;
@@ -249,17 +254,15 @@ public class DispatchBookingSessionService {
                     return ServiceResponseDirector.errorBadRequest("Template has no documents: " + e.getTemplateId());
                 }
 
-                LocalDate docDate = (e.getDocumentDate() != null) ? e.getDocumentDate() : s.getDocumentDate();
                 boolean draft = e.getDraftMode().asDraftFlag();
 
                 List<TemplateBookDocPatchDTO> patches = readList(e.getDocPatchesJson(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
                 List<TemplateBookItemDTO> extraItems = readList(e.getExtraItemsJson(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
 
                 allRequests.addAll(
-                        DispatchTemplateService.buildRequestsForPartner(
+                        bookingRequestBuilder.buildRequestsForPartner(
                                 s.getWarehouseId(),
                                 e.getPartnerId(),
-                                docDate,
                                 draft,
                                 patches,
                                 extraItems,

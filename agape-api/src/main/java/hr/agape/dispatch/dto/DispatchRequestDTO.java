@@ -9,7 +9,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -37,11 +36,6 @@ public class DispatchRequestDTO {
     @JsonIgnore
     private Long documentId;
 
-    /**
-     * Business date of the document (optional).
-     * If omitted, SD_GLAVA_BIU trigger assigns/normalizes it.
-     */
-    private LocalDate documentDate;
 
     /**
      * Recipient/partner for whom goods are dispatched (FK → PARTNERI.PARTNER_ID).

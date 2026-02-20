@@ -6,12 +6,22 @@ import io.quarkus.panache.common.Page;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.List;
+import java.util.Set;
 
 @ApplicationScoped
 public class DispatchTemplateShareRepository implements PanacheRepository<DispatchTemplateShareEntity> {
 
     public List<DispatchTemplateShareEntity> listForTemplate(Long templateId) {
         return find("template.id = ?1 ORDER BY createdAt DESC, id DESC", templateId).list();
+    }
+
+    public List<DispatchTemplateShareEntity> listForSharedWithAndTemplateIds(Long userId, Set<Long> templateIds) {
+        return find("""
+                SELECT s
+                FROM DispatchTemplateShareEntity s
+                WHERE s.sharedWith.id = ?1
+                  AND s.template.id IN ?2
+                """, userId, templateIds).list();
     }
 
     public long countForTemplate(Long templateId) {

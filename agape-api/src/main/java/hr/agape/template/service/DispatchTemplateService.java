@@ -10,8 +10,6 @@ import hr.agape.template.domain.DispatchTemplateDocItemEntity;
 import hr.agape.template.domain.DispatchTemplateEntity;
 import hr.agape.template.domain.DispatchTemplateFolderEntity;
 import hr.agape.template.domain.DispatchTemplateShareEntity;
-import hr.agape.template.dto.TemplateBookDocPatchDTO;
-import hr.agape.template.dto.TemplateBookItemDTO;
 import hr.agape.template.dto.TemplateBookManyRequestDTO;
 import hr.agape.template.dto.TemplateBookOneRequestDTO;
 import hr.agape.template.dto.TemplateCopyRequestDTO;
@@ -22,6 +20,7 @@ import hr.agape.template.dto.TemplateMoveRequestDTO;
 import hr.agape.template.dto.TemplateResponseDTO;
 import hr.agape.template.dto.TemplateUpdateRequestDTO;
 import hr.agape.template.enumeration.DispatchTemplateSharePermission;
+import hr.agape.template.integration.TemplateBookingRequestBuilder;
 import hr.agape.template.mapper.DispatchTemplateMapper;
 import hr.agape.template.repository.DispatchTemplateDocItemRepository;
 import hr.agape.template.repository.DispatchTemplateFolderRepository;
@@ -35,8 +34,6 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -46,8 +43,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import static hr.agape.common.util.DateTimeUtil.ZAGREB;
 
 @ApplicationScoped
 public class DispatchTemplateService {
@@ -66,6 +61,8 @@ public class DispatchTemplateService {
     private final DispatchBookingService oracleBooking;
     private final AuthUtil authUtil;
 
+    private final TemplateBookingRequestBuilder bookingRequestBuilder;
+
     @Inject
     public DispatchTemplateService(
             DispatchTemplateFolderRepository folderRepo,
@@ -74,7 +71,7 @@ public class DispatchTemplateService {
             UserRepository userRepo,
             DispatchTemplateMapper templateMapper, TemplateNamingService templateNamingService,
             DispatchBookingService oracleBooking,
-            AuthUtil authUtil
+            AuthUtil authUtil, TemplateBookingRequestBuilder bookingRequestBuilder
     ) {
         this.folderRepo = folderRepo;
         this.templateRepo = templateRepo;
@@ -85,11 +82,8 @@ public class DispatchTemplateService {
         this.templateNamingService = templateNamingService;
         this.oracleBooking = oracleBooking;
         this.authUtil = authUtil;
+        this.bookingRequestBuilder = bookingRequestBuilder;
     }
-
-    // ------------------------------------------------------------
-    // TEMPLATES LIST / GET
-    // ------------------------------------------------------------
 
     public ServiceResponseDTO<List<TemplateResponseDTO>> listTemplateHeaders(
             Long folderId,
@@ -109,53 +103,28 @@ public class DispatchTemplateService {
             }
 
             List<DispatchTemplateEntity> owned = templateRepo.listHeaders(userId, folderId, q, rootOnly);
-
-            List<DispatchTemplateEntity> shared = List.of();
-            if (includeShared && folderId == null) {
-                shared = templateRepo.listSharedHeaders(userId, q);
-            }
+            List<DispatchTemplateEntity> shared =
+                    (!includeShared || folderId != null)
+                            ? List.of()
+                            : templateRepo.listSharedHeaders(userId, q);
 
             Set<Long> sharedIds = shared.stream()
                     .map(DispatchTemplateEntity::getId)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toSet());
 
-            var permByTemplateId = dispatchTemplateShareRepo.listForSharedWith(userId).stream()
-                    .filter(s -> s.getTemplate() != null && s.getTemplate().getId() != null)
-                    .collect(Collectors.toMap(
-                            s -> s.getTemplate().getId(),
-                            DispatchTemplateShareEntity::getPermission,
-                            (a, b) -> (a == DispatchTemplateSharePermission.BOOK || b == DispatchTemplateSharePermission.BOOK)
-                                    ? DispatchTemplateSharePermission.BOOK
-                                    : DispatchTemplateSharePermission.VIEW
-                    ));
+            Map<Long, DispatchTemplateSharePermission> permissionByTemplateId =
+                    sharedIds.isEmpty()
+                            ? Map.of()
+                            : loadSharedPermissions(userId, sharedIds);
 
-            List<DispatchTemplateEntity> all = new ArrayList<>(owned.size() + shared.size());
-            all.addAll(owned);
-            all.addAll(shared);
+            List<DispatchTemplateEntity> all = mergeAndSortTemplates(owned, shared);
 
-            all.sort(Comparator
-                    .comparing(DispatchTemplateEntity::getHouseholdSize, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(t -> t.getName() == null ? "" : t.getName().toLowerCase())
-                    .thenComparing(DispatchTemplateEntity::getId, Comparator.nullsLast(Comparator.reverseOrder())));
-
-            List<TemplateResponseDTO> dto = all.stream()
-                    .map(t -> {
-                        TemplateResponseDTO out = templateMapper.toDto(t);
-
-                        boolean isShared = sharedIds.contains(t.getId());
-                        out.setShared(isShared);
-
-                        if (isShared) out.setSharedPermission(permByTemplateId.get(t.getId()));
-                        else out.setSharedPermission(null);
-
-                        return out;
-                    })
-                    .toList();
+            List<TemplateResponseDTO> dto = mapTemplateHeaders(all, sharedIds, permissionByTemplateId);
 
             return ServiceResponseDirector.successOk(dto, "OK");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to list templates: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to list templates.");
         }
     }
 
@@ -168,13 +137,9 @@ public class DispatchTemplateService {
 
             return ServiceResponseDirector.successOk(templateMapper.toDto(t), "OK");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to fetch template: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to fetch template.");
         }
     }
-
-    // ------------------------------------------------------------
-    // BOOKING (template defaults + patches + extra docs/items)
-    // ------------------------------------------------------------
 
     public ServiceResponseDTO<DispatchBulkResponseDTO> bookFromTemplateForOnePartner(TemplateBookOneRequestDTO req) {
         try {
@@ -186,15 +151,11 @@ public class DispatchTemplateService {
                 return ServiceResponseDirector.errorBadRequest("Template has no documents.");
             }
 
-            ensureBookPermissionIfShared(t, userId);
-
-            LocalDate docDate = req.getDocumentDate() != null ? req.getDocumentDate() : LocalDate.now(ZAGREB);
             boolean draft = req.getDraftMode().asDraftFlag();
 
-            List<DispatchRequestDTO> bulk = buildRequestsForPartner(
+            List<DispatchRequestDTO> bulk = bookingRequestBuilder.buildRequestsForPartner(
                     req.getWarehouseId(),
                     req.getPartnerId(),
-                    docDate,
                     draft,
                     req.getDocPatches(),
                     req.getExtraItems(),
@@ -203,8 +164,10 @@ public class DispatchTemplateService {
 
             return oracleBooking.bookBulk(bulk);
 
+        } catch (IllegalArgumentException e) {
+            return ServiceResponseDirector.errorBadRequest(e.getMessage());
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Template booking failed: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Template booking failed.");
         }
     }
 
@@ -218,17 +181,13 @@ public class DispatchTemplateService {
                 return ServiceResponseDirector.errorBadRequest("Template has no documents.");
             }
 
-            ensureBookPermissionIfShared(t, userId);
-
-            LocalDate docDate = req.getDocumentDate() != null ? req.getDocumentDate() : LocalDate.now(ZAGREB);
             boolean draft = req.getDraftMode().asDraftFlag();
 
             List<DispatchRequestDTO> all = new ArrayList<>();
             for (Long partnerId : req.getPartnerIds()) {
-                all.addAll(buildRequestsForPartner(
+                all.addAll(bookingRequestBuilder.buildRequestsForPartner(
                         req.getWarehouseId(),
                         partnerId,
-                        docDate,
                         draft,
                         req.getDocPatches(),
                         req.getExtraItems(),
@@ -238,147 +197,86 @@ public class DispatchTemplateService {
 
             return oracleBooking.bookBulk(all);
 
+        } catch (IllegalArgumentException e) {
+            return ServiceResponseDirector.errorBadRequest(e.getMessage());
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Template bulk booking failed: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Template bulk booking failed.");
         }
     }
-
-    private void ensureBookPermissionIfShared(DispatchTemplateEntity t, Long userId) {
-        if (t.getOwner() != null && Objects.equals(t.getOwner().getId(), userId)) return;
-
-        DispatchTemplateShareEntity share = dispatchTemplateShareRepo.findByTemplateAndUser(t.getId(), userId);
-        if (share == null || share.getPermission() != DispatchTemplateSharePermission.BOOK) {
-            throw new IllegalArgumentException("Template is shared without BOOK permission.");
-        }
-    }
-
-    // ------------------------------------------------------------
-    // COPY TEMPLATE (suffix: " - Copy", uniqueness, destination folder)
-    // ------------------------------------------------------------
 
     @Transactional
     public ServiceResponseDTO<TemplateResponseDTO> copyTemplateIntoMyAccount(Long templateId, TemplateCopyRequestDTO req) {
         try {
             Long userId = authUtil.requireUserId();
 
-            DispatchTemplateEntity src = templateRepo.findFullAccessible(templateId, userId);
-            if (src == null) return ServiceResponseDirector.errorNotFound("Template not found.");
-
-            boolean isOwner = src.getOwner() != null && Objects.equals(src.getOwner().getId(), userId);
-            if (!isOwner) {
-                DispatchTemplateShareEntity share = dispatchTemplateShareRepo.findByTemplateAndUser(templateId, userId);
-                if (share == null) return ServiceResponseDirector.errorBadRequest("Template is not shared with you.");
+            DispatchTemplateEntity source = templateRepo.findFullAccessible(templateId, userId);
+            if (source == null) {
+                return ServiceResponseDirector.errorNotFound("Template not found.");
             }
 
-            DispatchTemplateFolderEntity folder = null;
-            if (req != null && req.getFolderId() != null) {
-                if (!folderRepo.belongsToOwner(req.getFolderId(), userId)) {
+            boolean isOwner = source.getOwner() != null && Objects.equals(source.getOwner().getId(), userId);
+            if (!isOwner) {
+                DispatchTemplateShareEntity share = dispatchTemplateShareRepo.findByTemplateAndUser(templateId, userId);
+                if (share == null) {
+                    return ServiceResponseDirector.errorBadRequest("Template is not shared with you.");
+                }
+            }
+
+            DispatchTemplateFolderEntity targetFolder = null;
+            Long targetFolderId = (req != null) ? req.getFolderId() : null;
+            if (targetFolderId != null) {
+                targetFolder = folderRepo.findOwned(targetFolderId, userId);
+                if (targetFolder == null) {
                     return ServiceResponseDirector.errorBadRequest("Folder not found.");
                 }
-                folder = folderRepo.findOwned(req.getFolderId(), userId);
             }
 
             UserEntity me = userRepo.findById(userId);
-            if (me == null) return ServiceResponseDirector.errorUnauthorized("Invalid user.");
-
-            OffsetDateTime now = OffsetDateTime.now(ZAGREB);
-
-            DispatchTemplateEntity copy = new DispatchTemplateEntity();
-            copy.setOwner(me);
-            copy.setFolder(folder);
-            copy.setHouseholdSize(src.getHouseholdSize());
-
-            String desired = (req != null && req.getNewName() != null && !req.getNewName().isBlank())
-                    ? req.getNewName().trim()
-                    : src.getName() + " - Copy";
-            copy.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, desired));
-
-            copy.setDescription(src.getDescription());
-            copy.setCreatedAt(now);
-            copy.setUpdatedAt(now);
-            copy.setDocuments(new LinkedHashSet<>());
-            copy.persist();
-
-            for (DispatchTemplateDocEntity d : src.getDocuments()) {
-                DispatchTemplateDocEntity cd = new DispatchTemplateDocEntity();
-                cd.setTemplate(copy);
-                cd.setSortOrder(d.getSortOrder());
-                cd.setDocumentId(d.getDocumentId());
-                cd.setDraft(d.getDraft());
-                cd.setDefaultNote(d.getDefaultNote());
-                cd.setItems(new LinkedHashSet<>());
-                cd.persist();
-
-                if (d.getItems() != null) {
-                    for (DispatchTemplateDocItemEntity it : d.getItems()) {
-                        DispatchTemplateDocItemEntity ci = new DispatchTemplateDocItemEntity();
-                        ci.setTemplateDoc(cd);
-                        ci.setSortOrder(it.getSortOrder());
-                        ci.setItemId(it.getItemId());
-                        ci.setQuantity(it.getQuantity());
-                        ci.persist();
-                        cd.getItems().add(ci);
-                    }
-                }
-
-                copy.getDocuments().add(cd);
+            if (me == null) {
+                return ServiceResponseDirector.errorUnauthorized("Invalid user.");
             }
 
-            DispatchTemplateEntity full = templateRepo.findFull(copy.getId(), userId);
-            return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template copied into your account.");
+            DispatchTemplateEntity copy = createTemplateCopyShell(source, req, me, targetFolder, userId);
+            copyTemplateDocuments(source, copy);
+
+            DispatchTemplateEntity fullCopy = templateRepo.findFull(copy.getId(), userId);
+            return ServiceResponseDirector.successOk(templateMapper.toDto(fullCopy), "Template copied into your account.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to copy template: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to copy template.");
         }
     }
-
-    // ------------------------------------------------------------
-    // FOLDERS CRUD
-    // ------------------------------------------------------------
-
 
     @Transactional
     public ServiceResponseDTO<Void> deleteTemplateDoc(Long templateId, Long templateDocId) {
         try {
             Long userId = authUtil.requireUserId();
 
-            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
+            DispatchTemplateEntity template = templateRepo.findFull(templateId, userId);
+            if (template == null) {
+                return ServiceResponseDirector.errorNotFound("Template not found.");
+            }
 
-            if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
+            Set<DispatchTemplateDocEntity> docs = template.getDocuments();
+            if (docs == null || docs.isEmpty()) {
                 return ServiceResponseDirector.errorBadRequest("Template has no documents.");
             }
 
-            DispatchTemplateDocEntity doc = null;
-            for (DispatchTemplateDocEntity d : t.getDocuments()) {
-                if (d.getId() != null && d.getId().equals(templateDocId)) {
-                    doc = d;
-                    break;
-                }
+            DispatchTemplateDocEntity doc = docs.stream()
+                    .filter(d -> Objects.equals(d.getId(), templateDocId))
+                    .findFirst()
+                    .orElse(null);
+
+            if (doc == null) {
+                return ServiceResponseDirector.errorNotFound("Template document not found.");
             }
 
-            if (doc == null) return ServiceResponseDirector.errorNotFound("Template document not found.");
-
-            t.getDocuments().remove(doc);
-
-            if (doc.getItems() != null) {
-                for (DispatchTemplateDocItemEntity it : doc.getItems()) {
-                    it.delete();
-                }
-                doc.getItems().clear();
-            }
-
-            doc.delete();
-            t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
+            docs.remove(doc);
 
             return ServiceResponseDirector.successOk(null, "Template document deleted.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to delete template document: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to delete template document.");
         }
     }
-
-    // ------------------------------------------------------------
-    // TEMPLATES CRUD
-    // ------------------------------------------------------------
 
     @Transactional
     public ServiceResponseDTO<TemplateResponseDTO> createTemplate(TemplateCreateRequestDTO req) {
@@ -386,31 +284,31 @@ public class DispatchTemplateService {
             Long userId = authUtil.requireUserId();
 
             UserEntity owner = userRepo.findById(userId);
-            if (owner == null) return ServiceResponseDirector.errorUnauthorized("Invalid user.");
-
-            DispatchTemplateFolderEntity folder = null;
-            if (req.getFolderId() != null) {
-                folder = folderRepo.findOwned(req.getFolderId(), userId);
-                if (folder == null) return ServiceResponseDirector.errorBadRequest("Folder not found.");
+            if (owner == null) {
+                return ServiceResponseDirector.errorUnauthorized("Invalid user.");
             }
 
-            OffsetDateTime now = OffsetDateTime.now(ZAGREB);
+            Long folderId = req.getFolderId();
+            DispatchTemplateFolderEntity folder = (folderId == null) ? null : folderRepo.findOwned(folderId, userId);
+            if (folderId != null && folder == null) {
+                return ServiceResponseDirector.errorBadRequest("Folder not found.");
+            }
 
-            DispatchTemplateEntity t = new DispatchTemplateEntity();
-            t.setOwner(owner);
-            t.setFolder(folder);
-            t.setHouseholdSize(req.getHouseholdSize().shortValue());
-            t.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, req.getName().trim()));
-            t.setDescription(req.getDescription());
-            t.setCreatedAt(now);
-            t.setUpdatedAt(now);
-            t.setDocuments(new LinkedHashSet<>());
-            t.persist();
+            String requestedName = req.getName().trim();
 
-            DispatchTemplateEntity full = templateRepo.findFull(t.getId(), userId);
-            return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template created.");
+            DispatchTemplateEntity template = new DispatchTemplateEntity();
+            template.setOwner(owner);
+            template.setFolder(folder);
+            template.setHouseholdSize(req.getHouseholdSize().shortValue());
+            template.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, requestedName));
+            template.setDescription(req.getDescription());
+            template.setDocuments(new LinkedHashSet<>());
+            template.persist();
+
+            DispatchTemplateEntity fullTemplate = templateRepo.findFull(template.getId(), userId);
+            return ServiceResponseDirector.successOk(templateMapper.toDto(fullTemplate), "Template created.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to create template: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to create template.");
         }
     }
 
@@ -423,7 +321,8 @@ public class DispatchTemplateService {
             if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
 
             if (req.getName() != null) {
-                t.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, t.getFolder(), req.getName().trim(), t.getId()));
+                t.setName(templateNamingService.
+                        makeUniqueTemplateNameForFolder(userId, t.getFolder(), req.getName().trim(), t.getId()));
             }
             if (req.getDescription() != null) t.setDescription(req.getDescription());
             if (req.getHouseholdSize() != null) t.setHouseholdSize(req.getHouseholdSize().shortValue());
@@ -432,7 +331,8 @@ public class DispatchTemplateService {
                 DispatchTemplateFolderEntity folder = folderRepo.findOwned(req.getFolderId(), userId);
                 if (folder == null) return ServiceResponseDirector.errorBadRequest("Folder not found.");
 
-                boolean changed = t.getFolder() == null || t.getFolder().getId() == null || !t.getFolder().getId().equals(folder.getId());
+                boolean changed = t.getFolder() == null || t.getFolder().getId() == null ||
+                        !t.getFolder().getId().equals(folder.getId());
 
                 t.setFolder(folder);
 
@@ -441,15 +341,12 @@ public class DispatchTemplateService {
                 }
             }
 
-            t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
-
             DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
             return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template updated.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to update template: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to update template.");
         }
     }
-
 
     @Transactional
     public ServiceResponseDTO<Void> deleteTemplate(Long templateId) {
@@ -462,62 +359,65 @@ public class DispatchTemplateService {
             t.delete();
             return ServiceResponseDirector.successOk(null, "Template deleted.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to delete template: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to delete template.");
         }
     }
 
     @Transactional
     public ServiceResponseDTO<TemplateResponseDTO> upsertTemplateDoc(Long templateId, TemplateDocUpsertRequestDTO req) {
-        Long userId = authUtil.requireUserId();
+        try {
+            Long userId = authUtil.requireUserId();
 
-        DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-        if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
-
-        if (req.getDocumentId() == null) {
-            return ServiceResponseDirector.errorBadRequest("documentId is required.");
-        }
-
-        if (t.getDocuments() == null) t.setDocuments(new LinkedHashSet<>());
-
-        // Find existing doc by documentId (your current upsert logic)
-        DispatchTemplateDocEntity doc = null;
-        for (DispatchTemplateDocEntity d : t.getDocuments()) {
-            if (d.getDocumentId() != null && d.getDocumentId().equals(req.getDocumentId())) {
-                doc = d;
-                break;
+            DispatchTemplateEntity template = templateRepo.findFull(templateId, userId);
+            if (template == null) {
+                return ServiceResponseDirector.errorNotFound("Template not found.");
             }
+
+            Long documentId = req.getDocumentId();
+            if (documentId == null) {
+                return ServiceResponseDirector.errorBadRequest("documentId is required.");
+            }
+
+            Set<DispatchTemplateDocEntity> docs = template.getDocuments();
+            if (docs == null) {
+                docs = new LinkedHashSet<>();
+                template.setDocuments(docs);
+            }
+
+            DispatchTemplateDocEntity doc = docs.stream()
+                    .filter(d -> Objects.equals(d.getDocumentId(), documentId))
+                    .findFirst()
+                    .orElse(null);
+
+            Long excludeDocId = (doc != null) ? doc.getId() : null;
+
+            if (templateRepo.existsDocWithDocumentId(templateId, documentId, excludeDocId)) {
+                return ServiceResponseDirector.errorBadRequest(
+                        "Template already contains documentId=" + documentId + "."
+                );
+            }
+
+            if (doc == null) {
+                doc = new DispatchTemplateDocEntity();
+                doc.setTemplate(template);
+                doc.setDocumentId(documentId);
+                doc.setItems(new LinkedHashSet<>());
+                docs.add(doc);
+            }
+
+            if (req.getSortOrder() != null) {
+                doc.setSortOrder(req.getSortOrder());
+            }
+            if (req.getDraft() != null) {
+                doc.setDraft(req.getDraft());
+            }
+            doc.setDefaultNote(req.getDefaultNote());
+
+            DispatchTemplateEntity fullTemplate = templateRepo.findFull(templateId, userId);
+            return ServiceResponseDirector.successOk(templateMapper.toDto(fullTemplate), "Template document saved.");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to save template document.");
         }
-
-        // If you ever change API to upsert by docId, you can still use this check:
-        Long excludeDocId = (doc == null ? null : doc.getId());
-
-        // PRE-CHECK uniqueness: (template_id, document_id)
-        boolean wouldViolate = templateRepo.existsDocWithDocumentId(templateId, req.getDocumentId(), excludeDocId);
-        if (wouldViolate && doc == null) {
-            // doc == null means "creating new one", and docId already exists => violation
-            return ServiceResponseDirector.errorBadRequest(
-                    "Template already contains documentId=" + req.getDocumentId() + "."
-            );
-        }
-
-        // Create if missing
-        if (doc == null) {
-            doc = new DispatchTemplateDocEntity();
-            doc.setTemplate(t);
-            doc.setDocumentId(req.getDocumentId());
-            doc.setItems(new LinkedHashSet<>());
-            t.getDocuments().add(doc);
-        }
-
-        // Update fields
-        if (req.getSortOrder() != null) doc.setSortOrder(req.getSortOrder());
-        if (req.getDraft() != null) doc.setDraft(req.getDraft());
-        doc.setDefaultNote(req.getDefaultNote());
-
-        t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
-
-        DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
-        return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template document saved.");
     }
 
     @Transactional
@@ -525,35 +425,40 @@ public class DispatchTemplateService {
         try {
             Long userId = authUtil.requireUserId();
 
-            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
+            DispatchTemplateEntity template = templateRepo.findFull(templateId, userId);
+            if (template == null) {
+                return ServiceResponseDirector.errorNotFound("Template not found.");
+            }
 
-            // Owner-only: shared user ne bi trebao reorganizirati tvoje foldere
-            if (t.getOwner() == null || !Objects.equals(t.getOwner().getId(), userId)) {
+            if (template.getOwner() == null || !Objects.equals(template.getOwner().getId(), userId)) {
                 return ServiceResponseDirector.errorBadRequest("Only owner can move template.");
             }
 
-            Long targetFolderId = (req == null ? null : req.getTargetFolderId());
+            Long targetFolderId = (req != null) ? req.getTargetFolderId() : null;
+            DispatchTemplateFolderEntity targetFolder =
+                    (targetFolderId == null) ? null : folderRepo.findOwned(targetFolderId, userId);
 
-            DispatchTemplateFolderEntity folder = null;
-            if (targetFolderId != null) {
-                folder = folderRepo.findOwned(targetFolderId, userId);
-                if (folder == null) return ServiceResponseDirector.errorBadRequest("Folder not found.");
+            if (targetFolderId != null && targetFolder == null) {
+                return ServiceResponseDirector.errorBadRequest("Folder not found.");
             }
 
-            t.setFolder(folder);
+            template.setFolder(targetFolder);
 
-            // Uniqueness u odredišnoj mapi, ali zadrži naziv
-            if (t.getName() != null) {
-                t.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, t.getName(), t.getId()));
+            if (template.getName() != null) {
+                template.setName(
+                        templateNamingService.makeUniqueTemplateNameForFolder(
+                                userId,
+                                targetFolder,
+                                template.getName(),
+                                template.getId()
+                        )
+                );
             }
 
-            t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
-
-            DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
-            return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template moved.");
+            DispatchTemplateEntity fullTemplate = templateRepo.findFull(templateId, userId);
+            return ServiceResponseDirector.successOk(templateMapper.toDto(fullTemplate), "Template moved.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to move template: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to move template.");
         }
     }
 
@@ -566,9 +471,14 @@ public class DispatchTemplateService {
         try {
             Long userId = authUtil.requireUserId();
 
-            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
-            if (t.getDocuments() == null) return ServiceResponseDirector.errorBadRequest("Template has no documents.");
+            DispatchTemplateEntity template = templateRepo.findFull(templateId, userId);
+            if (template == null) {
+                return ServiceResponseDirector.errorNotFound("Template not found.");
+            }
+
+            if (template.getDocuments() == null || template.getDocuments().isEmpty()) {
+                return ServiceResponseDirector.errorBadRequest("Template has no documents.");
+            }
 
             if (!templateRepo.existsOwnedDoc(templateId, templateDocId, userId)) {
                 return ServiceResponseDirector.errorBadRequest("Template document not found.");
@@ -576,10 +486,15 @@ public class DispatchTemplateService {
 
             Map<Long, BigDecimal> qtyByItemId = new LinkedHashMap<>();
             if (items != null) {
-                for (TemplateItemUpsertRequestDTO it : items) {
-                    if (it == null || it.getItemId() == null) continue;
-                    if (it.getQuantity() == null || it.getQuantity().signum() <= 0) continue;
-                    qtyByItemId.merge(it.getItemId(), it.getQuantity(), BigDecimal::add);
+                for (TemplateItemUpsertRequestDTO item : items) {
+                    if (item == null || item.getItemId() == null) {
+                        continue;
+                    }
+                    if (item.getQuantity() == null || item.getQuantity().signum() <= 0) {
+                        continue;
+                    }
+
+                    qtyByItemId.merge(item.getItemId(), item.getQuantity(), BigDecimal::add);
                 }
             }
 
@@ -589,103 +504,122 @@ public class DispatchTemplateService {
 
             docItemRepo.replaceAllForDoc(templateDocId, qtyByItemId);
 
-            templateRepo.touchUpdatedAt(templateId, OffsetDateTime.now(ZAGREB));
-
-            DispatchTemplateEntity full = templateRepo.findFull(templateId, userId);
-            return ServiceResponseDirector.successOk(templateMapper.toDto(full), "Template items replaced.");
+            DispatchTemplateEntity fullTemplate = templateRepo.findFull(templateId, userId);
+            return ServiceResponseDirector.successOk(templateMapper.toDto(fullTemplate), "Template items replaced.");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to replace template items: " + e.getMessage());
+            return ServiceResponseDirector.errorInternal("Failed to replace template items.");
         }
     }
 
-    static List<DispatchRequestDTO> buildRequestsForPartner(
-            Long warehouseId,
-            Long partnerId,
-            LocalDate docDate,
-            boolean draft,
-            List<TemplateBookDocPatchDTO> docPatches,
-            List<TemplateBookItemDTO> extraItems,
-            DispatchTemplateEntity t
+    private Map<Long, DispatchTemplateSharePermission> loadSharedPermissions(
+            Long userId,
+            Set<Long> onlyTemplateIds
     ) {
-        List<DispatchRequestDTO> out = new ArrayList<>();
-
-        Map<Long, TemplateBookDocPatchDTO> patchByDocId =
-                (docPatches == null ? List.<TemplateBookDocPatchDTO>of() : docPatches)
-                        .stream()
-                        .filter(p -> p != null && p.getDocumentId() != null)
-                        .collect(Collectors.toMap(TemplateBookDocPatchDTO::getDocumentId, x -> x, (a, b) -> b));
-
-        // figure out FIRST doc for extraItems
-        DispatchTemplateDocEntity firstDoc = t.getDocuments().stream()
-                .sorted(Comparator
-                        .comparing(DispatchTemplateDocEntity::getSortOrder, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(DispatchTemplateDocEntity::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-                .findFirst()
-                .orElse(null);
-
-        Long firstDocId = firstDoc == null ? null : firstDoc.getDocumentId();
-
-        for (DispatchTemplateDocEntity d : t.getDocuments()) {
-            if (d.getItems() == null || d.getItems().isEmpty()) {
-                throw new IllegalArgumentException("Template document " + d.getDocumentId() + " has no items.");
-            }
-
-            TemplateBookDocPatchDTO patch = patchByDocId.get(d.getDocumentId());
-
-            String note = null;
-            if (patch != null && d.getDefaultNote() != null) {
-                note = d.getDefaultNote();
-            }
-
-            Map<Long, BigDecimal> qty = new LinkedHashMap<>();
-            for (DispatchTemplateDocItemEntity it : d.getItems()) {
-                qty.put(it.getItemId(), it.getQuantity());
-            }
-
-            // ONLY supported operation: addItems
-            if (patch != null && patch.getAddItems() != null) {
-                for (TemplateBookItemDTO a : patch.getAddItems()) {
-                    if (a == null || a.getItemId() == null) continue;
-                    BigDecimal v = a.getQuantity();
-                    if (v == null || v.signum() == 0) continue;
-                    qty.merge(a.getItemId(), v, BigDecimal::add);
-                }
-            }
-
-            // Apply extraItems ONLY to first doc
-            if (firstDocId != null && Objects.equals(d.getDocumentId(), firstDocId) && extraItems != null) {
-                for (TemplateBookItemDTO a : extraItems) {
-                    if (a == null || a.getItemId() == null) continue;
-                    BigDecimal v = a.getQuantity();
-                    if (v == null || v.signum() == 0) continue;
-                    qty.merge(a.getItemId(), v, BigDecimal::add);
-                }
-            }
-
-            if (qty.isEmpty()) {
-                throw new IllegalArgumentException("Document " + d.getDocumentId() + " has no items after overrides.");
-            }
-
-            DispatchRequestDTO dr = new DispatchRequestDTO();
-            dr.setDocumentId(d.getDocumentId());
-            dr.setPartnerId(partnerId);
-            dr.setWarehouseId(warehouseId);
-            dr.setDocumentDate(docDate);
-            dr.setDraft(draft);
-            dr.setNote(note);
-
-            List<DispatchRequestDTO.DispatchItemRequest> items = new ArrayList<>();
-            for (var e : qty.entrySet()) {
-                DispatchRequestDTO.DispatchItemRequest line = new DispatchRequestDTO.DispatchItemRequest();
-                line.setItemId(e.getKey());
-                line.setQuantity(e.getValue().doubleValue());
-                items.add(line);
-            }
-
-            dr.setItems(items);
-            out.add(dr);
+        if (onlyTemplateIds == null || onlyTemplateIds.isEmpty()) {
+            return Map.of();
         }
 
-        return out;
+        return dispatchTemplateShareRepo
+                .listForSharedWithAndTemplateIds(userId, onlyTemplateIds)
+                .stream()
+                .filter(s -> s.getTemplate() != null && s.getTemplate().getId() != null)
+                .collect(Collectors.toMap(
+                        s -> s.getTemplate().getId(),
+                        DispatchTemplateShareEntity::getPermission,
+                        (a, b) ->
+                                (a == DispatchTemplateSharePermission.BOOK || b == DispatchTemplateSharePermission.BOOK)
+                                        ? DispatchTemplateSharePermission.BOOK
+                                        : DispatchTemplateSharePermission.VIEW
+                ));
+    }
+
+    private List<DispatchTemplateEntity> mergeAndSortTemplates(
+            List<DispatchTemplateEntity> owned,
+            List<DispatchTemplateEntity> shared
+    ) {
+        List<DispatchTemplateEntity> all = new ArrayList<>(owned.size() + shared.size());
+        all.addAll(owned);
+        all.addAll(shared);
+
+        all.sort(Comparator
+                .comparing(DispatchTemplateEntity::getHouseholdSize, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(t -> t.getName() == null ? "" : t.getName().toLowerCase())
+                .thenComparing(DispatchTemplateEntity::getId, Comparator.nullsLast(Comparator.reverseOrder())));
+
+        return all;
+    }
+
+    private List<TemplateResponseDTO> mapTemplateHeaders(
+            List<DispatchTemplateEntity> templates,
+            Set<Long> sharedIds,
+            Map<Long, DispatchTemplateSharePermission> permissionByTemplateId
+    ) {
+        return templates.stream()
+                .map(t -> {
+                    TemplateResponseDTO out = templateMapper.toDto(t);
+
+                    boolean isShared = sharedIds.contains(t.getId());
+                    out.setShared(isShared);
+                    out.setSharedPermission(isShared ? permissionByTemplateId.get(t.getId()) : null);
+
+                    return out;
+                })
+                .toList();
+    }
+
+    private DispatchTemplateEntity createTemplateCopyShell(
+            DispatchTemplateEntity source,
+            TemplateCopyRequestDTO req,
+            UserEntity owner,
+            DispatchTemplateFolderEntity targetFolder,
+            Long userId
+    ) {
+        String sourceName = (source.getName() == null || source.getName().isBlank()) ? "Template" : source.getName();
+        String desiredName = (req != null && req.getNewName() != null && !req.getNewName().isBlank())
+                ? req.getNewName().trim()
+                : sourceName + " - Copy";
+
+        DispatchTemplateEntity copy = new DispatchTemplateEntity();
+        copy.setOwner(owner);
+        copy.setFolder(targetFolder);
+        copy.setHouseholdSize(source.getHouseholdSize());
+        copy.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, targetFolder, desiredName));
+        copy.setDescription(source.getDescription());
+        copy.setDocuments(new LinkedHashSet<>());
+        copy.persist();
+
+        return copy;
+    }
+
+    private void copyTemplateDocuments(DispatchTemplateEntity source, DispatchTemplateEntity copy) {
+        if (source.getDocuments() == null || source.getDocuments().isEmpty()) {
+            return;
+        }
+
+        for (DispatchTemplateDocEntity sourceDoc : source.getDocuments()) {
+            DispatchTemplateDocEntity copyDoc = new DispatchTemplateDocEntity();
+            copyDoc.setTemplate(copy);
+            copyDoc.setSortOrder(sourceDoc.getSortOrder());
+            copyDoc.setDocumentId(sourceDoc.getDocumentId());
+            copyDoc.setDraft(sourceDoc.getDraft());
+            copyDoc.setDefaultNote(sourceDoc.getDefaultNote());
+            copyDoc.setItems(new LinkedHashSet<>());
+            copyDoc.persist();
+
+            if (sourceDoc.getItems() != null) {
+                for (DispatchTemplateDocItemEntity sourceItem : sourceDoc.getItems()) {
+                    DispatchTemplateDocItemEntity copyItem = new DispatchTemplateDocItemEntity();
+                    copyItem.setTemplateDoc(copyDoc);
+                    copyItem.setSortOrder(sourceItem.getSortOrder());
+                    copyItem.setItemId(sourceItem.getItemId());
+                    copyItem.setQuantity(sourceItem.getQuantity());
+                    copyItem.persist();
+
+                    copyDoc.getItems().add(copyItem);
+                }
+            }
+
+            copy.getDocuments().add(copyDoc);
+        }
     }
 }
