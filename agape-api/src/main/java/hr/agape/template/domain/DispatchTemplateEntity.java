@@ -20,7 +20,9 @@ import lombok.Setter;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -58,8 +60,8 @@ public class DispatchTemplateEntity extends PanacheEntityBase {
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC, id ASC")
-    private List<DispatchTemplateDocEntity> documents;
+    private Set<DispatchTemplateDocEntity> documents = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
-    public List<DispatchTemplateShareEntity> shares = new ArrayList<>();
+    private Set<DispatchTemplateShareEntity> shares = new LinkedHashSet<>();
 }

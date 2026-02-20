@@ -16,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.Hibernate;
 
 import java.time.OffsetDateTime;
 
@@ -27,20 +28,34 @@ public class DispatchTemplateShareEntity extends PanacheEntityBase {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    public Long id;
+    private Long id;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id", nullable = false)
-    public DispatchTemplateEntity template;
+    private DispatchTemplateEntity template;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "shared_with_user_id", nullable = false)
-    public UserEntity sharedWith;
+    private UserEntity sharedWith;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "permission", nullable = false, length = 20)
-    public DispatchTemplateSharePermission permission = DispatchTemplateSharePermission.BOOK;
+    private DispatchTemplateSharePermission permission = DispatchTemplateSharePermission.BOOK;
 
     @Column(name = "created_at", nullable = false)
-    public OffsetDateTime createdAt;
+    private OffsetDateTime createdAt;
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null) return false;
+        if (Hibernate.getClass(this) != Hibernate.getClass(o)) return false;
+        DispatchTemplateShareEntity that = (DispatchTemplateShareEntity) o;
+        return id != null && id.equals(that.id);
+    }
+
+    @Override
+    public final int hashCode() {
+        return Hibernate.getClass(this).hashCode();
+    }
 }

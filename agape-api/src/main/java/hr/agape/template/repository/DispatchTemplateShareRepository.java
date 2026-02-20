@@ -2,6 +2,7 @@ package hr.agape.template.repository;
 
 import hr.agape.template.domain.DispatchTemplateShareEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import io.quarkus.panache.common.Page;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.List;
@@ -11,6 +12,22 @@ public class DispatchTemplateShareRepository implements PanacheRepository<Dispat
 
     public List<DispatchTemplateShareEntity> listForTemplate(Long templateId) {
         return find("template.id = ?1 ORDER BY createdAt DESC, id DESC", templateId).list();
+    }
+
+    public long countForTemplate(Long templateId) {
+        return count("template.id = ?1", templateId);
+    }
+
+    public List<DispatchTemplateShareEntity> pageForTemplate(Long templateId, int page, int size) {
+        return find("""
+                SELECT s
+                FROM DispatchTemplateShareEntity s
+                JOIN FETCH s.sharedWith
+                WHERE s.template.id = ?1
+                ORDER BY s.createdAt DESC, s.id DESC
+                """, templateId)
+                .page(Page.of(page, size))
+                .list();
     }
 
     public DispatchTemplateShareEntity findByTemplateAndUser(Long templateId, Long userId) {

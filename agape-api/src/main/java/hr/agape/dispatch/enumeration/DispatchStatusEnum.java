@@ -4,5 +4,6 @@ public enum DispatchStatusEnum {
     DRAFT,
     POSTED,
     CANCELLED,
+    DELETED,
     FAILED;
 }

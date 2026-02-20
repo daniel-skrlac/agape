@@ -1,10 +1,12 @@
 package hr.agape.template.resource;
 
 import hr.agape.common.constant.Roles;
+import hr.agape.common.dto.BaseSearchFilter;
 import hr.agape.common.response.Responses;
 import hr.agape.template.dto.TemplateCopyRequestDTO;
 import hr.agape.template.dto.TemplateShareCreateRequestDTO;
 import hr.agape.template.service.DispatchTemplateService;
+import hr.agape.template.service.DispatchTemplateShareService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
@@ -20,10 +22,10 @@ import jakarta.ws.rs.core.Response;
 @RolesAllowed(Roles.USER)
 public class DispatchTemplateShareResource {
 
-    private final DispatchTemplateService service;
+    private final DispatchTemplateShareService service;
 
     @Inject
-    public DispatchTemplateShareResource(DispatchTemplateService service) {
+    public DispatchTemplateShareResource(DispatchTemplateShareService service) {
         this.service = service;
     }
 
@@ -34,9 +36,10 @@ public class DispatchTemplateShareResource {
     }
 
     @GET
-    @Path("/{id}/shares")
-    public Response listShares(@PathParam("id") Long templateId) {
-        return Responses.from(service.listShares(templateId));
+    @Path("/{templateId}/shares")
+    public Response listShares(@PathParam("templateId") Long templateId,
+                               @BeanParam BaseSearchFilter filter) {
+        return Response.ok(service.listShares(templateId, filter)).build();
     }
 
     @DELETE

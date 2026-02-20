@@ -15,6 +15,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.Hibernate;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -53,4 +54,18 @@ public class DispatchTemplateFolderEntity extends PanacheEntityBase {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null) return false;
+        if (Hibernate.getClass(this) != Hibernate.getClass(o)) return false;
+        DispatchTemplateFolderEntity that = (DispatchTemplateFolderEntity) o;
+        return id != null && id.equals(that.id);
+    }
+
+    @Override
+    public final int hashCode() {
+        return Hibernate.getClass(this).hashCode();
+    }
 }

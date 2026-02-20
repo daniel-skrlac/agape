@@ -16,14 +16,28 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
     @Inject
     EntityManager em;
 
+    public boolean isOwnedBy(Long templateId, Long ownerUserId) {
+        return count("id = ?1 AND owner.id = ?2", templateId, ownerUserId) > 0;
+    }
+
+    public boolean isNotOwnedBy(Long templateId, Long ownerUserId) {
+        return !isOwnedBy(templateId, ownerUserId);
+    }
+
+    public DispatchTemplateEntity findOwned(Long templateId, Long ownerUserId) {
+        return find("id = ?1 AND owner.id = ?2", templateId, ownerUserId)
+                .singleResultOptional()
+                .orElse(null);
+    }
+
     public boolean existsOwnedDoc(Long templateId, Long templateDocId, Long ownerUserId) {
         Long cnt = em.createQuery("""
-                SELECT COUNT(d.id)
-                FROM DispatchTemplateDocEntity d
-                WHERE d.id = :docId
-                  AND d.template.id = :templateId
-                  AND d.template.owner.id = :ownerId
-                """, Long.class)
+                        SELECT COUNT(d.id)
+                        FROM DispatchTemplateDocEntity d
+                        WHERE d.id = :docId
+                          AND d.template.id = :templateId
+                          AND d.template.owner.id = :ownerId
+                        """, Long.class)
                 .setParameter("docId", templateDocId)
                 .setParameter("templateId", templateId)
                 .setParameter("ownerId", ownerUserId)
@@ -34,10 +48,10 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
 
     public int touchUpdatedAt(Long templateId, OffsetDateTime now) {
         return em.createQuery("""
-                UPDATE DispatchTemplateEntity t
-                SET t.updatedAt = :now
-                WHERE t.id = :id
-                """)
+                        UPDATE DispatchTemplateEntity t
+                        SET t.updatedAt = :now
+                        WHERE t.id = :id
+                        """)
                 .setParameter("now", now)
                 .setParameter("id", templateId)
                 .executeUpdate();
@@ -70,52 +84,37 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
     }
 
     public DispatchTemplateEntity findFull(Long templateId, Long ownerUserId) {
-
-        DispatchTemplateEntity t = find("""
+        return find("""
                 SELECT DISTINCT t
                 FROM DispatchTemplateEntity t
                 LEFT JOIN FETCH t.documents d
+                LEFT JOIN FETCH d.items i
                 WHERE t.id = ?1
                   AND t.owner.id = ?2
                 """, templateId, ownerUserId)
                 .singleResultOptional()
                 .orElse(null);
-
-        if (t == null) return null;
-
-        find("""
-                SELECT DISTINCT d
-                FROM DispatchTemplateDocEntity d
-                LEFT JOIN FETCH d.items i
-                WHERE d.template.id = ?1
-                """, templateId).list();
-
-        return t;
     }
 
     public DispatchTemplateEntity findFullAccessible(Long templateId, Long userId) {
-
-        DispatchTemplateEntity t = find("""
+        return find("""
                 SELECT DISTINCT t
                 FROM DispatchTemplateEntity t
                 LEFT JOIN FETCH t.documents d
-                LEFT JOIN t.shares s
+                LEFT JOIN FETCH d.items i
                 WHERE t.id = ?1
-                  AND (t.owner.id = ?2 OR s.sharedWith.id = ?2)
+                  AND (
+                        t.owner.id = ?2
+                        OR EXISTS (
+                            SELECT 1
+                            FROM DispatchTemplateShareEntity s
+                            WHERE s.template = t
+                              AND s.sharedWith.id = ?2
+                        )
+                  )
                 """, templateId, userId)
                 .singleResultOptional()
                 .orElse(null);
-
-        if (t == null) return null;
-
-        find("""
-                SELECT DISTINCT d
-                FROM DispatchTemplateDocEntity d
-                LEFT JOIN FETCH d.items i
-                WHERE d.template.id = ?1
-                """, templateId).list();
-
-        return t;
     }
 
     public List<DispatchTemplateEntity> listSharedHeaders(Long userId, String q) {

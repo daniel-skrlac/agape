@@ -3,12 +3,13 @@ package hr.agape.common.util;
 import lombok.experimental.UtilityClass;
 
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 
 @UtilityClass
-public final class TimeUtil {
+public final class DateTimeUtil {
 
     private static final ZoneId ZAGREB_ZONE = ZoneId.of("Europe/Zagreb");
 

@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.Hibernate;
 
 import java.math.BigDecimal;
 
@@ -39,4 +40,18 @@ public class DispatchTemplateDocItemEntity extends PanacheEntityBase {
 
     @Column(name = "quantity", nullable = false, precision = 15, scale = 5)
     private BigDecimal quantity;
+
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null) return false;
+        if (Hibernate.getClass(this) != Hibernate.getClass(o)) return false;
+        DispatchTemplateDocItemEntity that = (DispatchTemplateDocItemEntity) o;
+        return id != null && id.equals(that.id);
+    }
+
+    @Override
+    public final int hashCode() {
+        return Hibernate.getClass(this).hashCode();
+    }
 }

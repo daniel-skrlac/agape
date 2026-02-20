@@ -241,78 +241,10 @@ public class DispatchTemplateService {
         }
     }
 
-    // ------------------------------------------------------------
-    // SHARES
-    // ------------------------------------------------------------
 
-    @Transactional
-    public ServiceResponseDTO<TemplateShareResponseDTO> shareTemplate(Long templateId, TemplateShareCreateRequestDTO req) {
-        try {
-            Long userId = authUtil.requireUserId();
 
-            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
 
-            UserEntity target = userRepo.findByUsername(req.getUsername());
-            if (target == null) return ServiceResponseDirector.errorBadRequest("User not found: " + req.getUsername());
 
-            if (target.getId().equals(userId)) {
-                return ServiceResponseDirector.errorBadRequest("Cannot share template to yourself.");
-            }
-
-            if (dispatchTemplateShareRepo.existsByTemplateAndUser(templateId, target.getId())) {
-                return ServiceResponseDirector.errorBadRequest("Template already shared with this user.");
-            }
-
-            DispatchTemplateShareEntity share = new DispatchTemplateShareEntity();
-            share.setTemplate(t);
-            share.setSharedWith(target);
-            share.setPermission(req.getPermission() != null ? req.getPermission() : DispatchTemplateSharePermission.BOOK);
-            share.setCreatedAt(OffsetDateTime.now(ZAGREB));
-            share.persist();
-
-            return ServiceResponseDirector.successOk(shareMapper.toDto(share), "Template shared.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to share template: " + e.getMessage());
-        }
-    }
-
-    public ServiceResponseDTO<List<TemplateShareResponseDTO>> listShares(Long templateId) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
-
-            List<DispatchTemplateShareEntity> list = dispatchTemplateShareRepo.listForTemplate(templateId);
-            return ServiceResponseDirector.successOk(
-                    list.stream().map(shareMapper::toDto).toList(),
-                    "OK"
-            );
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to list shares: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public ServiceResponseDTO<Void> revokeShare(Long templateId, Long shareId) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateEntity t = templateRepo.findFull(templateId, userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
-
-            DispatchTemplateShareEntity s = DispatchTemplateShareEntity.findById(shareId);
-            if (s == null || s.getTemplate() == null || !s.getTemplate().getId().equals(templateId)) {
-                return ServiceResponseDirector.errorNotFound("Share not found.");
-            }
-
-            s.delete();
-            return ServiceResponseDirector.successOk(null, "Share revoked.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to revoke share: " + e.getMessage());
-        }
-    }
 
     // ------------------------------------------------------------
     // COPY TEMPLATE (suffix: " - Copy", uniqueness, destination folder)
@@ -358,7 +290,7 @@ public class DispatchTemplateService {
             copy.setDescription(src.getDescription());
             copy.setCreatedAt(now);
             copy.setUpdatedAt(now);
-            copy.setDocuments(new ArrayList<>());
+            copy.setDocuments(new LinkedHashSet<>());
             copy.persist();
 
             for (DispatchTemplateDocEntity d : src.getDocuments()) {
@@ -368,7 +300,7 @@ public class DispatchTemplateService {
                 cd.setDocumentId(d.getDocumentId());
                 cd.setDraft(d.getDraft());
                 cd.setDefaultNote(d.getDefaultNote());
-                cd.setItems(new ArrayList<>());
+                cd.setItems(new LinkedHashSet<>());
                 cd.persist();
 
                 if (d.getItems() != null) {
@@ -611,7 +543,7 @@ public class DispatchTemplateService {
         copy.setDescription(src.getDescription());
         copy.setCreatedAt(now);
         copy.setUpdatedAt(now);
-        copy.setDocuments(new ArrayList<>());
+        copy.setDocuments(new LinkedHashSet<>());
         copy.persist();
 
         for (DispatchTemplateDocEntity d : src.getDocuments()) {
@@ -621,7 +553,7 @@ public class DispatchTemplateService {
             cd.setDocumentId(d.getDocumentId());
             cd.setDraft(d.getDraft());
             cd.setDefaultNote(d.getDefaultNote());
-            cd.setItems(new ArrayList<>());
+            cd.setItems(new LinkedHashSet<>());
             cd.persist();
 
             if (d.getItems() != null) {
@@ -669,7 +601,7 @@ public class DispatchTemplateService {
             t.setDescription(req.getDescription());
             t.setCreatedAt(now);
             t.setUpdatedAt(now);
-            t.setDocuments(new ArrayList<>());
+            t.setDocuments(new LinkedHashSet<>());
             t.persist();
 
             DispatchTemplateEntity full = templateRepo.findFull(t.getId(), userId);
@@ -796,7 +728,7 @@ public class DispatchTemplateService {
             return ServiceResponseDirector.errorBadRequest("documentId is required.");
         }
 
-        if (t.getDocuments() == null) t.setDocuments(new ArrayList<>());
+        if (t.getDocuments() == null) t.setDocuments(new LinkedHashSet<>());
 
         // Find existing doc by documentId (your current upsert logic)
         DispatchTemplateDocEntity doc = null;
@@ -824,7 +756,7 @@ public class DispatchTemplateService {
             doc = new DispatchTemplateDocEntity();
             doc.setTemplate(t);
             doc.setDocumentId(req.getDocumentId());
-            doc.setItems(new ArrayList<>());
+            doc.setItems(new LinkedHashSet<>());
             t.getDocuments().add(doc);
         }
 

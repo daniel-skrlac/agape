@@ -409,7 +409,7 @@ public class DispatchBookingService {
                 }
 
                 DispatchResponseDTO dto = mapper.toResponse(existing);
-                dto.setStatus(DispatchStatusEnum.CANCELLED.name()); // or DRAFT if you don't have DELETED
+                dto.setStatus(DispatchStatusEnum.DELETED.name()); // or DRAFT if you don't have DELETED
                 return ServiceResponseDirector.successOk(dto, "Draft dispatch deleted.");
             }
 

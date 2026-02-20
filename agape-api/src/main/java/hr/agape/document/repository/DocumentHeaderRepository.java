@@ -1,7 +1,7 @@
 package hr.agape.document.repository;
 
 import hr.agape.common.database.Jdbc;
-import hr.agape.common.util.TimeUtil;
+import hr.agape.common.util.DateTimeUtil;
 import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -115,7 +115,7 @@ public class DocumentHeaderRepository {
         LocalDate normalizedDocDate = (dd != null ? dd.toLocalDate() : null);
 
         Timestamp tsCreated = rs.getTimestamp(4);
-        OffsetDateTime createdAt = TimeUtil.oracleTimestampToZagreb(tsCreated);
+        OffsetDateTime createdAt = DateTimeUtil.oracleTimestampToZagreb(tsCreated);
 
         boolean posted = (rs.getLong(5) == 1);
 
@@ -123,13 +123,13 @@ public class DocumentHeaderRepository {
         if (rs.wasNull()) postedBy = null;
 
         Timestamp tsPosted = rs.getTimestamp(7);
-        OffsetDateTime postedAt = TimeUtil.oracleTimestampToZagreb(tsPosted);
+        OffsetDateTime postedAt = DateTimeUtil.oracleTimestampToZagreb(tsPosted);
 
         Long cancelledBy = rs.getLong(8);
         if (rs.wasNull()) cancelledBy = null;
 
         Timestamp tsStorno = rs.getTimestamp(9);
-        OffsetDateTime cancelledAt = TimeUtil.oracleTimestampToZagreb(tsStorno);
+        OffsetDateTime cancelledAt = DateTimeUtil.oracleTimestampToZagreb(tsStorno);
 
         String note = rs.getString(10);
 
@@ -381,13 +381,13 @@ public class DocumentHeaderRepository {
         LocalDate documentDate = (docDateSql != null ? docDateSql.toLocalDate() : null);
 
         Timestamp createdAtTs = rs.getTimestamp("DATUM_IZRADE");
-        OffsetDateTime createdAt = TimeUtil.oracleTimestampToZagreb(createdAtTs);
+        OffsetDateTime createdAt = DateTimeUtil.oracleTimestampToZagreb(createdAtTs);
 
         Timestamp postedAtTs = rs.getTimestamp("DATUM_KNJIZENJA");
-        OffsetDateTime postedAt = TimeUtil.oracleTimestampToZagreb(postedAtTs);
+        OffsetDateTime postedAt = DateTimeUtil.oracleTimestampToZagreb(postedAtTs);
 
         Timestamp stornoAtTs = rs.getTimestamp("DATUM_STORNO");
-        OffsetDateTime cancelledAt = TimeUtil.oracleTimestampToZagreb(stornoAtTs);
+        OffsetDateTime cancelledAt = DateTimeUtil.oracleTimestampToZagreb(stornoAtTs);
 
         Long id = rs.getLong("ID");
         if (rs.wasNull()) id = null;

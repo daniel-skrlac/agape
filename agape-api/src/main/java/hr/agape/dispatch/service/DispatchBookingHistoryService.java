@@ -20,6 +20,7 @@ public class DispatchBookingHistoryService {
         this.repo = repo;
     }
 
+
     public ServiceResponseDTO<PagedResultDTO<DispatchBookingListItemDTO>> page(DispatchBookingsQueryDTO q) {
         try {
             if (q == null) return ServiceResponseDirector.errorBadRequest("request is null");
