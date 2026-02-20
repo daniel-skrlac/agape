@@ -2,6 +2,7 @@ package hr.agape.template.repository;
 
 import hr.agape.template.domain.DispatchTemplateFolderEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import io.quarkus.panache.common.Page;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -13,6 +14,53 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
 
     @PersistenceContext
     EntityManager em;
+
+    public long countChildren(Long ownerUserId, Long parentId) {
+        if (parentId == null) {
+            return count("owner.id = ?1 AND parent IS NULL", ownerUserId);
+        }
+        return count("owner.id = ?1 AND parent.id = ?2", ownerUserId, parentId);
+    }
+
+    public List<DispatchTemplateFolderEntity> pageChildren(Long ownerUserId, Long parentId, int page, int size) {
+        if (parentId == null) {
+            return find("""
+                    SELECT f
+                    FROM DispatchTemplateFolderEntity f
+                    LEFT JOIN FETCH f.parent
+                    WHERE f.owner.id = ?1
+                      AND f.parent IS NULL
+                    ORDER BY LOWER(f.name) ASC, f.id ASC
+                    """, ownerUserId)
+                    .page(Page.of(page, size))
+                    .list();
+        }
+
+        return find("""
+                SELECT f
+                FROM DispatchTemplateFolderEntity f
+                LEFT JOIN FETCH f.parent
+                WHERE f.owner.id = ?1
+                  AND f.parent.id = ?2
+                ORDER BY LOWER(f.name) ASC, f.id ASC
+                """, ownerUserId, parentId)
+                .page(Page.of(page, size))
+                .list();
+    }
+
+    public List<DispatchTemplateFolderEntity> listTreeForOwner(Long ownerUserId) {
+        return find("""
+            SELECT f
+            FROM DispatchTemplateFolderEntity f
+            LEFT JOIN FETCH f.parent
+            WHERE f.owner.id = ?1
+            ORDER BY
+                CASE WHEN f.parent IS NULL THEN 0 ELSE 1 END,
+                LOWER(f.name),
+                f.id
+            """, ownerUserId)
+                .list();
+    }
 
     public List<DispatchTemplateFolderEntity> listForOwner(Long ownerUserId) {
         return find("owner.id = ?1", ownerUserId).list();

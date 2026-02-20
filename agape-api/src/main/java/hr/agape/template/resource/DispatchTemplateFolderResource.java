@@ -1,16 +1,18 @@
 package hr.agape.template.resource;
 
 import hr.agape.common.constant.Roles;
+import hr.agape.common.dto.BaseSearchFilter;
 import hr.agape.common.response.Responses;
 import hr.agape.template.dto.FolderCopyRequestDTO;
 import hr.agape.template.dto.FolderCreateRequestDTO;
 import hr.agape.template.dto.FolderMoveRequestDTO;
 import hr.agape.template.dto.FolderRenameRequestDTO;
-import hr.agape.template.service.DispatchTemplateService;
+import hr.agape.template.service.DispatchTemplateFolderService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -19,6 +21,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -29,16 +32,25 @@ import jakarta.ws.rs.core.Response;
 @RolesAllowed(Roles.USER)
 public class DispatchTemplateFolderResource {
 
-    private final DispatchTemplateService service;
+    private final DispatchTemplateFolderService service;
 
     @Inject
-    public DispatchTemplateFolderResource(DispatchTemplateService service) {
+    public DispatchTemplateFolderResource(DispatchTemplateFolderService service) {
         this.service = service;
     }
 
     @GET
-    public Response listFolders() {
-        return Responses.from(service.listFolders());
+    public Response listFolders(
+            @QueryParam("parentId") Long parentId,
+            @BeanParam @Valid BaseSearchFilter paging
+    ) {
+        return Responses.from(service.listFolders(parentId, paging));
+    }
+
+    @GET
+    @Path("/tree")
+    public Response listFolderTree() {
+        return Responses.from(service.listFolderTree());
     }
 
     @POST

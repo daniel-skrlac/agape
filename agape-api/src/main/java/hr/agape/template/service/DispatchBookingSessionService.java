@@ -15,7 +15,6 @@ import hr.agape.template.dto.BookingSessionEntryResponseDTO;
 import hr.agape.template.dto.BookingSessionEntryUpsertRequestDTO;
 import hr.agape.template.dto.BookingSessionResponseDTO;
 import hr.agape.template.dto.TemplateBookDocPatchDTO;
-import hr.agape.template.dto.TemplateBookExtraDocDTO;
 import hr.agape.template.dto.TemplateBookItemDTO;
 import hr.agape.template.enumeration.BookingSessionStatus;
 import hr.agape.template.mapper.BookingSessionMapper;
@@ -31,14 +30,13 @@ import jakarta.transaction.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
+import static hr.agape.common.util.DateTimeUtil.ZAGREB;
+
 @ApplicationScoped
 public class DispatchBookingSessionService {
-
-    private static final ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
 
     private final AuthUtil authUtil;
     private final UserRepository userRepo;

@@ -11,13 +11,8 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
-
 @Mapper(componentModel = "cdi")
 public interface DispatchTemplateShareMapper {
-
-    ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
 
     @Mapping(target = "templateId", source = "template.id")
     @Mapping(target = "sharedWithUserId", source = "sharedWith.id")
@@ -39,9 +34,6 @@ public interface DispatchTemplateShareMapper {
     default void fillDefaults(@MappingTarget DispatchTemplateShareEntity entity) {
         if (entity.getPermission() == null) {
             entity.setPermission(DispatchTemplateSharePermission.BOOK);
-        }
-        if (entity.getCreatedAt() == null) {
-            entity.setCreatedAt(OffsetDateTime.now(ZAGREB));
         }
     }
 }

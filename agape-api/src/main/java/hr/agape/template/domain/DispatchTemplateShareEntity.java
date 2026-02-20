@@ -17,6 +17,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.Hibernate;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.OffsetDateTime;
 
@@ -43,6 +44,7 @@ public class DispatchTemplateShareEntity extends PanacheEntityBase {
     private DispatchTemplateSharePermission permission = DispatchTemplateSharePermission.BOOK;
 
     @Column(name = "created_at", nullable = false)
+    @CreationTimestamp
     private OffsetDateTime createdAt;
 
     @Override

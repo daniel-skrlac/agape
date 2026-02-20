@@ -8,6 +8,7 @@ import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 
 @ApplicationScoped
@@ -28,6 +29,36 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
         return find("id = ?1 AND owner.id = ?2", templateId, ownerUserId)
                 .singleResultOptional()
                 .orElse(null);
+    }
+
+    public List<DispatchTemplateEntity> listWithDocsByOwnerAndFolder(Long ownerUserId, Long folderId) {
+        return em.createQuery("""
+                        SELECT DISTINCT t
+                        FROM DispatchTemplateEntity t
+                        LEFT JOIN FETCH t.documents d
+                        WHERE t.owner.id = :ownerId
+                          AND (
+                                (:folderId IS NULL AND t.folder IS NULL)
+                                OR (t.folder.id = :folderId)
+                          )
+                        ORDER BY t.id ASC
+                        """, DispatchTemplateEntity.class)
+                .setParameter("ownerId", ownerUserId)
+                .setParameter("folderId", folderId)
+                .getResultList();
+    }
+
+    public void loadDocItemsForTemplates(Collection<Long> templateIds) {
+        if (templateIds == null || templateIds.isEmpty()) return;
+
+        em.createQuery("""
+                        SELECT DISTINCT d
+                        FROM DispatchTemplateDocEntity d
+                        LEFT JOIN FETCH d.items i
+                        WHERE d.template.id IN :templateIds
+                        """, DispatchTemplateDocEntity.class)
+                .setParameter("templateIds", templateIds)
+                .getResultList();
     }
 
     public boolean existsOwnedDoc(Long templateId, Long templateDocId, Long ownerUserId) {

@@ -10,11 +10,19 @@ import hr.agape.template.domain.DispatchTemplateDocItemEntity;
 import hr.agape.template.domain.DispatchTemplateEntity;
 import hr.agape.template.domain.DispatchTemplateFolderEntity;
 import hr.agape.template.domain.DispatchTemplateShareEntity;
-import hr.agape.template.dto.*;
+import hr.agape.template.dto.TemplateBookDocPatchDTO;
+import hr.agape.template.dto.TemplateBookItemDTO;
+import hr.agape.template.dto.TemplateBookManyRequestDTO;
+import hr.agape.template.dto.TemplateBookOneRequestDTO;
+import hr.agape.template.dto.TemplateCopyRequestDTO;
+import hr.agape.template.dto.TemplateCreateRequestDTO;
+import hr.agape.template.dto.TemplateDocUpsertRequestDTO;
+import hr.agape.template.dto.TemplateItemUpsertRequestDTO;
+import hr.agape.template.dto.TemplateMoveRequestDTO;
+import hr.agape.template.dto.TemplateResponseDTO;
+import hr.agape.template.dto.TemplateUpdateRequestDTO;
 import hr.agape.template.enumeration.DispatchTemplateSharePermission;
-import hr.agape.template.mapper.DispatchTemplateFolderMapper;
 import hr.agape.template.mapper.DispatchTemplateMapper;
-import hr.agape.template.mapper.DispatchTemplateShareMapper;
 import hr.agape.template.repository.DispatchTemplateDocItemRepository;
 import hr.agape.template.repository.DispatchTemplateFolderRepository;
 import hr.agape.template.repository.DispatchTemplateRepository;
@@ -29,14 +37,20 @@ import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
+
+import static hr.agape.common.util.DateTimeUtil.ZAGREB;
 
 @ApplicationScoped
 public class DispatchTemplateService {
-
-    private static final ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
 
     private final DispatchTemplateFolderRepository folderRepo;
     private final DispatchTemplateRepository templateRepo;
@@ -45,9 +59,9 @@ public class DispatchTemplateService {
 
     private final UserRepository userRepo;
 
-    private final DispatchTemplateFolderMapper folderMapper;
     private final DispatchTemplateMapper templateMapper;
-    private final DispatchTemplateShareMapper shareMapper;
+
+    private final TemplateNamingService templateNamingService;
 
     private final DispatchBookingService oracleBooking;
     private final AuthUtil authUtil;
@@ -58,9 +72,7 @@ public class DispatchTemplateService {
             DispatchTemplateRepository templateRepo,
             DispatchTemplateShareRepository dispatchTemplateShareRepo, DispatchTemplateDocItemRepository docItemRepo,
             UserRepository userRepo,
-            DispatchTemplateFolderMapper folderMapper,
-            DispatchTemplateMapper templateMapper,
-            DispatchTemplateShareMapper shareMapper,
+            DispatchTemplateMapper templateMapper, TemplateNamingService templateNamingService,
             DispatchBookingService oracleBooking,
             AuthUtil authUtil
     ) {
@@ -69,9 +81,8 @@ public class DispatchTemplateService {
         this.dispatchTemplateShareRepo = dispatchTemplateShareRepo;
         this.docItemRepo = docItemRepo;
         this.userRepo = userRepo;
-        this.folderMapper = folderMapper;
         this.templateMapper = templateMapper;
-        this.shareMapper = shareMapper;
+        this.templateNamingService = templateNamingService;
         this.oracleBooking = oracleBooking;
         this.authUtil = authUtil;
     }
@@ -241,11 +252,6 @@ public class DispatchTemplateService {
         }
     }
 
-
-
-
-
-
     // ------------------------------------------------------------
     // COPY TEMPLATE (suffix: " - Copy", uniqueness, destination folder)
     // ------------------------------------------------------------
@@ -284,8 +290,8 @@ public class DispatchTemplateService {
 
             String desired = (req != null && req.getNewName() != null && !req.getNewName().isBlank())
                     ? req.getNewName().trim()
-                    : safeName(src.getName()) + " - Copy";
-            copy.setName(makeUniqueTemplateNameForFolder(userId, folder, desired));
+                    : src.getName() + " - Copy";
+            copy.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, desired));
 
             copy.setDescription(src.getDescription());
             copy.setCreatedAt(now);
@@ -329,48 +335,6 @@ public class DispatchTemplateService {
     // FOLDERS CRUD
     // ------------------------------------------------------------
 
-    public ServiceResponseDTO<List<FolderResponseDTO>> listFolders() {
-        try {
-            Long userId = authUtil.requireUserId();
-            List<DispatchTemplateFolderEntity> list = folderRepo.listForOwner(userId);
-            return ServiceResponseDirector.successOk(
-                    list.stream().map(folderMapper::toDto).toList(),
-                    "OK"
-            );
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to list folders: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public ServiceResponseDTO<FolderResponseDTO> createFolder(FolderCreateRequestDTO req) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            UserEntity owner = userRepo.findById(userId);
-            if (owner == null) return ServiceResponseDirector.errorUnauthorized("Invalid user.");
-
-            DispatchTemplateFolderEntity parent = null;
-            if (req.getParentId() != null) {
-                parent = folderRepo.findOwned(req.getParentId(), userId);
-                if (parent == null) return ServiceResponseDirector.errorBadRequest("Parent folder not found.");
-            }
-
-            OffsetDateTime now = OffsetDateTime.now(ZAGREB);
-
-            DispatchTemplateFolderEntity f = new DispatchTemplateFolderEntity();
-            f.setOwner(owner);
-            f.setParent(parent);
-            f.setName(req.getName().trim());
-            f.setCreatedAt(now);
-            f.setUpdatedAt(now);
-            f.persist();
-
-            return ServiceResponseDirector.successOk(folderMapper.toDto(f), "Folder created.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to create folder: " + e.getMessage());
-        }
-    }
 
     @Transactional
     public ServiceResponseDTO<Void> deleteTemplateDoc(Long templateId, Long templateDocId) {
@@ -412,167 +376,6 @@ public class DispatchTemplateService {
         }
     }
 
-    @Transactional
-    public ServiceResponseDTO<FolderResponseDTO> renameFolder(Long folderId, FolderRenameRequestDTO req) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateFolderEntity f = folderRepo.findOwned(folderId, userId);
-            if (f == null) return ServiceResponseDirector.errorNotFound("Folder not found.");
-
-            f.setName(req.getName().trim());
-            f.setUpdatedAt(OffsetDateTime.now(ZAGREB));
-
-            return ServiceResponseDirector.successOk(folderMapper.toDto(f), "Folder renamed.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to rename folder: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public ServiceResponseDTO<Void> deleteFolder(Long folderId) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateFolderEntity f = folderRepo.findOwned(folderId, userId);
-            if (f == null) return ServiceResponseDirector.errorNotFound("Folder not found.");
-
-            f.delete();
-            return ServiceResponseDirector.successOk(null, "Folder deleted.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to delete folder: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public ServiceResponseDTO<FolderResponseDTO> copyFolderTree(Long sourceFolderId, FolderCopyRequestDTO req) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateFolderEntity src = folderRepo.findOwned(sourceFolderId, userId);
-            if (src == null) return ServiceResponseDirector.errorNotFound("Folder not found.");
-
-            DispatchTemplateFolderEntity targetParent = null;
-            if (req != null && req.getTargetParentId() != null) {
-                targetParent = folderRepo.findOwned(req.getTargetParentId(), userId);
-                if (targetParent == null) return ServiceResponseDirector.errorBadRequest("Target folder not found.");
-            }
-
-            boolean includeSubfolders = req == null || req.getIncludeSubfolders() == null || req.getIncludeSubfolders();
-            boolean includeTemplates = req == null || req.getIncludeTemplates() == null || req.getIncludeTemplates();
-
-            UserEntity me = userRepo.findById(userId);
-            if (me == null) return ServiceResponseDirector.errorUnauthorized("Invalid user.");
-
-            OffsetDateTime now = OffsetDateTime.now(ZAGREB);
-
-            DispatchTemplateFolderEntity rootCopy = new DispatchTemplateFolderEntity();
-            rootCopy.setOwner(me);
-            rootCopy.setParent(targetParent);
-            rootCopy.setName(makeUniqueFolderName(userId, targetParent, safeName(src.getName()) + " - Copy"));
-            rootCopy.setCreatedAt(now);
-            rootCopy.setUpdatedAt(now);
-            rootCopy.persist();
-
-            List<DispatchTemplateFolderEntity> allFolders = folderRepo.listForOwner(userId);
-
-            Map<Long, List<DispatchTemplateFolderEntity>> childrenByParentId = allFolders.stream()
-                    .filter(f -> f.getParent() != null && f.getParent().getId() != null)
-                    .collect(Collectors.groupingBy(f -> f.getParent().getId()));
-
-            Map<Long, DispatchTemplateFolderEntity> folderMap = new HashMap<>();
-            folderMap.put(src.getId(), rootCopy);
-
-            Deque<DispatchTemplateFolderEntity> stack = new ArrayDeque<>();
-            stack.push(src);
-
-            while (!stack.isEmpty()) {
-                DispatchTemplateFolderEntity curOld = stack.pop();
-                DispatchTemplateFolderEntity curNew = folderMap.get(curOld.getId());
-
-                if (includeTemplates) {
-                    List<DispatchTemplateEntity> templatesInFolder = templateRepo.listByOwnerAndFolder(userId, curOld.getId());
-                    for (DispatchTemplateEntity t : templatesInFolder) {
-                        copyOwnedTemplateIntoFolder(t.getId(), userId, curNew, now);
-                    }
-                }
-
-                if (!includeSubfolders) continue;
-
-                List<DispatchTemplateFolderEntity> kids = childrenByParentId.getOrDefault(curOld.getId(), List.of());
-                for (DispatchTemplateFolderEntity kidOld : kids) {
-                    DispatchTemplateFolderEntity kidNew = new DispatchTemplateFolderEntity();
-                    kidNew.setOwner(me);
-                    kidNew.setParent(curNew);
-                    kidNew.setName(makeUniqueFolderName(userId, curNew, safeName(kidOld.getName()) + " - Copy"));
-                    kidNew.setCreatedAt(now);
-                    kidNew.setUpdatedAt(now);
-                    kidNew.persist();
-
-                    folderMap.put(kidOld.getId(), kidNew);
-                    stack.push(kidOld);
-                }
-            }
-
-            return ServiceResponseDirector.successOk(folderMapper.toDto(rootCopy), "Folder copied.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to copy folder: " + e.getMessage());
-        }
-    }
-
-    private void copyOwnedTemplateIntoFolder(
-            Long templateId,
-            Long ownerUserId,
-            DispatchTemplateFolderEntity destFolder,
-            OffsetDateTime now
-    ) {
-        DispatchTemplateEntity src = templateRepo.findFull(templateId, ownerUserId);
-        if (src == null) throw new IllegalArgumentException("Template not found: " + templateId);
-
-        UserEntity owner = userRepo.findById(ownerUserId);
-        if (owner == null) throw new IllegalArgumentException("Invalid user.");
-
-        DispatchTemplateEntity copy = new DispatchTemplateEntity();
-        copy.setOwner(owner);
-        copy.setFolder(destFolder);
-        copy.setHouseholdSize(src.getHouseholdSize());
-
-        String desired = safeName(src.getName()) + " - Copy";
-        copy.setName(makeUniqueTemplateNameForFolder(ownerUserId, destFolder, desired));
-
-        copy.setDescription(src.getDescription());
-        copy.setCreatedAt(now);
-        copy.setUpdatedAt(now);
-        copy.setDocuments(new LinkedHashSet<>());
-        copy.persist();
-
-        for (DispatchTemplateDocEntity d : src.getDocuments()) {
-            DispatchTemplateDocEntity cd = new DispatchTemplateDocEntity();
-            cd.setTemplate(copy);
-            cd.setSortOrder(d.getSortOrder());
-            cd.setDocumentId(d.getDocumentId());
-            cd.setDraft(d.getDraft());
-            cd.setDefaultNote(d.getDefaultNote());
-            cd.setItems(new LinkedHashSet<>());
-            cd.persist();
-
-            if (d.getItems() != null) {
-                for (DispatchTemplateDocItemEntity it : d.getItems()) {
-                    DispatchTemplateDocItemEntity ci = new DispatchTemplateDocItemEntity();
-                    ci.setTemplateDoc(cd);
-                    ci.setSortOrder(it.getSortOrder());
-                    ci.setItemId(it.getItemId());
-                    ci.setQuantity(it.getQuantity());
-                    ci.persist();
-                    cd.getItems().add(ci);
-                }
-            }
-
-            copy.getDocuments().add(cd);
-        }
-
-    }
-
     // ------------------------------------------------------------
     // TEMPLATES CRUD
     // ------------------------------------------------------------
@@ -597,7 +400,7 @@ public class DispatchTemplateService {
             t.setOwner(owner);
             t.setFolder(folder);
             t.setHouseholdSize(req.getHouseholdSize().shortValue());
-            t.setName(makeUniqueTemplateNameForFolder(userId, folder, req.getName().trim()));
+            t.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, req.getName().trim()));
             t.setDescription(req.getDescription());
             t.setCreatedAt(now);
             t.setUpdatedAt(now);
@@ -620,7 +423,7 @@ public class DispatchTemplateService {
             if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
 
             if (req.getName() != null) {
-                t.setName(makeUniqueTemplateNameForFolder(userId, t.getFolder(), req.getName().trim(), t.getId()));
+                t.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, t.getFolder(), req.getName().trim(), t.getId()));
             }
             if (req.getDescription() != null) t.setDescription(req.getDescription());
             if (req.getHouseholdSize() != null) t.setHouseholdSize(req.getHouseholdSize().shortValue());
@@ -634,7 +437,7 @@ public class DispatchTemplateService {
                 t.setFolder(folder);
 
                 if (changed && t.getName() != null) {
-                    t.setName(makeUniqueTemplateNameForFolder(userId, folder, t.getName(), t.getId()));
+                    t.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, t.getName(), t.getId()));
                 }
             }
 
@@ -647,60 +450,6 @@ public class DispatchTemplateService {
         }
     }
 
-    @Transactional
-    public ServiceResponseDTO<FolderResponseDTO> moveFolder(Long folderId, FolderMoveRequestDTO req) {
-        try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateFolderEntity f = folderRepo.findOwned(folderId, userId);
-            if (f == null) return ServiceResponseDirector.errorNotFound("Folder not found.");
-
-            Long targetParentId = (req == null ? null : req.getTargetParentId());
-            DispatchTemplateFolderEntity targetParent = null;
-
-            if (targetParentId != null) {
-                if (targetParentId.equals(folderId)) {
-                    return ServiceResponseDirector.errorBadRequest("Cannot move a folder into itself.");
-                }
-
-                targetParent = folderRepo.findOwned(targetParentId, userId);
-                if (targetParent == null) {
-                    return ServiceResponseDirector.errorBadRequest("Target folder not found.");
-                }
-
-                // prevent cycles (moving under a descendant)
-                var all = folderRepo.listForOwner(userId);
-                Map<Long, Long> parentById = new HashMap<>();
-                for (DispatchTemplateFolderEntity x : all) {
-                    if (x.getId() == null) continue;
-                    Long pid = (x.getParent() == null ? null : x.getParent().getId());
-                    parentById.put(x.getId(), pid);
-                }
-
-                Long cur = targetParentId;
-                while (cur != null) {
-                    if (cur.equals(folderId)) {
-                        return ServiceResponseDirector.errorBadRequest("Cannot move folder under its own child.");
-                    }
-                    cur = parentById.get(cur);
-                }
-            }
-
-            // ensure unique name in destination parent
-            List<String> siblingNames = folderRepo.listChildNamesExcluding(userId, targetParentId, folderId);
-            String uniqueName = makeUnique(f.getName(), siblingNames);
-            if (!Objects.equals(uniqueName, f.getName())) {
-                f.setName(uniqueName);
-            }
-
-            f.setParent(targetParent);
-            f.setUpdatedAt(OffsetDateTime.now(ZAGREB));
-
-            return ServiceResponseDirector.successOk(folderMapper.toDto(f), "Folder moved.");
-        } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to move folder: " + e.getMessage());
-        }
-    }
 
     @Transactional
     public ServiceResponseDTO<Void> deleteTemplate(Long templateId) {
@@ -796,7 +545,7 @@ public class DispatchTemplateService {
 
             // Uniqueness u odredišnoj mapi, ali zadrži naziv
             if (t.getName() != null) {
-                t.setName(makeUniqueTemplateNameForFolder(userId, folder, t.getName(), t.getId()));
+                t.setName(templateNamingService.makeUniqueTemplateNameForFolder(userId, folder, t.getName(), t.getId()));
             }
 
             t.setUpdatedAt(OffsetDateTime.now(ZAGREB));
@@ -938,47 +687,5 @@ public class DispatchTemplateService {
         }
 
         return out;
-    }
-
-    // ------------------------------------------------------------
-    // NAME UNIQUENESS HELPERS
-    // ------------------------------------------------------------
-
-    private String makeUniqueFolderName(Long ownerUserId, DispatchTemplateFolderEntity parent, String desired) {
-        Long parentId = parent == null ? null : parent.getId();
-        List<String> siblingNames = folderRepo.listChildNames(ownerUserId, parentId);
-        return makeUnique(desired, siblingNames);
-    }
-
-    private String makeUniqueTemplateNameForFolder(Long ownerUserId, DispatchTemplateFolderEntity folder, String desired) {
-        return makeUniqueTemplateNameForFolder(ownerUserId, folder, desired, null);
-    }
-
-    private String makeUniqueTemplateNameForFolder(Long ownerUserId, DispatchTemplateFolderEntity folder, String desired, Long excludeTemplateId) {
-        Long folderId = folder == null ? null : folder.getId();
-        List<String> existingNames = templateRepo.listNamesForOwnerAndFolder(ownerUserId, folderId, excludeTemplateId);
-        return makeUnique(desired, existingNames);
-    }
-
-    private static String makeUnique(String base, List<String> existing) {
-        String normalizedBase = safeName(base).trim();
-        if (normalizedBase.isBlank()) normalizedBase = "Untitled";
-
-        Set<String> set = (existing == null ? List.<String>of() : existing)
-                .stream()
-                .map(s -> s.toLowerCase().trim())
-                .collect(Collectors.toSet());
-
-        String candidate = normalizedBase;
-        int i = 2;
-        while (set.contains(candidate.toLowerCase())) {
-            candidate = normalizedBase + " (" + i + ")";
-            i++;
-        }
-        return candidate;
-    }
-
-    private static String safeName(String s) {
-        return s == null ? "" : s.trim();
     }
 }

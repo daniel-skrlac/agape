@@ -11,7 +11,7 @@ import java.time.ZoneOffset;
 @UtilityClass
 public final class DateTimeUtil {
 
-    private static final ZoneId ZAGREB_ZONE = ZoneId.of("Europe/Zagreb");
+    public static final ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
 
     public static OffsetDateTime oracleTimestampToZagreb(Timestamp ts) {
         if (ts == null) {
@@ -20,7 +20,7 @@ public final class DateTimeUtil {
 
         return ts.toLocalDateTime()
                 .atOffset(ZoneOffset.UTC)
-                .atZoneSameInstant(ZAGREB_ZONE)
+                .atZoneSameInstant(ZAGREB)
                 .toOffsetDateTime();
     }
 }
