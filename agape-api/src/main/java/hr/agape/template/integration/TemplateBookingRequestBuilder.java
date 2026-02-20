@@ -35,8 +35,6 @@ public class TemplateBookingRequestBuilder {
         List<DispatchRequestDTO> out = new ArrayList<>();
 
         for (DispatchTemplateDocEntity doc : docs) {
-            validateTemplateDocHasItems(doc);
-
             TemplateBookDocPatchDTO patch = patchByDocId.get(doc.getDocumentId());
             Map<Long, BigDecimal> qtyByItemId = buildBaseQtyMap(doc);
 
@@ -87,12 +85,6 @@ public class TemplateBookingRequestBuilder {
                         p -> p,
                         (a, b) -> b // last wins
                 ));
-    }
-
-    private void validateTemplateDocHasItems(DispatchTemplateDocEntity doc) {
-        if (doc.getItems() == null || doc.getItems().isEmpty()) {
-            throw new IllegalArgumentException("Template document " + doc.getDocumentId() + " has no items.");
-        }
     }
 
     private Map<Long, BigDecimal> buildBaseQtyMap(DispatchTemplateDocEntity doc) {
@@ -153,8 +145,6 @@ public class TemplateBookingRequestBuilder {
         dr.setWarehouseId(warehouseId);
         dr.setDraft(draft);
 
-        // keeping your current behavior:
-        // default note is applied only when patch for doc exists
         dr.setNote(resolveNote(doc, patch));
 
         List<DispatchRequestDTO.DispatchItemRequest> items = new ArrayList<>();
