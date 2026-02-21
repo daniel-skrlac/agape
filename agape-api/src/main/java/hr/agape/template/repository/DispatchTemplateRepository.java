@@ -214,15 +214,18 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
     }
 
     public boolean existsDocWithDocumentId(Long templateId, Long documentId, Long excludeDocId) {
-        if (excludeDocId == null) {
-            return DispatchTemplateDocEntity.count(
-                    "template.id = ?1 and documentId = ?2",
-                    templateId, documentId
-            ) > 0;
-        }
-        return DispatchTemplateDocEntity.count(
-                "template.id = ?1 and documentId = ?2 and id <> ?3",
-                templateId, documentId, excludeDocId
-        ) > 0;
+        Long count = em.createQuery("""
+                    SELECT COUNT(d.id)
+                    FROM DispatchTemplateDocEntity d
+                    WHERE d.template.id = :templateId
+                      AND d.documentId = :documentId
+                      AND (:excludeDocId IS NULL OR d.id <> :excludeDocId)
+                    """, Long.class)
+                .setParameter("templateId", templateId)
+                .setParameter("documentId", documentId)
+                .setParameter("excludeDocId", excludeDocId)
+                .getSingleResult();
+
+        return count != null && count > 0;
     }
 }

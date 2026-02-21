@@ -471,33 +471,15 @@ public class DispatchTemplateService {
         try {
             Long userId = authUtil.requireUserId();
 
-            DispatchTemplateEntity template = templateRepo.findFull(templateId, userId);
-            if (template == null) {
+            if (!templateRepo.isOwnedBy(templateId, userId)) {
                 return ServiceResponseDirector.errorNotFound("Template not found.");
-            }
-
-            if (template.getDocuments() == null || template.getDocuments().isEmpty()) {
-                return ServiceResponseDirector.errorBadRequest("Template has no documents.");
             }
 
             if (!templateRepo.existsOwnedDoc(templateId, templateDocId, userId)) {
                 return ServiceResponseDirector.errorBadRequest("Template document not found.");
             }
 
-            Map<Long, BigDecimal> qtyByItemId = new LinkedHashMap<>();
-            if (items != null) {
-                for (TemplateItemUpsertRequestDTO item : items) {
-                    if (item == null || item.getItemId() == null) {
-                        continue;
-                    }
-                    if (item.getQuantity() == null || item.getQuantity().signum() <= 0) {
-                        continue;
-                    }
-
-                    qtyByItemId.merge(item.getItemId(), item.getQuantity(), BigDecimal::add);
-                }
-            }
-
+            Map<Long, BigDecimal> qtyByItemId = normalizeItems(items);
             if (qtyByItemId.isEmpty()) {
                 return ServiceResponseDirector.errorBadRequest("Document must contain at least one valid item.");
             }
@@ -621,5 +603,22 @@ public class DispatchTemplateService {
 
             copy.getDocuments().add(copyDoc);
         }
+    }
+
+    private Map<Long, BigDecimal> normalizeItems(List<TemplateItemUpsertRequestDTO> items) {
+        Map<Long, BigDecimal> qtyByItemId = new LinkedHashMap<>();
+
+        if (items == null) {
+            return qtyByItemId;
+        }
+
+        for (TemplateItemUpsertRequestDTO item : items) {
+            if (item == null || item.getItemId() == null) continue;
+            if (item.getQuantity() == null || item.getQuantity().signum() <= 0) continue;
+
+            qtyByItemId.merge(item.getItemId(), item.getQuantity(), BigDecimal::add);
+        }
+
+        return qtyByItemId;
     }
 }

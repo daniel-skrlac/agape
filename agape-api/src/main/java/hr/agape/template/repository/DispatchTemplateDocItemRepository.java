@@ -23,9 +23,6 @@ public class DispatchTemplateDocItemRepository implements PanacheRepository<Disp
     public void replaceAllForDoc(Long templateDocId, Map<Long, BigDecimal> qtyByItemId) {
         deleteByTemplateDocId(templateDocId);
 
-        em.flush();
-        em.clear();
-
         DispatchTemplateDocEntity docRef = em.getReference(DispatchTemplateDocEntity.class, templateDocId);
 
         int sort = 1;

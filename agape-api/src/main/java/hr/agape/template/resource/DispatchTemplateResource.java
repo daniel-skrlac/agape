@@ -96,6 +96,7 @@ public class DispatchTemplateResource {
         return Responses.from(service.upsertTemplateDoc(templateId, req));
     }
 
+    //TODO: Refactor to use diff-style update of items
     @PUT
     @Path("/{id}/documents/{templateDocId}/items")
     public Response replaceDocItems(

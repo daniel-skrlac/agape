@@ -2,8 +2,6 @@ package hr.agape.common.config;
 
 import io.smallrye.config.ConfigMapping;
 
-import java.util.Map;
-
 @ConfigMapping(prefix = "agape")
 public interface AgapeConfig {
     String oib();
