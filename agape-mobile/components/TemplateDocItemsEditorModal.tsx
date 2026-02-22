@@ -101,10 +101,8 @@ export function TemplateDocItemsEditorModal(props: Props) {
     fetchItemsPage,
   } = props;
 
-  // Main editor state
   const [items, setItems] = useState<LocalTemplateItem[]>([]);
 
-  // Picker (inside same modal, no nested modal)
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQ, setPickerQ] = useState("");
   const [pickerDebouncedQ, setPickerDebouncedQ] = useState("");
@@ -115,7 +113,6 @@ export function TemplateDocItemsEditorModal(props: Props) {
   const [pickerLoadingMore, setPickerLoadingMore] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
 
-  // Top error UX
   const [screenError, setScreenError] = useState<string | null>(null);
   const [dismissedTopError, setDismissedTopError] = useState<string | null>(null);
 
@@ -134,7 +131,6 @@ export function TemplateDocItemsEditorModal(props: Props) {
     setScreenError(null);
     setDismissedTopError(null);
 
-    // reset picker state whenever modal opens / document changes
     setPickerOpen(false);
     setPickerQ("");
     setPickerDebouncedQ("");
@@ -180,7 +176,6 @@ export function TemplateDocItemsEditorModal(props: Props) {
           q: pickerDebouncedQ || undefined,
         });
 
-        // ignore stale responses
         if (reqId !== fetchReqRef.current) return;
 
         const incoming = res.items ?? [];
@@ -266,7 +261,6 @@ export function TemplateDocItemsEditorModal(props: Props) {
       return list.map((x, i) => ({ ...x, sortOrder: i + 1 }));
     });
 
-    // close picker after one add (same UX as SearchPickerSheet)
     closePicker();
   };
 

@@ -1,20 +1,31 @@
-import React, { useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import Animated, { interpolate, SharedValue, useAnimatedStyle } from "react-native-reanimated";
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import Screen from "@/components/ui/Screen";
+import NavigationHeader from "../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
-import { Banner } from "@/components/Banner";
+import { ErrorCard } from "@/components/ErrorCard";
 import { CenterSheet } from "@/components/CenterSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
+import { toUserMessage } from "@/app/api/apiClient";
+import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
+import {
+  useTemplateList,
+  useTemplateFolderTree,
+  useCreateFolder,
+  useRenameFolder,
+  useDeleteFolder,
+  useDeleteTemplate,
+  canEditDeleteTemplate,
+} from "@/app/api/hooks/templates/useDispatchTemplates";
 
-import NavigationHeader from "../../../../components/NavigationHeader";
-import { useTemplateList, useTemplateFolders, useCreateFolder, useRenameFolder, useDeleteFolder, useDeleteTemplate, canEditDeleteTemplate } from "@/app/api/hooks/templates/useDispatchTemplates";
+import { styles as s, swipeStyles as sw } from "../styles/TemplatesFolder.styles";
 
 type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
@@ -29,6 +40,19 @@ type Entry =
     shared?: boolean;
     sharedPermission?: "VIEW" | "BOOK" | null;
   };
+
+function parseModeParam(v: unknown): Mode {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const x = String(raw ?? "").toUpperCase().trim();
+  if (x === "MOJI" || x === "DIJELJENI") return x;
+  return "SVE";
+}
+
+function readFolderIdParam(v: unknown): number {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : NaN;
+}
 
 function SwipeActionButton({
   label,
@@ -55,57 +79,143 @@ function SwipeActionButton({
     <Animated.View style={[sw.actionWrap, rStyle]}>
       <Pressable onPress={onPress} style={[sw.actionBtn, danger ? sw.delete : sw.edit]}>
         <FontAwesome name={icon} size={16} color={danger ? Colors.dangerText : Colors.text} />
-        <Text style={[sw.actionText, danger ? { color: Colors.dangerText } : null]}>{label}</Text>
+        <Text style={[sw.actionText, danger ? sw.actionTextDanger : null]}>{label}</Text>
       </Pressable>
     </Animated.View>
   );
 }
 
 export default function TemplatesFolderScreen() {
-  const params = useLocalSearchParams<{ folderId: string; folderName?: string; mode?: Mode }>();
-  const folderId = Number(params.folderId);
-  const folderName = (params.folderName as string) ?? "Mapa";
-  const mode = (params.mode as Mode) ?? "SVE";
+  const params = useLocalSearchParams<{ folderId?: string; folderName?: string; mode?: string }>();
+
+  const folderId = readFolderIdParam(params.folderId);
+  const hasValidFolderId = Number.isFinite(folderId) && folderId > 0;
+
+  const folderName = String((Array.isArray(params.folderName) ? params.folderName[0] : params.folderName) ?? "Mapa");
+  const mode = parseModeParam(params.mode);
 
   const [q, setQ] = useState("");
-  const includeShared = mode !== "MOJI";
+  const [screenError, setScreenError] = useState<string | null>(null);
 
-  const templatesQ = useTemplateList({ folderId, q, includeShared, rootOnly: false });
+  const templateScope = useMemo<"ALL" | "OWNED" | "SHARED">(() => {
+    if (mode === "MOJI") return "OWNED";
+    if (mode === "DIJELJENI") return "SHARED";
+    return "ALL";
+  }, [mode]);
+
+  const folderTreeQ = useTemplateFolderTree({ enabled: hasValidFolderId });
+  const allFolders = folderTreeQ.data ?? [];
+
+  const templatesQ = useTemplateList({
+    folderId: hasValidFolderId ? folderId : null,
+    q,
+    scope: templateScope,
+    rootOnly: false,
+    size: 20,
+    enabled: hasValidFolderId,
+  });
+
   const templates = templatesQ.data ?? [];
-
-  const foldersQ = useTemplateFolders();
-  const allFolders = foldersQ.data ?? [];
-
-  const childFolders = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    return allFolders.filter(
-      (f: any) => f.parentId === folderId && (!qq || String(f.name ?? "").toLowerCase().includes(qq))
-    );
-  }, [allFolders, folderId, q]);
-
-  const entries: Entry[] = useMemo(() => {
-    const folderEntries: Entry[] = childFolders.map((f: any) => ({ kind: "FOLDER", id: f.id, name: f.name }));
-    const tplEntries: Entry[] = templates.map((t: any) => ({
-      kind: "TPL",
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      householdSize: t.householdSize,
-      shared: !!t.shared,
-      sharedPermission: t.sharedPermission ?? null,
-    }));
-    return [...folderEntries, ...tplEntries].sort((x, y) => x.name.localeCompare(y.name, "hr", { sensitivity: "base" }));
-  }, [childFolders, templates]);
 
   const createFolderM = useCreateFolder();
   const renameFolderM = useRenameFolder();
   const deleteFolderM = useDeleteFolder();
   const deleteTplM = useDeleteTemplate();
 
-  const [errMsg, setErrMsg] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const childFolders = useMemo(() => {
+    if (!hasValidFolderId) return [];
+    const qq = q.trim().toLowerCase();
 
-  // sheets
+    return (allFolders ?? []).filter((f: any) => {
+      const sameParent = Number(f?.parentId ?? 0) === Number(folderId);
+      if (!sameParent) return false;
+
+      if (!qq) return true;
+      return String(f?.name ?? "").toLowerCase().includes(qq);
+    });
+  }, [allFolders, folderId, hasValidFolderId, q]);
+
+  const entries: Entry[] = useMemo(() => {
+    const folderEntries: Entry[] = childFolders.map((f: any) => ({
+      kind: "FOLDER",
+      id: Number(f.id),
+      name: String(f.name ?? `Mapa #${f.id}`),
+    }));
+
+    const tplEntries: Entry[] = (templates ?? []).map((t: any) => ({
+      kind: "TPL",
+      id: Number(t.id),
+      name: String(t.name ?? `Predložak #${t.id}`),
+      description: t.description,
+      householdSize: t.householdSize,
+      shared: !!t.shared,
+      sharedPermission: t.sharedPermission ?? null,
+    }));
+
+    return [...folderEntries, ...tplEntries].sort((a, b) =>
+      a.name.localeCompare(b.name, "hr", { sensitivity: "base" })
+    );
+  }, [childFolders, templates]);
+
+  const queryErrorFolders = useMemo(() => {
+    if (!folderTreeQ.error) return null;
+    if ((allFolders?.length ?? 0) > 0) return null;
+    return toUserMessage(folderTreeQ.error, "Greška prilikom učitavanja mapa.");
+  }, [folderTreeQ.error, allFolders?.length]);
+
+  const queryErrorTemplates = useMemo(() => {
+    if (!templatesQ.error) return null;
+    if ((templates?.length ?? 0) > 0) return null;
+    return toUserMessage(templatesQ.error, "Greška prilikom učitavanja predložaka.");
+  }, [templatesQ.error, templates?.length]);
+
+  const mutationError = useMemo(() => {
+    if (createFolderM.error) return toUserMessage(createFolderM.error, "Greška pri kreiranju mape.");
+    if (renameFolderM.error) return toUserMessage(renameFolderM.error, "Greška pri preimenovanju.");
+    if (deleteFolderM.error) return toUserMessage(deleteFolderM.error, "Greška pri brisanju mape.");
+    if (deleteTplM.error) return toUserMessage(deleteTplM.error, "Greška pri brisanju predloška.");
+    return null;
+  }, [createFolderM.error, renameFolderM.error, deleteFolderM.error, deleteTplM.error]);
+
+  const topError = useMemo(() => {
+    if (!hasValidFolderId) return "Neispravan parametar mape.";
+    return screenError || mutationError || queryErrorFolders || queryErrorTemplates || null;
+  }, [hasValidFolderId, screenError, mutationError, queryErrorFolders, queryErrorTemplates]);
+
+  const resetMutationErrors = useCallback(() => {
+    createFolderM.reset();
+    renameFolderM.reset();
+    deleteFolderM.reset();
+    deleteTplM.reset();
+  }, [createFolderM, renameFolderM, deleteFolderM, deleteTplM]);
+
+  const onTopErrorAction = useCallback(async () => {
+    setScreenError(null);
+    resetMutationErrors();
+
+    if (!hasValidFolderId) return;
+
+    await Promise.allSettled([
+      Promise.resolve(folderTreeQ.refetch()),
+      Promise.resolve(templatesQ.refetch()),
+    ]);
+  }, [hasValidFolderId, folderTreeQ, templatesQ, resetMutationErrors]);
+
+  const { refreshing, onRefresh } = usePullToRefresh([
+    async () => {
+      setScreenError(null);
+      resetMutationErrors();
+      await Promise.allSettled([
+        Promise.resolve(folderTreeQ.refetch()),
+        Promise.resolve(templatesQ.refetch()),
+      ]);
+    },
+  ]);
+
+  const onRefreshSafe = useCallback(async () => {
+    await onRefresh();
+  }, [onRefresh]);
+
   const [addOpen, setAddOpen] = useState(false);
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -123,7 +233,6 @@ export default function TemplatesFolderScreen() {
   const [deleteTplId, setDeleteTplId] = useState<number | null>(null);
   const [deleteTplLabel, setDeleteTplLabel] = useState("");
 
-  // ✅ “Više” sheet (za folder i template)
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreItem, setMoreItem] = useState<Entry | null>(null);
 
@@ -134,26 +243,17 @@ export default function TemplatesFolderScreen() {
     });
   };
 
-  const onRefresh = async () => {
-    try {
-      setErrMsg(null);
-      setRefreshing(true);
-      await Promise.all([foldersQ.refetch(), templatesQ.refetch()]);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
   const openMore = (item: Entry) => {
     setMoreItem(item);
     setMoreOpen(true);
   };
 
   const renderRightActions = (item: Entry, progress: SharedValue<number>, close: () => void) => {
-    // ✅ max 2 gumba → nema overflowa
-    const canDeleteTpl = item.kind === "TPL" && canEditDeleteTemplate({ shared: item.shared, sharedPermission: item.sharedPermission });
+    const canDeleteTpl =
+      item.kind === "TPL" &&
+      canEditDeleteTemplate({ shared: item.shared, sharedPermission: item.sharedPermission });
 
-    const canDeleteFolder = item.kind === "FOLDER" && mode !== "DIJELJENI"; // u shared view ne radimo folder akcije
+    const canDeleteFolder = item.kind === "FOLDER" && mode !== "DIJELJENI";
 
     return (
       <View style={sw.actions}>
@@ -177,6 +277,7 @@ export default function TemplatesFolderScreen() {
             index={1}
             onPress={() => {
               close();
+
               if (item.kind === "FOLDER") {
                 setDeleteFolderId(item.id);
                 setDeleteFolderLabel(item.name);
@@ -193,127 +294,209 @@ export default function TemplatesFolderScreen() {
     );
   };
 
-  const errText = (foldersQ.error as any)?.message || (templatesQ.error as any)?.message || null;
+  const showInitialLoading =
+    hasValidFolderId &&
+    !refreshing &&
+    ((folderTreeQ.isLoading && (allFolders?.length ?? 0) === 0) ||
+      (templatesQ.isLoading && (templates?.length ?? 0) === 0));
+
+  const showEmpty =
+    !showInitialLoading &&
+    !topError &&
+    (entries?.length ?? 0) === 0 &&
+    !templatesQ.loading &&
+    !templatesQ.loadingMore &&
+    !refreshing;
+
+  const loadMoreErrorText = templatesQ.loadMoreError || null;
 
   return (
-    <Screen>
-      <Stack.Screen options={{ headerShown: false }} />
-
+    <Screen style={s.screen}>
       <View style={s.container}>
-        {!!errMsg && <Banner type="error" text={errMsg} />}
-        {!!errText && <Banner type="error" text={String(errText)} />}
-
         <NavigationHeader
           title={folderName}
           subtitle="Podmape i predlošci"
           fallbackHref="/(tabs)/templates"
           right={
-            <Pressable style={s.addBtn} onPress={() => setAddOpen(true)} hitSlop={10}>
+            <Pressable
+              style={s.addBtn}
+              onPress={() => {
+                setScreenError(null);
+                resetMutationErrors();
+                setAddOpen(true);
+              }}
+              hitSlop={10}
+            >
               <FontAwesome name="plus" size={14} color="#fff" />
               <Text style={s.addText}>Dodaj</Text>
             </Pressable>
           }
         />
 
-        <TextInput value={q} onChangeText={setQ} placeholder="Pretraži…" placeholderTextColor={Colors.sub} style={s.search} />
+        {!!topError && (
+          <View style={s.topErrorWrap}>
+            <ErrorCard
+              title="Greška"
+              message={topError}
+              actionText="Pokušaj ponovno"
+              onAction={onTopErrorAction}
+              titleLines={1}
+              messageLines={3}
+            />
+          </View>
+        )}
 
-        <FlatList
-          data={entries}
-          keyExtractor={(x) => `${x.kind}-${x.id}`}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          removeClippedSubviews={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ gap: 10, paddingBottom: 24 }}
-          renderItem={({ item }) => {
-            const onPress = () => {
-              if (item.kind === "FOLDER") return openFolder(item.id, item.name);
-              router.push({ pathname: "/(tabs)/templates/template/[id]", params: { id: String(item.id) } });
-            };
+        <TextInput
+          value={q}
+          onChangeText={(value) => {
+            setScreenError(null);
+            setQ(value);
+          }}
+          placeholder="Pretraži…"
+          placeholderTextColor={Colors.sub}
+          style={s.search}
+          autoCorrect={false}
+        />
 
-            const isFolder = item.kind === "FOLDER";
-            const card = isFolder ? (
-              <View style={s.folderCard}>
-                <View style={s.row}>
-                  <View style={s.iconCircle}>
-                    <FontAwesome name="folder" size={16} color={Colors.text} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.title}>{item.name}</Text>
-                    <Text style={s.sub}>Otvori mapu</Text>
-                  </View>
-                  <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
-                </View>
-              </View>
-            ) : (
-              <View style={[s.card, item.shared ? { backgroundColor: Colors.sharedBg, borderColor: Colors.sharedBorder } : null]}>
-                <View style={s.row}>
-                  <View style={[s.iconCircle, item.shared ? { backgroundColor: "rgba(59,130,246,0.12)" } : null]}>
-                    <FontAwesome
-                      name={item.shared ? "share-alt" : "file-text-o"}
-                      size={16}
-                      color={item.shared ? Colors.sharedText : Colors.text}
-                    />
-                  </View>
+        {showInitialLoading ? (
+          <View style={s.centerLoading}>
+            <ActivityIndicator />
+            <Text style={s.loadingText}>Učitavam…</Text>
+          </View>
+        ) : (
+          <FlatList
+            style={s.list}
+            data={entries}
+            keyExtractor={(x) => `${x.kind}-${x.id}`}
+            refreshing={refreshing}
+            onRefresh={onRefreshSafe}
+            removeClippedSubviews={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={s.listContent}
+            onEndReachedThreshold={0.35}
+            onEndReached={() => {
+              if (refreshing || templatesQ.loading || templatesQ.loadingMore) return;
+              if (templatesQ.canLoadMore) templatesQ.loadMore?.();
+            }}
+            renderItem={({ item }) => {
+              const onPress = () => {
+                if (item.kind === "FOLDER") {
+                  openFolder(item.id, item.name);
+                  return;
+                }
 
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                router.push({
+                  pathname: "/(tabs)/templates/template/[id]",
+                  params: { id: String(item.id) },
+                });
+              };
+
+              const isFolder = item.kind === "FOLDER";
+
+              const card = isFolder ? (
+                <View style={s.folderCard}>
+                  <View style={s.row}>
+                    <View style={s.iconCircle}>
+                      <FontAwesome name="folder" size={16} color={Colors.text} />
+                    </View>
+
+                    <View style={s.rowContent}>
                       <Text style={s.title}>{item.name}</Text>
-                      {item.shared ? <Text style={s.badge}>DIJELJENO</Text> : null}
-                      {item.shared && item.sharedPermission ? (
-                        <Text
-                          style={[
-                            s.badge,
-                            item.sharedPermission === "BOOK"
-                              ? { backgroundColor: "rgba(34,197,94,0.18)", color: "#16A34A" }
-                              : { backgroundColor: "rgba(148,163,184,0.25)", color: Colors.text },
-                          ]}
-                        >
-                          {item.sharedPermission}
+                      <Text style={s.sub}>Otvori mapu</Text>
+                    </View>
+
+                    <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
+                  </View>
+                </View>
+              ) : (
+                <View style={[s.card, item.shared ? s.cardShared : null]}>
+                  <View style={s.row}>
+                    <View style={[s.iconCircle, item.shared ? s.iconCircleShared : null]}>
+                      <FontAwesome
+                        name={item.shared ? "share-alt" : "file-text-o"}
+                        size={16}
+                        color={item.shared ? Colors.sharedText : Colors.text}
+                      />
+                    </View>
+
+                    <View style={s.rowContent}>
+                      <View style={s.titleRow}>
+                        <Text style={s.title}>{item.name}</Text>
+
+                        {item.shared ? <Text style={s.badge}>DIJELJENO</Text> : null}
+
+                        {item.shared && item.sharedPermission ? (
+                          <Text
+                            style={[
+                              s.badge,
+                              item.sharedPermission === "BOOK" ? s.badgeBook : s.badgeView,
+                            ]}
+                          >
+                            {item.sharedPermission}
+                          </Text>
+                        ) : null}
+                      </View>
+
+                      {typeof item.householdSize === "number" ? (
+                        <Text style={s.sub}>Kućanstvo: {item.householdSize}</Text>
+                      ) : null}
+
+                      {!!item.description ? (
+                        <Text style={s.desc} numberOfLines={2}>
+                          {item.description}
                         </Text>
                       ) : null}
                     </View>
 
-                    {typeof item.householdSize === "number" ? <Text style={s.sub}>Kućanstvo: {item.householdSize}</Text> : null}
-                    {!!item.description ? (
-                      <Text style={s.desc} numberOfLines={2}>
-                        {item.description}
-                      </Text>
-                    ) : null}
+                    <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
                   </View>
-
-                  <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
                 </View>
-              </View>
-            );
+              );
 
-            return (
-              <View style={{ borderRadius: 18, overflow: "hidden" }}>
-                <ReanimatedSwipeable
-                  overshootRight={false}
-                  friction={2}
-                  rightThreshold={40}
-                  renderRightActions={(progress, _dragX, swipeable) =>
-                    renderRightActions(item, progress, () => swipeable.close())
-                  }
-                >
-                  <Pressable onPress={onPress}>{card}</Pressable>
-                </ReanimatedSwipeable>
-              </View>
-            );
-          }}
-          ListEmptyComponent={
-            <Text style={s.empty}>{foldersQ.isLoading || templatesQ.isLoading ? "Učitavam…" : "Nema podataka u mapi."}</Text>
-          }
-        />
+              return (
+                <View style={s.swipeWrap}>
+                  <ReanimatedSwipeable
+                    overshootRight={false}
+                    friction={2}
+                    rightThreshold={40}
+                    renderRightActions={(progress, _dragX, swipeable) =>
+                      renderRightActions(item, progress, () => swipeable.close())
+                    }
+                  >
+                    <Pressable onPress={onPress}>{card}</Pressable>
+                  </ReanimatedSwipeable>
+                </View>
+              );
+            }}
+            ListEmptyComponent={showEmpty ? <Text style={s.empty}>Nema podataka u mapi.</Text> : null}
+            ListFooterComponent={
+              templatesQ.loadingMore || loadMoreErrorText ? (
+                <View style={s.footerLoading}>
+                  {templatesQ.loadingMore ? <ActivityIndicator size="small" /> : null}
 
-        {/* ✅ “VIŠE” ACTION SHEET */}
+                  {!!loadMoreErrorText && (
+                    <Pressable
+                      onPress={() => templatesQ.loadMore?.()}
+                      style={s.footerRetryBtn}
+                    >
+                      <Text style={s.footerRetryText}>
+                        {String(loadMoreErrorText)} • Dodirni za pokušaj ponovno
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              ) : null
+            }
+          />
+        )}
+
+        {/* VIŠE */}
         <CenterSheet
           visible={moreOpen}
           title={moreItem?.kind === "FOLDER" ? "Mapa" : "Predložak"}
           onClose={() => setMoreOpen(false)}
         >
-          <View style={{ gap: 12 }}>
+          <View style={s.sheetGap}>
             {!!moreItem && (
               <View style={s.moreHeader}>
                 <Text style={s.moreTitle} numberOfLines={2}>
@@ -323,7 +506,6 @@ export default function TemplatesFolderScreen() {
               </View>
             )}
 
-            {/* FOLDER akcije (ne u DIJELJENI) */}
             {moreItem?.kind === "FOLDER" && mode !== "DIJELJENI" && (
               <>
                 <Pressable
@@ -331,7 +513,10 @@ export default function TemplatesFolderScreen() {
                   onPress={() => {
                     const id = moreItem.id;
                     setMoreOpen(false);
-                    router.push({ pathname: "/(tabs)/templates/folder/premjesti", params: { folderId: String(id) } });
+                    router.push({
+                      pathname: "/(tabs)/templates/folder/premjesti",
+                      params: { folderId: String(id) },
+                    });
                   }}
                 >
                   <FontAwesome name="arrow-right" size={16} color={Colors.text} />
@@ -343,7 +528,10 @@ export default function TemplatesFolderScreen() {
                   onPress={() => {
                     const id = moreItem.id;
                     setMoreOpen(false);
-                    router.push({ pathname: "/(tabs)/templates/folder/kopiraj", params: { folderId: String(id) } });
+                    router.push({
+                      pathname: "/(tabs)/templates/folder/kopiraj",
+                      params: { folderId: String(id) },
+                    });
                   }}
                 >
                   <FontAwesome name="copy" size={16} color={Colors.text} />
@@ -364,7 +552,7 @@ export default function TemplatesFolderScreen() {
                 </Pressable>
 
                 <Pressable
-                  style={[s.moreItem, { backgroundColor: Colors.dangerBg }]}
+                  style={[s.moreItem, s.moreItemDanger]}
                   onPress={() => {
                     setMoreOpen(false);
                     setDeleteFolderId(moreItem.id);
@@ -373,22 +561,23 @@ export default function TemplatesFolderScreen() {
                   }}
                 >
                   <FontAwesome name="trash" size={16} color={Colors.dangerText} />
-                  <Text style={[s.moreItemText, { color: Colors.dangerText }]}>Obriši</Text>
+                  <Text style={[s.moreItemText, s.moreItemTextDanger]}>Obriši</Text>
                 </Pressable>
               </>
             )}
 
-            {/* TEMPLATE akcije */}
             {moreItem?.kind === "TPL" && (
               <>
-                {/* Premjesti samo ako nije shared */}
                 {!moreItem.shared && (
                   <Pressable
                     style={s.moreItem}
                     onPress={() => {
                       const id = moreItem.id;
                       setMoreOpen(false);
-                      router.push({ pathname: "/(tabs)/templates/template/[id]/premjesti", params: { id: String(id) } });
+                      router.push({
+                        pathname: "/(tabs)/templates/template/[id]/move",
+                        params: { id: String(id) },
+                      });
                     }}
                   >
                     <FontAwesome name="arrow-right" size={16} color={Colors.text} />
@@ -396,72 +585,84 @@ export default function TemplatesFolderScreen() {
                   </Pressable>
                 )}
 
-                {/* Kopiraj može i za shared */}
                 <Pressable
                   style={s.moreItem}
                   onPress={() => {
                     const id = moreItem.id;
                     setMoreOpen(false);
-                    router.push({ pathname: "/(tabs)/templates/template/[id]/kopiraj", params: { id: String(id) } });
+                    router.push({
+                      pathname: "/(tabs)/templates/template/[id]/copy",
+                      params: { id: String(id) },
+                    });
                   }}
                 >
                   <FontAwesome name="copy" size={16} color={Colors.text} />
                   <Text style={s.moreItemText}>Kopiraj</Text>
                 </Pressable>
 
-                {/* Uredi / Obriši samo ako canEditDelete */}
-                {canEditDeleteTemplate({ shared: moreItem.shared, sharedPermission: moreItem.sharedPermission }) && (
-                  <>
-                    <Pressable
-                      style={s.moreItem}
-                      onPress={() => {
-                        const id = moreItem.id;
-                        setMoreOpen(false);
-                        router.push({ pathname: "/(tabs)/templates/template/[id]", params: { id: String(id), edit: "1" } });
-                      }}
-                    >
-                      <FontAwesome name="pencil" size={16} color={Colors.text} />
-                      <Text style={s.moreItemText}>Uredi</Text>
-                    </Pressable>
+                {canEditDeleteTemplate({
+                  shared: moreItem.shared,
+                  sharedPermission: moreItem.sharedPermission,
+                }) && (
+                    <>
+                      <Pressable
+                        style={s.moreItem}
+                        onPress={() => {
+                          const id = moreItem.id;
+                          setMoreOpen(false);
+                          router.push({
+                            pathname: "/(tabs)/templates/template/[id]",
+                            params: { id: String(id), edit: "1" },
+                          });
+                        }}
+                      >
+                        <FontAwesome name="pencil" size={16} color={Colors.text} />
+                        <Text style={s.moreItemText}>Uredi</Text>
+                      </Pressable>
 
-                    <Pressable
-                      style={[s.moreItem, { backgroundColor: Colors.dangerBg }]}
-                      onPress={() => {
-                        setMoreOpen(false);
-                        setDeleteTplId(moreItem.id);
-                        setDeleteTplLabel(moreItem.name);
-                        setDeleteTplOpen(true);
-                      }}
-                    >
-                      <FontAwesome name="trash" size={16} color={Colors.dangerText} />
-                      <Text style={[s.moreItemText, { color: Colors.dangerText }]}>Obriši</Text>
-                    </Pressable>
-                  </>
-                )}
+                      <Pressable
+                        style={[s.moreItem, s.moreItemDanger]}
+                        onPress={() => {
+                          setMoreOpen(false);
+                          setDeleteTplId(moreItem.id);
+                          setDeleteTplLabel(moreItem.name);
+                          setDeleteTplOpen(true);
+                        }}
+                      >
+                        <FontAwesome name="trash" size={16} color={Colors.dangerText} />
+                        <Text style={[s.moreItemText, s.moreItemTextDanger]}>Obriši</Text>
+                      </Pressable>
+                    </>
+                  )}
               </>
             )}
           </View>
         </CenterSheet>
 
-        {/* ✅ DODAJ */}
+        {/* DODAJ */}
         <CenterSheet visible={addOpen} title="Dodaj" onClose={() => setAddOpen(false)}>
-          <View style={{ gap: 12 }}>
-            <Pressable
-              style={s.addItem}
-              onPress={() => {
-                setAddOpen(false);
-                setNewFolderOpen(true);
-              }}
-            >
-              <FontAwesome name="folder" size={16} color={Colors.text} />
-              <Text style={s.addItemText}>Nova mapa</Text>
-            </Pressable>
+          <View style={s.sheetGap}>
+            {mode !== "DIJELJENI" && (
+              <Pressable
+                style={s.addItem}
+                onPress={() => {
+                  setAddOpen(false);
+                  setNewFolderOpen(true);
+                }}
+              >
+                <FontAwesome name="folder" size={16} color={Colors.text} />
+                <Text style={s.addItemText}>Nova mapa</Text>
+              </Pressable>
+            )}
 
             <Pressable
               style={s.addItem}
               onPress={() => {
                 setAddOpen(false);
-                router.push({ pathname: "/(tabs)/templates/template/new", params: { folderId: String(folderId) } });
+                router.push({
+                  pathname: "/(tabs)/templates/template/new",
+                  params: { folderId: String(folderId) },
+                });
               }}
             >
               <FontAwesome name="file-text-o" size={16} color={Colors.text} />
@@ -472,27 +673,31 @@ export default function TemplatesFolderScreen() {
 
         {/* NOVA PODMAPA */}
         <CenterSheet visible={newFolderOpen} title="Nova mapa" onClose={() => setNewFolderOpen(false)}>
-          <View style={{ gap: 12 }}>
+          <View style={s.sheetGap}>
             <TextInput
               value={newFolderName}
               onChangeText={setNewFolderName}
               placeholder="Naziv mape"
               placeholderTextColor={Colors.sub}
               style={s.search}
+              editable={!createFolderM.isPending}
+              autoCorrect={false}
             />
+
             <Pressable
-              style={[s.primary, createFolderM.isPending && { opacity: 0.7 }]}
+              style={[s.primary, createFolderM.isPending && s.disabled]}
               disabled={createFolderM.isPending}
               onPress={async () => {
+                const name = newFolderName.trim();
+                if (!name || !hasValidFolderId) return;
+
                 try {
-                  const name = newFolderName.trim();
-                  if (!name) return;
-                  setErrMsg(null);
+                  setScreenError(null);
                   await createFolderM.mutateAsync({ name, parentId: folderId });
                   setNewFolderName("");
                   setNewFolderOpen(false);
-                } catch (e: any) {
-                  setErrMsg(e?.message ?? "Greška pri kreiranju mape.");
+                } catch (e) {
+                  setScreenError(toUserMessage(e, "Greška pri kreiranju mape."));
                 }
               }}
             >
@@ -503,27 +708,30 @@ export default function TemplatesFolderScreen() {
 
         {/* PREIMENUJ */}
         <CenterSheet visible={renameOpen} title="Preimenuj mapu" onClose={() => setRenameOpen(false)}>
-          <View style={{ gap: 12 }}>
+          <View style={s.sheetGap}>
             <TextInput
               value={renameName}
               onChangeText={setRenameName}
               placeholder="Naziv mape"
               placeholderTextColor={Colors.sub}
               style={s.search}
+              editable={!renameFolderM.isPending}
+              autoCorrect={false}
             />
+
             <Pressable
-              style={[s.primary, renameFolderM.isPending && { opacity: 0.7 }]}
+              style={[s.primary, renameFolderM.isPending && s.disabled]}
               disabled={renameFolderM.isPending}
               onPress={async () => {
+                const name = renameName.trim();
+                if (!name || !renameId) return;
+
                 try {
-                  if (!renameId) return;
-                  const name = renameName.trim();
-                  if (!name) return;
-                  setErrMsg(null);
+                  setScreenError(null);
                   await renameFolderM.mutateAsync({ id: renameId, payload: { name } });
                   setRenameOpen(false);
-                } catch (e: any) {
-                  setErrMsg(e?.message ?? "Greška pri preimenovanju.");
+                } catch (e) {
+                  setScreenError(toUserMessage(e, "Greška pri preimenovanju."));
                 }
               }}
             >
@@ -542,13 +750,14 @@ export default function TemplatesFolderScreen() {
           loading={deleteFolderM.isPending}
           onClose={() => setDeleteFolderOpen(false)}
           onConfirm={async () => {
+            if (!deleteFolderId) return;
+
             try {
-              if (!deleteFolderId) return;
-              setErrMsg(null);
+              setScreenError(null);
               await deleteFolderM.mutateAsync(deleteFolderId);
               setDeleteFolderOpen(false);
-            } catch (e: any) {
-              setErrMsg(e?.message ?? "Greška pri brisanju mape.");
+            } catch (e) {
+              setScreenError(toUserMessage(e, "Greška pri brisanju mape."));
             }
           }}
         />
@@ -563,13 +772,14 @@ export default function TemplatesFolderScreen() {
           loading={deleteTplM.isPending}
           onClose={() => setDeleteTplOpen(false)}
           onConfirm={async () => {
+            if (!deleteTplId) return;
+
             try {
-              if (!deleteTplId) return;
-              setErrMsg(null);
+              setScreenError(null);
               await deleteTplM.mutateAsync(deleteTplId);
               setDeleteTplOpen(false);
-            } catch (e: any) {
-              setErrMsg(e?.message ?? "Greška pri brisanju predloška.");
+            } catch (e) {
+              setScreenError(toUserMessage(e, "Greška pri brisanju predloška."));
             }
           }}
         />
@@ -577,97 +787,3 @@ export default function TemplatesFolderScreen() {
     </Screen>
   );
 }
-
-const s = StyleSheet.create({
-  container: { padding: 14, gap: 12 },
-
-  addBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: Colors.orange,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexShrink: 0,
-  },
-  addText: { color: "#fff", fontWeight: "900" },
-
-  search: {
-    backgroundColor: Colors.bg,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontWeight: "800",
-    color: Colors.text,
-  },
-
-  folderCard: { backgroundColor: Colors.bg, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, padding: 14 },
-  card: { backgroundColor: Colors.bg, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, padding: 14 },
-
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  iconCircle: { width: 36, height: 36, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center", justifyContent: "center" },
-
-  title: { fontSize: 15, fontWeight: "900", color: Colors.text },
-  badge: { fontSize: 11, fontWeight: "900", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: Colors.sharedBg, color: Colors.sharedText },
-  sub: { marginTop: 2, color: Colors.sub, fontWeight: "700" },
-  desc: { marginTop: 4, color: "#475569", fontWeight: "600" },
-
-  empty: { textAlign: "center", color: Colors.sub, marginTop: 20, fontWeight: "800" },
-
-  addItem: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 14, paddingHorizontal: 14, borderRadius: 16, backgroundColor: "rgba(148,163,184,0.18)" },
-  addItemText: { fontWeight: "900", color: Colors.text },
-
-  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
-  primaryText: { color: "#fff", fontWeight: "900" },
-
-  moreHeader: {
-    backgroundColor: Colors.bg,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    padding: 14,
-    gap: 6,
-  },
-  moreTitle: { fontWeight: "900", color: Colors.text, fontSize: 16 },
-  moreSub: { color: Colors.sub, fontWeight: "800" },
-
-  moreItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    backgroundColor: "rgba(148,163,184,0.18)",
-  },
-  moreItemText: { fontWeight: "900", color: Colors.text },
-});
-
-const sw = StyleSheet.create({
-  actions: {
-    height: "100%",
-    width: 210, // ✅ fiksno → uredno na malim ekranima
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 10,
-    paddingRight: 8,
-  },
-  actionWrap: { height: "100%", justifyContent: "center" },
-  actionBtn: {
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    minWidth: 92,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  edit: { backgroundColor: "rgba(148,163,184,0.20)" },
-  delete: { backgroundColor: Colors.dangerBg },
-  actionText: { fontWeight: "900", color: Colors.text },
-});

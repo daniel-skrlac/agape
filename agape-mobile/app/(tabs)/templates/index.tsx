@@ -549,7 +549,7 @@ export default function TemplatesRoot() {
                     onPress={() => {
                       setMoreOpen(false);
                       router.push({
-                        pathname: "/(tabs)/templates/template/[id]/premjesti",
+                        pathname: "/(tabs)/templates/template/[id]/move",
                         params: { id: String(moreItem.id) },
                       });
                     }}
@@ -564,7 +564,7 @@ export default function TemplatesRoot() {
                   onPress={() => {
                     setMoreOpen(false);
                     router.push({
-                      pathname: "/(tabs)/templates/template/[id]/kopiraj",
+                      pathname: "/(tabs)/templates/template/[id]/copy",
                       params: { id: String(moreItem.id) },
                     });
                   }}

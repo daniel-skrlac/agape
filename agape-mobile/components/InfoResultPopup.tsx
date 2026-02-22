@@ -15,7 +15,6 @@ type Props = {
   buttonText?: string;
   subtitle?: string;
 
-  // NEW (optional "link" / secondary action)
   linkText?: string;
   onLinkPress?: () => void;
 

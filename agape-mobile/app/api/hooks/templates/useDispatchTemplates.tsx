@@ -27,6 +27,8 @@ const qk = {
   folders: (params: { parentId: number | null; size: number }) =>
     ["dispatch-template-folders", params] as const,
 
+  foldersTree: () => ["dispatch-template-folders", "tree"] as const,
+
   templatesHeaders: (params: {
     folderId: number | null;
     q: string;
@@ -461,4 +463,24 @@ export function useBookTemplateMany() {
     mutationFn: (payload: TemplateBookManyRequestDTO) =>
       dispatchTemplateService.bookMany(payload) as Promise<DispatchBulkResponseDTO>,
   });
+}
+
+export function useTemplateFolderTree(args: { enabled?: boolean } = {}) {
+  const { enabled = true } = args;
+
+  const query = useQuery({
+    queryKey: qk.foldersTree(),
+    enabled,
+    queryFn: ({ signal }) => dispatchTemplateService.listFolderTree(signal),
+  });
+
+  return {
+    data: (query.data ?? []) as FolderResponseDTO[],
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    error: query.error ?? null,
+    errorMessage: query.error ? toUserMessage(query.error, "Greška prilikom učitavanja mapa.") : null,
+    refetch: query.refetch,
+    clearStatus: () => { },
+  };
 }

@@ -90,7 +90,7 @@ export default function PredlozakDetalji() {
                 label="Kreiraj otpremu"
                 onPress={() =>
                   router.push({
-                    pathname: "/(tabs)/templates/template/[id]/otpremi",
+                    pathname: "/(tabs)/templates/template/[id]/dispatch",
                     params: { id: String(id) },
                   })
                 }
