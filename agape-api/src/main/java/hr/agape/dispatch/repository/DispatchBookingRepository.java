@@ -75,7 +75,7 @@ public class DispatchBookingRepository {
             LEFT JOIN PARTNERI p ON p.PARTNER_ID = g.PARTNER_ID
             """;
 
-        // NOTE: Oracle has no TRUE/FALSE in SQL -> use NOT(expr) / expr
+        // Oracle has no TRUE/FALSE in SQL -> use NOT(expr) / expr
         final String baseWhere = """
             WHERE ( ? IS NULL OR EXISTS (
                      SELECT 1
@@ -185,24 +185,24 @@ public class DispatchBookingRepository {
 
         final String headerSql = """
             SELECT
-              g.ID                                  AS HEADER_ID,
-              r.SKLADISTE_ID                        AS WAREHOUSE_ID,
-              g.DOKUMENT_ID                         AS DOCUMENT_ID,
-              g.DOKUMENTBR                          AS DOCUMENT_BR,
-              g.DATUM_DOKUMENTA                     AS DOCUMENT_DATE,
+              g.ID                                   AS HEADER_ID,
+              r.SKLADISTE_ID                         AS WAREHOUSE_ID,
+              g.DOKUMENT_ID                          AS DOCUMENT_ID,
+              g.DOKUMENTBR                           AS DOCUMENT_BR,
+              g.DATUM_DOKUMENTA                      AS DOCUMENT_DATE,
               NVL(g.DATUM_KNJIZENJA, g.DATUM_IZRADE) AS BOOKED_AT,
-              g.PARTNER_ID                          AS PARTNER_ID,
-              p.NAZIV                               AS PARTNER_NAME,
-              NVL(g.KNJIZENO, 0)                    AS KNJIZENO,
-              CASE WHEN %s THEN 1 ELSE 0 END        AS STORNO,
-              g.IZRADIO                             AS CREATED_BY,
-              g.DATUM_IZRADE                        AS CREATED_AT,
-              g.KNJIZIO                             AS POSTED_BY,
-              g.DATUM_KNJIZENJA                     AS POSTED_AT,
-              g.STORNIRAO                           AS CANCELLED_BY,
-              g.DATUM_STORNO                        AS CANCELLED_AT,
-              z.DOKUMENTID                          AS DOCUMENT_CODE,
-              z.NAZIVDOKUMENTA                      AS DOCUMENT_NAME
+              g.PARTNER_ID                           AS PARTNER_ID,
+              p.NAZIV                                AS PARTNER_NAME,
+              NVL(g.KNJIZENO, 0)                     AS KNJIZENO,
+              CASE WHEN %s THEN 1 ELSE 0 END         AS STORNO,
+              g.IZRADIO                              AS CREATED_BY,
+              g.DATUM_IZRADE                         AS CREATED_AT,
+              g.KNJIZIO                              AS POSTED_BY,
+              g.DATUM_KNJIZENJA                      AS POSTED_AT,
+              g.STORNIRAO                            AS CANCELLED_BY,
+              g.DATUM_STORNO                         AS CANCELLED_AT,
+              z.DOKUMENTID                           AS DOCUMENT_CODE,
+              z.NAZIVDOKUMENTA                       AS DOCUMENT_NAME
             FROM SD_GLAVA g
             JOIN SD_SIFREG r ON r.DOKUMENT_ID = g.DOKUMENT_ID
             JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
@@ -313,8 +313,8 @@ public class DispatchBookingRepository {
         ps.setString(i++, like);
         ps.setString(i++, like);
 
-        // status (bound 4x)
-        String st = status == null ? "ALL" : status.name();
+        // status (bound 4x) - normalize enum aliases to SQL literals used in WHERE
+        String st = toSqlStatus(status);
         ps.setString(i++, st);
         ps.setString(i++, st);
         ps.setString(i++, st);
@@ -338,6 +338,28 @@ public class DispatchBookingRepository {
         }
 
         return i;
+    }
+
+    /**
+     * SQL WHERE expects exactly: ALL, DRAFT, FINAL, CANCELLED.
+     * This normalizes enum names across environments (e.g. STORNO, CANCELED, POSTED).
+     */
+    private static String toSqlStatus(DispatchBookingStatus status) {
+        if (status == null) return "ALL";
+
+        String s = status.name();
+        if (s == null) return "ALL";
+
+        s = s.trim().toUpperCase();
+
+        if ("STORNO".equals(s) || "CANCELED".equals(s)) return "CANCELLED";
+        if ("POSTED".equals(s) || "BOOKED".equals(s)) return "FINAL";
+
+        if (!"ALL".equals(s) && !"DRAFT".equals(s) && !"FINAL".equals(s) && !"CANCELLED".equals(s)) {
+            return "ALL";
+        }
+
+        return s;
     }
 
     private static OffsetDateTime toOffsetDateTime(Timestamp ts) {

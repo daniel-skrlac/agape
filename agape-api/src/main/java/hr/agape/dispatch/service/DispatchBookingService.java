@@ -368,6 +368,7 @@ public class DispatchBookingService {
      */
     public ServiceResponseDTO<DispatchResponseDTO> updateDispatch(Long headerId, DispatchUpdateRequestDTO body) {
         try {
+            Long actorOibNum = authUtil.requireOibAsLong();
             String actorOibDigits = authUtil.requireOibDigits();
 
             var user = userRepo.findByOib();
@@ -389,10 +390,10 @@ public class DispatchBookingService {
 
                 // POSTED -> storno procedure (existing behavior)
                 if (Boolean.TRUE.equals(existing.getPosted())) {
-                    tx.cancelViaProcedure(headerId, body.getCancelReason());
+                    tx.cancelViaProcedure(headerId, actorOibNum, body.getCancelReason());
 
                     DocumentHeaderEntity cancelled = headerRepo.findHeader(headerId);
-                    if (cancelled == null || cancelled.getCancelledBy() == null) {
+                    if (cancelled == null || cancelled.getCancelledAt() == null) {
                         return ServiceResponseDirector.errorBadRequest("Cancel procedure did not mark document as cancelled. Check Oracle logs.");
                     }
 

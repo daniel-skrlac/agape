@@ -3,6 +3,7 @@ package hr.agape.dispatch.dto;
 
 import hr.agape.common.dto.BaseSearchFilter;
 import hr.agape.dispatch.enumeration.DispatchBookingStatus;
+import jakarta.ws.rs.QueryParam;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,29 +19,23 @@ import java.time.LocalDate;
 @AllArgsConstructor
 @SuperBuilder
 public class DispatchBookingsQueryDTO extends BaseSearchFilter {
+
+    @QueryParam("warehouseId")
     private Long warehouseId;
 
-    /**
-     * Free-text search over document name/code.
-     * Matches SD_SIFREZ.NAZIVDOKUMENTA and SD_SIFREZ.DOKUMENTID.
-     */
+    @QueryParam("q")
     private String q;
 
-    /**
-     * Optional exact document code filter (e.g. "OTPREMNICA").
-     * If null -> resolved by warehouse to dispatch documentId (OTPREMNICA in your flow).
-     */
+    @QueryParam("documentCode")
     private String documentCode;
 
-    /**
-     * ALL / DRAFT / FINAL
-     */
+    @QueryParam("status")
     @Builder.Default
     private DispatchBookingStatus status = DispatchBookingStatus.ALL;
 
-    /**
-     * Filter by bookedAt date (bookedAt = COALESCE(DATUM_KNJIZENJA, DATUM_IZRADE))
-     */
+    @QueryParam("dateFrom")
     private LocalDate dateFrom;
+
+    @QueryParam("dateTo")
     private LocalDate dateTo;
 }

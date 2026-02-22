@@ -32,7 +32,7 @@ public class DispatchBookingHistoryService {
             var res = repo.pageBookings(q);
             return ServiceResponseDirector.successOk(res, "OK");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Page failed: " + safeMsg(e));
+            return ServiceResponseDirector.errorInternal("Page failed.");
         }
     }
 
@@ -43,13 +43,8 @@ public class DispatchBookingHistoryService {
             if (d == null) return ServiceResponseDirector.errorNotFound("Not found");
             return ServiceResponseDirector.successOk(d, "OK");
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Detail failed: " + safeMsg(e));
+            return ServiceResponseDirector.errorInternal("Detail failed.");
         }
-    }
-
-    private static String safeMsg(Throwable t) {
-        if (t == null) return "";
-        return (t.getMessage() != null) ? t.getMessage() : t.toString();
     }
 }
 

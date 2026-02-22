@@ -141,7 +141,7 @@ public class DispatchBookingTransactionService {
     }
 
     @Transactional(NOT_SUPPORTED)
-    public void cancelViaProcedure(Long headerId, String cancelReason) throws SQLException {
+    public void cancelViaProcedure(Long headerId, Long actorOib,String cancelReason) throws SQLException {
         documentRepository.cancelDocument(
                 headerId,
                 dispatchStornoDocumentConfig.naSkladiste(),
@@ -149,6 +149,8 @@ public class DispatchBookingTransactionService {
                 dispatchStornoDocumentConfig.veznid(),
                 dispatchStornoDocumentConfig.postaviOznaku()
         );
+
+        headerRepo.setCancelledBy(headerId, actorOib);
 
         if (cancelReason != null && !cancelReason.isBlank()) {
             headerRepo.setCancelNote(headerId, cancelReason);

@@ -174,6 +174,21 @@ public class DocumentHeaderRepository {
         });
     }
 
+    public void setCancelledBy(Long headerId, Long actorOib) throws SQLException {
+        final String sql = """
+                UPDATE SD_GLAVA
+                   SET STORNIRAO    = ?,
+                       DATUM_STORNO = SYSDATE
+                 WHERE ID = ?
+                   AND STORNIRAO IS NULL
+                """;
+
+        jdbc.update(sql, ps -> {
+            Jdbc.setLong(ps, 1, actorOib);
+            Jdbc.setLong(ps, 2, headerId);
+        });
+    }
+
     public DocumentHeaderEntity findHeader(Long id) throws SQLException {
         final String sql = """
                 SELECT
