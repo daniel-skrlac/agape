@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
@@ -6,14 +6,21 @@ import { router, useLocalSearchParams } from "expo-router";
 import Screen from "@/components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
 import { Banner } from "@/components/Banner";
+import { ErrorCard } from "@/components/ErrorCard";
 import ValidateImpactModal from "@/components/ValidateImpactModal";
+import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
+import InfoResultPopup from "@/components/InfoResultPopup";
 
 import Colors from "@/constants/Colors";
 import Strings from "@/constants/Strings";
 
 import { styles as s } from "./styles/DispatchBookingsDetails.styles";
 
-import type { DispatchBookingDetailDTO, DispatchBookingItemDTO, DispatchRequestValidationDTO } from "@/app/models/generated";
+import type {
+  DispatchBookingDetailDTO,
+  DispatchBookingItemDTO,
+  DispatchRequestValidationDTO,
+} from "@/app/models/generated";
 
 import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
 import { toUserMessage } from "@/app/api/apiClient";
@@ -25,7 +32,7 @@ import {
   usePostDispatchBooking,
 } from "@/app/api/hooks/dispatch-bookings/dispatchBookingHooks";
 
-import { formatQtyHR, formatTimeHR } from "@/app/utils/format";
+import { formatQtyHR } from "@/app/utils/format";
 import { fmtHrDateTime } from "@/app/utils/dateIso";
 
 function statusOf(dto: DispatchBookingDetailDTO): "DRAFT" | "FINAL" | "CANCELLED" {
@@ -35,18 +42,20 @@ function statusOf(dto: DispatchBookingDetailDTO): "DRAFT" | "FINAL" | "CANCELLED
 }
 
 function statusTone(st: "DRAFT" | "FINAL" | "CANCELLED") {
-  if (st === "CANCELLED")
+  if (st === "CANCELLED") {
     return {
       bg: "rgba(239,68,68,0.12)",
       bd: "rgba(239,68,68,0.28)",
       tx: Colors.dangerText ?? "#ef4444",
     };
-  if (st === "FINAL")
+  }
+  if (st === "FINAL") {
     return {
       bg: "rgba(34,197,94,0.14)",
       bd: "rgba(34,197,94,0.30)",
       tx: Colors.text,
     };
+  }
   return {
     bg: "rgba(59,130,246,0.10)",
     bd: "rgba(59,130,246,0.22)",
@@ -88,9 +97,26 @@ function buildValidatePayloadFromBooking(dto: DispatchBookingDetailDTO): Dispatc
   } as any;
 }
 
+type ResultPopupState = {
+  visible: boolean;
+  kind: "success" | "error" | "info";
+  title: string;
+  message: string;
+};
+
+function tryExtractDetailDto(res: any): DispatchBookingDetailDTO | null {
+  if (res && typeof res === "object" && "headerId" in res) return res as DispatchBookingDetailDTO;
+  if (res?.data && typeof res.data === "object" && "headerId" in res.data) return res.data as DispatchBookingDetailDTO;
+  if (res?.payload && typeof res.payload === "object" && "headerId" in res.payload) return res.payload as DispatchBookingDetailDTO;
+  if (res?.result && typeof res.result === "object" && "headerId" in res.result) return res.result as DispatchBookingDetailDTO;
+  return null;
+}
+
 export default function DispatchBookingDetails() {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; _rf?: string | string[] }>();
   const idRaw = Array.isArray(params.id) ? params.id[0] : params.id;
+  const openRefreshToken = Array.isArray(params._rf) ? params._rf[0] : params._rf;
+
   const numericId = Number(idRaw);
   const headerId = Number.isFinite(numericId) ? numericId : null;
 
@@ -101,18 +127,31 @@ export default function DispatchBookingDetails() {
 
   const dto = detailsQ.booking as DispatchBookingDetailDTO | null;
 
-  // NOTE: reason is ONLY for storno (FINAL docs)
   const [cancelReason, setCancelReason] = useState("");
   const [validateOpen, setValidateOpen] = useState(false);
+  const [stornoConfirmOpen, setStornoConfirmOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  const [resultPopup, setResultPopup] = useState<ResultPopupState>({
+    visible: false,
+    kind: "error",
+    title: "",
+    message: "",
+  });
+
+  const [retryingDetail, setRetryingDetail] = useState(false);
+  const [hideTopError, setHideTopError] = useState(false);
+
+  const stornoSubmittingRef = useRef(false);
+  const [stornoSubmitting, setStornoSubmitting] = useState(false);
 
   const st = useMemo(() => (dto ? statusOf(dto) : "DRAFT"), [dto]);
   const tone = useMemo(() => statusTone(st), [st]);
 
   const partnerLabel = useMemo(() => {
     if (!dto) return "—";
-    const name = (dto as any)?.partnerName ? String((dto as any).partnerName) : "";
-    const pid = (dto as any)?.partnerId != null ? String((dto as any).partnerId) : "";
+    const name = (dto as any)?.partnerName ? String((dto as any)?.partnerName) : "";
+    const pid = (dto as any)?.partnerId != null ? String((dto as any)?.partnerId) : "";
     if (!name && !pid) return "—";
     return `${name || "Partner"}${pid ? ` (#${pid})` : ""}`;
   }, [dto]);
@@ -124,23 +163,21 @@ export default function DispatchBookingDetails() {
     return true;
   }, [dto]);
 
-  // ✅ delete draft allowed only when draft (not posted, not cancelled)
   const canDeleteDraft = useMemo(() => {
     if (!dto) return false;
-    if (cancelM.loading) return false;
+    if (cancelM.loading || stornoSubmitting) return false;
     if ((dto as any)?.cancelled) return false;
-    if ((dto as any)?.posted) return false; // must be draft
+    if ((dto as any)?.posted) return false;
     return true;
-  }, [dto, cancelM.loading]);
+  }, [dto, cancelM.loading, stornoSubmitting]);
 
-  // ✅ storno allowed only when booked/final (posted, not cancelled)
   const canStorno = useMemo(() => {
     if (!dto) return false;
-    if (cancelM.loading) return false;
+    if (cancelM.loading || stornoSubmitting) return false;
     if ((dto as any)?.cancelled) return false;
-    if (!(dto as any)?.posted) return false; // must be final
+    if (!(dto as any)?.posted) return false;
     return true;
-  }, [dto, cancelM.loading]);
+  }, [dto, cancelM.loading, stornoSubmitting]);
 
   const items: DispatchBookingItemDTO[] = useMemo(() => {
     const a = (dto as any)?.items ?? [];
@@ -148,18 +185,109 @@ export default function DispatchBookingDetails() {
   }, [dto]);
 
   const topError = useMemo(() => detailsQ.errorMessage || null, [detailsQ.errorMessage]);
+  const visibleTopError = useMemo(() => (hideTopError ? null : topError), [hideTopError, topError]);
 
   const modalError = useMemo(() => {
-    return validateM.errorMessage || postM.errorMessage || cancelM.errorMessage || localError || null;
-  }, [validateM.errorMessage, postM.errorMessage, cancelM.errorMessage, localError]);
+    return validateM.errorMessage || postM.errorMessage || localError || null;
+  }, [validateM.errorMessage, postM.errorMessage, localError]);
+
+  const stornoConfirmDesc = useMemo(() => {
+    const docCode = String((dto as any)?.documentCode ?? "").trim();
+    const base = docCode ? `Dokument: ${docCode}` : "Potvrdi storno dokumenta.";
+    const reason = cancelReason.trim();
+    return reason ? `${base}\nRazlog: ${reason}` : base;
+  }, [dto, cancelReason]);
+
+  const showResultError = useCallback((title: string, message: string) => {
+    setResultPopup({
+      visible: true,
+      kind: "error",
+      title,
+      message,
+    });
+  }, []);
+
+  const closeResultPopup = useCallback(() => {
+    setResultPopup((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  const goToCancelledIndex = useCallback(() => {
+    const token = `${Date.now()}_${headerId ?? "x"}`;
+    const href = {
+      pathname: "/dispatch-bookings" as const,
+      params: {
+        status: "CANCELLED",
+        _r: token,
+        result: "STORNO_OK",
+        resultHeaderId: headerId != null ? String(headerId) : undefined,
+      },
+    };
+
+    requestAnimationFrame(() => {
+      try {
+        router.replace(href as any);
+      } catch {
+        try {
+          const q = [
+            `status=CANCELLED`,
+            `_r=${encodeURIComponent(token)}`,
+            `result=STORNO_OK`,
+            headerId != null ? `resultHeaderId=${encodeURIComponent(String(headerId))}` : null,
+          ]
+            .filter(Boolean)
+            .join("&");
+
+          (router as any).replace?.(`/dispatch-bookings?${q}`);
+        } catch { }
+      }
+    });
+  }, [headerId]);
+
+  const retryDetail = useCallback(async () => {
+    setHideTopError(true);
+    setRetryingDetail(true);
+
+    setLocalError(null);
+    setValidateOpen(false);
+    setStornoConfirmOpen(false);
+    setResultPopup((prev) => ({ ...prev, visible: false }));
+
+    validateM.reset();
+    postM.reset();
+    cancelM.reset();
+
+    stornoSubmittingRef.current = false;
+    setStornoSubmitting(false);
+
+    try {
+      if ((detailsQ as any)?.refetchFresh) {
+        await Promise.resolve((detailsQ as any).refetchFresh());
+      } else {
+        await Promise.resolve(detailsQ.refetch());
+      }
+    } catch {
+    } finally {
+      setRetryingDetail(false);
+      setHideTopError(false);
+    }
+  }, [detailsQ, validateM, postM, cancelM]);
+
+  const handledOpenRefreshRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openRefreshToken || !headerId) return;
+    if (handledOpenRefreshRef.current === openRefreshToken) return;
+
+    handledOpenRefreshRef.current = openRefreshToken;
+    void retryDetail();
+  }, [openRefreshToken, headerId, retryDetail]);
+
+  const onTopErrorAction = useCallback(() => {
+    void retryDetail();
+  }, [retryDetail]);
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
-      setLocalError(null);
-      validateM.reset();
-      postM.reset();
-      cancelM.reset();
-      await Promise.resolve(detailsQ.refetch());
+      await retryDetail();
     },
   ]);
 
@@ -186,7 +314,6 @@ export default function DispatchBookingDetails() {
     try {
       await validateM.validate(payload);
     } catch {
-      // error exposed via validateM.errorMessage
     }
   }, [dto, headerId, canPost, validateM, postM]);
 
@@ -201,9 +328,12 @@ export default function DispatchBookingDetails() {
     }
 
     try {
-      const res: any = await postM.post(headerId);
-      if (res && typeof res === "object" && "headerId" in res) detailsQ.setBooking(res as any);
+      const res: any = await postM.post(headerId, { invalidateDetail: false });
+      const nextDto = tryExtractDetailDto(res);
+
+      if (nextDto) detailsQ.setBooking(nextDto as any);
       else await Promise.resolve(detailsQ.refetch());
+
       setValidateOpen(false);
     } catch (e) {
       setLocalError(toUserMessage(e, Strings.settings.errors.generic));
@@ -216,41 +346,72 @@ export default function DispatchBookingDetails() {
 
     if (!headerId || !dto) return;
 
-    // hard-guard: draft only
     if ((dto as any)?.posted || (dto as any)?.cancelled) {
       setLocalError("Brisanje je moguće samo za draft dokumente.");
       return;
     }
 
     try {
-      const res: any = await cancelM.cancel(headerId, "");
-      if (res && typeof res === "object" && "headerId" in res) detailsQ.setBooking(res as any);
+      const res: any = await cancelM.cancel(headerId, "", { invalidateDetail: false });
+      const nextDto = tryExtractDetailDto(res);
+
+      if (nextDto) detailsQ.setBooking(nextDto as any);
       else await Promise.resolve(detailsQ.refetch());
+
+      setValidateOpen(false);
+      setStornoConfirmOpen(false);
     } catch (e) {
       setLocalError(toUserMessage(e, Strings.settings.errors.generic));
     }
   }, [headerId, dto, cancelM, detailsQ]);
 
-  const onStorno = useCallback(async () => {
-    setLocalError(null);
-    cancelM.reset();
+  const openStornoConfirm = useCallback(() => {
+    if (stornoSubmittingRef.current || cancelM.loading) return;
 
+    setLocalError(null);
+    setResultPopup((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+    setStornoConfirmOpen(true);
+  }, [cancelM.loading]);
+
+  const onStorno = useCallback(async () => {
+    if (stornoSubmittingRef.current || cancelM.loading) return;
     if (!headerId || !dto) return;
 
-    // hard-guard: FINAL only
     if (!(dto as any)?.posted || (dto as any)?.cancelled) {
-      setLocalError("Storno je moguće samo za knjižene dokumente.");
+      setStornoConfirmOpen(false);
+      showResultError("Greška", "Storno je moguće samo za knjižene dokumente.");
       return;
     }
 
+    cancelM.reset();
+    stornoSubmittingRef.current = true;
+    setStornoSubmitting(true);
+    setLocalError(null);
+
+    let navigated = false;
+
     try {
-      const res: any = await cancelM.cancel(headerId, cancelReason);
-      if (res && typeof res === "object" && "headerId" in res) detailsQ.setBooking(res as any);
-      else await Promise.resolve(detailsQ.refetch());
+      await cancelM.cancel(headerId, cancelReason, { invalidateDetail: false });
+
+      setStornoConfirmOpen(false);
+      navigated = true;
+      goToCancelledIndex();
+      return;
     } catch (e) {
-      setLocalError(toUserMessage(e, Strings.settings.errors.generic));
+      setStornoConfirmOpen(false);
+      showResultError("Storno nije uspio", toUserMessage(e, Strings.settings.errors.generic));
+    } finally {
+      if (!navigated) {
+        stornoSubmittingRef.current = false;
+        setStornoSubmitting(false);
+      }
     }
-  }, [headerId, dto, cancelReason, cancelM, detailsQ]);
+  }, [headerId, dto, cancelReason, cancelM, goToCancelledIndex, showResultError]);
+
+  const closeStornoConfirm = useCallback(() => {
+    if (cancelM.loading || stornoSubmittingRef.current || stornoSubmitting) return;
+    setStornoConfirmOpen(false);
+  }, [cancelM.loading, stornoSubmitting]);
 
   const TopBar = ({ subtitle }: { subtitle: string }) => (
     <View style={s.topBar}>
@@ -283,7 +444,7 @@ export default function DispatchBookingDetails() {
     );
   }
 
-  if (detailsQ.loading) {
+  if ((detailsQ.loading || retryingDetail) && !dto) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
         <TopBar subtitle="Učitavam…" />
@@ -300,9 +461,22 @@ export default function DispatchBookingDetails() {
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
         <TopBar subtitle={detailsQ.errorMessage ? "Greška" : "Nema podataka"} />
         <View style={s.padPlain}>
-          {detailsQ.errorMessage ? <Banner type="error" text={detailsQ.errorMessage} /> : <Banner type="info" text="Nema podataka." />}
-          <Pressable style={s.secondary} onPress={() => detailsQ.refetch()}>
-            <Text style={s.secondaryText}>Pokušaj ponovno</Text>
+          {!!visibleTopError ? (
+            <ErrorCard
+              title="Greška"
+              message={visibleTopError}
+              actionText="Pokušaj ponovno"
+              onAction={onTopErrorAction}
+              disabled={retryingDetail || refreshing}
+              titleLines={1}
+              messageLines={2}
+            />
+          ) : (
+            <Banner type="info" text="Nema podataka." />
+          )}
+
+          <Pressable style={s.secondary} onPress={onTopErrorAction} disabled={retryingDetail || refreshing}>
+            <Text style={s.secondaryText}>{retryingDetail || refreshing ? "Učitavam…" : "Pokušaj ponovno"}</Text>
           </Pressable>
         </View>
       </Screen>
@@ -313,7 +487,7 @@ export default function DispatchBookingDetails() {
 
   const headerSubtitle = [
     stHuman,
-    (dto as any)?.documentCode ? String((dto as any).documentCode) : null,
+    (dto as any)?.documentCode ? String((dto as any)?.documentCode) : null,
     partnerLabel !== "—" ? partnerLabel : null,
   ]
     .filter(Boolean)
@@ -330,7 +504,7 @@ export default function DispatchBookingDetails() {
   ];
 
   const timeRows = [
-    kv("Datum dokumenta", formatTimeHR((dto as any)?.documentDate)),
+    kv("Datum dokumenta", fmtHrDateTime((dto as any)?.documentDate)),
     kv("Knjiženo/izrađeno", fmtHrDateTime((dto as any)?.bookedAt)),
     kv("Kreirano", fmtHrDateTime((dto as any)?.createdAt)),
     kv("Kreirao", (dto as any)?.createdBy),
@@ -345,7 +519,19 @@ export default function DispatchBookingDetails() {
       <TopBar subtitle={headerSubtitle} />
 
       <TabScroll withScreen={false} refreshing={refreshing} onRefresh={onRefresh} contentContainerStyle={s.pad}>
-        {!!topError && <Banner type="error" text={topError} />}
+        {!!visibleTopError ? (
+          <View style={{ marginBottom: 10 }}>
+            <ErrorCard
+              title="Greška"
+              message={visibleTopError}
+              actionText="Pokušaj ponovno"
+              onAction={onTopErrorAction}
+              disabled={retryingDetail || refreshing}
+              titleLines={1}
+              messageLines={2}
+            />
+          </View>
+        ) : null}
 
         <View style={s.statusRow}>
           <View style={[s.statusPill, { backgroundColor: tone.bg, borderColor: tone.bd }]}>
@@ -355,17 +541,32 @@ export default function DispatchBookingDetails() {
           <View style={{ flex: 1 }} />
 
           {!!(dto as any)?.cancelled && (
-            <View style={[s.miniPill, { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.25)" }]}>
+            <View
+              style={[
+                s.miniPill,
+                { backgroundColor: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.25)" },
+              ]}
+            >
               <Text style={s.miniText}>STORNO</Text>
             </View>
           )}
           {!!(dto as any)?.posted && !(dto as any)?.cancelled && (
-            <View style={[s.miniPill, { backgroundColor: "rgba(34,197,94,0.12)", borderColor: "rgba(34,197,94,0.25)" }]}>
+            <View
+              style={[
+                s.miniPill,
+                { backgroundColor: "rgba(34,197,94,0.12)", borderColor: "rgba(34,197,94,0.25)" },
+              ]}
+            >
               <Text style={s.miniText}>KNJIŽENO</Text>
             </View>
           )}
           {!(dto as any)?.posted && !(dto as any)?.cancelled && (
-            <View style={[s.miniPill, { backgroundColor: "rgba(59,130,246,0.10)", borderColor: "rgba(59,130,246,0.22)" }]}>
+            <View
+              style={[
+                s.miniPill,
+                { backgroundColor: "rgba(59,130,246,0.10)", borderColor: "rgba(59,130,246,0.22)" },
+              ]}
+            >
               <Text style={s.miniText}>DRAFT</Text>
             </View>
           )}
@@ -430,13 +631,13 @@ export default function DispatchBookingDetails() {
                       <Text style={s.lineTitle} numberOfLines={2}>
                         {name || "Stavka"}
                       </Text>
-                      {(code || unit) && (
+                      {code || unit ? (
                         <Text style={s.lineSub} numberOfLines={2}>
                           {code ? `Šifra: ${code}` : ""}
                           {code && unit ? " • " : ""}
                           {unit ? `JMJ: ${unit}` : ""}
                         </Text>
-                      )}
+                      ) : null}
                     </View>
 
                     <View style={s.qtyBox}>
@@ -449,18 +650,20 @@ export default function DispatchBookingDetails() {
           )}
         </View>
 
-        {/* ✅ Draft: allow delete, NO reason input */}
         {canDeleteDraft ? (
           <View style={s.card}>
             <Text style={s.cardTitle}>Draft</Text>
 
-            <Pressable style={[s.danger, cancelM.loading && { opacity: 0.5 }]} disabled={cancelM.loading} onPress={onDeleteDraft}>
-              {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Obriši draft</Text>}
+            <Pressable
+              style={[s.danger, (cancelM.loading || stornoSubmitting) && { opacity: 0.5 }]}
+              disabled={cancelM.loading || stornoSubmitting}
+              onPress={onDeleteDraft}
+            >
+              {cancelM.loading || stornoSubmitting ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Obriši draft</Text>}
             </Pressable>
           </View>
         ) : null}
 
-        {/* ✅ Final: allow storno, reason input shown ONLY here */}
         {canStorno ? (
           <View style={s.card}>
             <Text style={s.cardTitle}>Storno</Text>
@@ -475,10 +678,15 @@ export default function DispatchBookingDetails() {
               multiline
               textAlignVertical="top"
               autoCorrect={false}
+              blurOnSubmit={false}
             />
 
-            <Pressable style={[s.danger, cancelM.loading && { opacity: 0.5 }]} disabled={cancelM.loading} onPress={onStorno}>
-              {cancelM.loading ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Storniraj dokument</Text>}
+            <Pressable
+              style={[s.danger, (cancelM.loading || stornoSubmitting) && { opacity: 0.5 }]}
+              disabled={cancelM.loading || stornoSubmitting}
+              onPress={openStornoConfirm}
+            >
+              {cancelM.loading || stornoSubmitting ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Storniraj dokument</Text>}
             </Pressable>
           </View>
         ) : null}
@@ -496,6 +704,29 @@ export default function DispatchBookingDetails() {
         data={validateM.data}
         onConfirm={confirmValidateAndPost}
         confirmText={postM.loading ? "Knjižim…" : "Knjiži"}
+      />
+
+      <CenterConfirmSheet
+        visible={stornoConfirmOpen}
+        title="Stornirati dokument?"
+        description={stornoConfirmDesc}
+        confirmText="Storniraj"
+        danger
+        loading={cancelM.loading || stornoSubmitting}
+        onClose={closeStornoConfirm}
+        onConfirm={onStorno}
+        closeOnBackdrop={false}
+      />
+
+      <InfoResultPopup
+        visible={resultPopup.visible}
+        variant={resultPopup.kind}
+        title={resultPopup.title}
+        message={resultPopup.message}
+        buttonText="U redu"
+        subtitle={resultPopup.kind === "error" ? "Provjeri poruku i pokušaj ponovno." : undefined}
+        onClose={closeResultPopup}
+        closeOnBackdrop={false}
       />
     </Screen>
   );

@@ -10,11 +10,7 @@ export function usePullToRefresh(refetchers: Refetcher[]) {
 
         setRefreshing(true);
         try {
-            await Promise.allSettled(
-                refetchers
-                    .filter(Boolean)
-                    .map((fn) => Promise.resolve(fn()))
-            );
+            await Promise.allSettled(refetchers.filter(Boolean).map((fn) => Promise.resolve(fn())));
         } finally {
             setRefreshing(false);
         }

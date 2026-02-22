@@ -37,6 +37,9 @@ export default function SettingsScreen() {
 
   const [open, setOpen] = useState(false);
 
+  const [retryingWarehouses, setRetryingWarehouses] = useState(false);
+  const [hideTopError, setHideTopError] = useState(false);
+
   const savedDefaultRef = useRef<number | null>(savedDefault);
   useEffect(() => {
     savedDefaultRef.current = savedDefault;
@@ -47,29 +50,70 @@ export default function SettingsScreen() {
     resetToSavedRef.current = form.resetToSaved;
   }, [form.resetToSaved]);
 
+  const refetchWarehousesRef = useRef(refetchWarehouses);
+  useEffect(() => {
+    refetchWarehousesRef.current = refetchWarehouses;
+  }, [refetchWarehouses]);
+
+  const whLoadingRef = useRef(whLoading);
+  useEffect(() => {
+    whLoadingRef.current = whLoading;
+  }, [whLoading]);
+
+  const whErrorRef = useRef<any>(whError);
+  useEffect(() => {
+    whErrorRef.current = whError;
+  }, [whError]);
+
+  const warehousesCountRef = useRef<number>(warehouses.length);
+  useEffect(() => {
+    warehousesCountRef.current = warehouses.length;
+  }, [warehouses.length]);
+
   const toggleOpen = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setOpen((prev) => !prev);
   }, []);
 
+  const retryWarehouses = useCallback(async () => {
+    setHideTopError(true);
+    setRetryingWarehouses(true);
+
+    setOpen(false);
+    form.clearStatus();
+
+    try {
+      await Promise.resolve(refetchWarehousesRef.current?.());
+    } catch {
+    } finally {
+      setRetryingWarehouses(false);
+      setHideTopError(false);
+    }
+  }, [form]);
+
   useFocusEffect(
     useCallback(() => {
-      if (ready && !whLoading && warehouses.length === 0) {
-        void Promise.resolve(refetchWarehouses?.());
+      if (
+        ready &&
+        !whLoadingRef.current &&
+        !whErrorRef.current &&
+        warehousesCountRef.current === 0
+      ) {
+        void Promise.resolve(refetchWarehousesRef.current?.()).catch(() => { });
       }
 
       return () => {
         setOpen(false);
+        setHideTopError(false);
+        setRetryingWarehouses(false);
         resetToSavedRef.current(savedDefaultRef.current);
       };
-    }, [ready, whLoading, warehouses.length, refetchWarehouses])
+    }, [ready])
   );
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
-      setOpen(false);
-      form.clearStatus();
-      await Promise.resolve(refetchWarehouses?.());
+      await retryWarehouses();
       resetToSavedRef.current(savedDefaultRef.current);
     },
   ]);
@@ -78,16 +122,21 @@ export default function SettingsScreen() {
     () => !whLoading && !whError && warehouses.length === 0,
     [whLoading, whError, warehouses.length]
   );
+
   const whErrorMessage = useMemo(() => (whError ? toUserMessage(whError) : null), [whError]);
 
   const topError = useMemo(() => form.errors.formError || whErrorMessage, [form.errors.formError, whErrorMessage]);
+  const visibleTopError = useMemo(() => (hideTopError ? null : topError), [hideTopError, topError]);
 
   const topErrorActionText = useMemo(() => (whErrorMessage ? "Pokušaj ponovno" : "Zatvori"), [whErrorMessage]);
 
   const onTopErrorAction = useCallback(() => {
-    if (whErrorMessage) return refetchWarehouses?.();
+    if (whErrorMessage) {
+      void retryWarehouses();
+      return;
+    }
     form.clearStatus();
-  }, [whErrorMessage, refetchWarehouses, form]);
+  }, [whErrorMessage, retryWarehouses, form]);
 
   const selectedLabel = useMemo(() => {
     if (warehousesEmpty) return Strings.settings.mainWarehouse.empty;
@@ -118,13 +167,14 @@ export default function SettingsScreen() {
             </View>
           ) : null}
 
-          {!!topError ? (
+          {!!visibleTopError ? (
             <View style={S.errorCardWrap}>
               <ErrorCard
                 title="Greška"
-                message={topError}
+                message={visibleTopError}
                 actionText={topErrorActionText}
                 onAction={onTopErrorAction}
+                disabled={retryingWarehouses || refreshing}
                 titleLines={1}
                 messageLines={2}
               />
@@ -140,9 +190,11 @@ export default function SettingsScreen() {
             open={open}
             onToggle={toggleOpen}
             warehouses={warehouses}
-            loading={whLoading}
+            loading={whLoading || retryingWarehouses}
             error={null}
-            onRetry={() => refetchWarehouses?.()}
+            onRetry={() => {
+              void retryWarehouses();
+            }}
             selectedId={form.values.warehouseId}
             selectedLabel={whLoading ? Strings.settings.mainWarehouse.loading : selectedLabel}
             onSelect={(id) => {
@@ -164,7 +216,11 @@ export default function SettingsScreen() {
               (!form.canSubmit || form.submitting) && S.disabled,
             ]}
           >
-            {form.submitting ? <ActivityIndicator color="#fff" /> : <Text style={S.saveText}>{Strings.settings.mainWarehouse.save}</Text>}
+            {form.submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={S.saveText}>{Strings.settings.mainWarehouse.save}</Text>
+            )}
           </Pressable>
         </View>
       </TabScroll>

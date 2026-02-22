@@ -9,7 +9,7 @@ import Strings from "../../constants/Strings";
 
 import { useCurrentUser } from "../api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "../api/hooks/common/usePullToRefresh";
-import { formatIntHR, formatQtyHR, formatTimeHR } from "../utils/format";
+import { formatQtyHR, formatTimeHR } from "../utils/format";
 
 import { styles, RIPPLE, T } from "./styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
@@ -224,25 +224,25 @@ export default function HomeScreen() {
                 <MetricTile
                   icon="cubes"
                   title={Strings.home.metrics.totalItems}
-                  value={formatIntHR(totals?.totalItems)}
+                  value={formatQtyHR(totals?.totalItems)}
                   tone="neutral"
                 />
                 <MetricTile
                   icon="exclamation-circle"
                   title={Strings.home.metrics.missing}
-                  value={formatIntHR(totals?.missingCount)}
+                  value={formatQtyHR(totals?.missingCount)}
                   tone="warm"
                 />
                 <MetricTile
                   icon="arrow-up"
                   title={Strings.home.metrics.needsFill}
-                  value={formatIntHR(totals?.needsFillCount)}
+                  value={formatQtyHR(totals?.needsFillCount)}
                   tone="warm"
                 />
                 <MetricTile
                   icon="bookmark"
                   title={Strings.home.metrics.reserved}
-                  value={formatIntHR(totals?.reservedCount)}
+                  value={formatQtyHR(totals?.reservedCount)}
                   tone="cool"
                 />
               </View>
@@ -483,7 +483,7 @@ function Accordion(props: {
 
         <View style={styles.accRight}>
           <View style={styles.countPill}>
-            <Text style={styles.countPillText}>{formatIntHR(props.count)}</Text>
+            <Text style={styles.countPillText}>{formatQtyHR(props.count)}</Text>
           </View>
           <FontAwesome name={props.open ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
         </View>

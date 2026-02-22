@@ -16,7 +16,8 @@ type Args = {
 };
 
 export function useDispatchBookings(args: Args) {
-  const { warehouseId, documentCode = "OTPREMNICA", status = "ALL", q, dateFrom, dateTo, size = 20 } = args;
+
+  const { warehouseId, documentCode = "OTPREMNICA", status, q, dateFrom, dateTo, size = 20 } = args;
 
   const [items, setItems] = useState<DispatchBookingListItemDTO[]>([]);
   const [page, setPage] = useState(0);

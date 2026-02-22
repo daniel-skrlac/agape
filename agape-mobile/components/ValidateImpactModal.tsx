@@ -6,6 +6,7 @@ import Colors from "@/constants/Colors";
 import type { BookingImpactItemDTO, WarehouseBookingImpactDTO } from "@/app/models/generated";
 import { styles as s } from "./styles/ValidateImpactModal.styles";
 import { ErrorCard } from "./ErrorCard";
+import { toFiniteNumber, formatQtyHRNullable } from "@/app/utils/format";
 
 type Props = {
   visible: boolean;
@@ -24,21 +25,6 @@ type Props = {
   bulkHint?: string | null;
 };
 
-function toNum(v: any): number | null {
-  if (v == null) return null;
-  if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  const s = String(v).trim();
-  if (!s) return null;
-  const n = Number(s.replace(",", "."));
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmt(v: any): string {
-  const n = toNum(v);
-  if (n == null) return "";
-  return String(n);
-}
-
 type Status = "ok" | "warn" | "bad";
 
 function badgeTone(kind: Status) {
@@ -49,14 +35,14 @@ function badgeTone(kind: Status) {
 
 function statusOfItem(it: any): Status {
   if (!!it?.missingInWarehouse) return "bad";
-  const after = toNum(it?.afterEffectiveQty);
+  const after = toFiniteNumber(it?.afterEffectiveQty);
   if (after != null && after < 0) return "warn";
   return "ok";
 }
 
-function statusLabel(s: Status) {
-  if (s === "bad") return "NEMA U SKLADIŠTU";
-  if (s === "warn") return "IDE U MINUS";
+function statusLabel(st: Status) {
+  if (st === "bad") return "NEMA U SKLADIŠTU";
+  if (st === "warn") return "IDE U MINUS";
   return "OK";
 }
 
@@ -82,7 +68,7 @@ function renderBeforeAfterRow(key: string, label: string, beforeVal: any, afterV
       <View style={s.rowGrid}>
         <View style={s.rowCell}>
           <Text style={s.rowLabel}>Prije</Text>
-          <Text style={s.rowValue}>{fmt(beforeVal)}</Text>
+          <Text style={s.rowValue}>{formatQtyHRNullable(beforeVal)}</Text>
         </View>
 
         <View style={s.rowArrow}>
@@ -90,7 +76,7 @@ function renderBeforeAfterRow(key: string, label: string, beforeVal: any, afterV
         </View>
 
         <View style={s.rowCell}>
-          <Text style={[s.rowValue, emphasize && { color: Colors.text }]}>{fmt(afterVal)}</Text>
+          <Text style={[s.rowValue, emphasize && { color: Colors.text }]}>{formatQtyHRNullable(afterVal)}</Text>
         </View>
       </View>
     </View>
@@ -109,6 +95,7 @@ export default function ValidateImpactModal(props: Props) {
     let ok = 0,
       warn = 0,
       bad = 0;
+
     for (const it of items as any[]) {
       const st = statusOfItem(it);
       if (st === "ok") ok++;
@@ -121,9 +108,14 @@ export default function ValidateImpactModal(props: Props) {
   const canConfirm = showConfirm && !disableClose && !loading && !error && !!data && counts.bad === 0;
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={disableClose ? undefined : onClose}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={disableClose ? undefined : onClose}
+    >
       <View style={s.wrap}>
-        <Pressable style={s.backdrop} onPress={disableClose ? undefined : onClose} />
+        <View style={s.backdrop} />
 
         <View style={s.card}>
           <View style={s.header}>
@@ -141,7 +133,8 @@ export default function ValidateImpactModal(props: Props) {
             <Pressable
               style={[s.iconBtn, disableClose && { opacity: 0.5 }]}
               onPress={disableClose ? undefined : onClose}
-              disabled={disableClose}
+              disabled={!!disableClose}
+              hitSlop={10}
             >
               <FontAwesome name="close" size={18} color={Colors.text} />
             </Pressable>
@@ -158,9 +151,11 @@ export default function ValidateImpactModal(props: Props) {
               <ErrorCard
                 title="Validacija nije uspjela"
                 message={error}
-                primaryText="Zatvori"
-                onPrimary={onClose}
+                actionText="Zatvori"
+                onAction={onClose}
                 disabled={!!disableClose}
+                titleLines={1}
+                messageLines={3}
               />
             ) : !data ? (
               <View style={s.stateBox}>
@@ -239,7 +234,6 @@ export default function ValidateImpactModal(props: Props) {
                     const changedFields: string[] = (it?.changedFields ?? []) as string[];
 
                     const fieldCards: React.ReactNode[] = [];
-
                     fieldCards.push(
                       renderBeforeAfterRow(
                         `${itemKey}-effective`,
@@ -292,16 +286,12 @@ export default function ValidateImpactModal(props: Props) {
                 {/* Actions */}
                 <View style={{ gap: 10, marginTop: 6 }}>
                   {showConfirm ? (
-                    <Pressable
-                      style={[s.primary, !canConfirm && { opacity: 0.5 }]}
-                      onPress={onConfirm}
-                      disabled={!canConfirm}
-                    >
+                    <Pressable style={[s.primary, !canConfirm && { opacity: 0.5 }]} onPress={onConfirm} disabled={!canConfirm}>
                       <Text style={s.primaryText}>{counts.bad > 0 ? "Ne mogu kreirati" : confirmText ?? "Kreiraj"}</Text>
                     </Pressable>
                   ) : null}
 
-                  <Pressable style={s.secondary} onPress={onClose} disabled={disableClose}>
+                  <Pressable style={[s.secondary, disableClose && { opacity: 0.5 }]} onPress={disableClose ? undefined : onClose} disabled={!!disableClose}>
                     <Text style={s.secondaryText}>{showConfirm ? "Zatvori" : "Natrag"}</Text>
                   </Pressable>
                 </View>

@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-19 19:20:04.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-22 10:50:44.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -103,7 +103,6 @@ export interface DispatchLineResponseDTO {
 
 export interface DispatchRequestDTO {
     warehouseId: number;
-    documentDate: Date;
     partnerId: number;
     items: DispatchItemRequest[];
     draft: boolean;
@@ -284,7 +283,6 @@ export interface BookingSessionEntryResponseDTO {
     partnerId: number;
     templateId: number;
     draftMode: DraftMode;
-    documentDate: Date;
     docPatches: any;
     extraItems: any;
     note: string;
@@ -305,7 +303,6 @@ export interface BookingSessionResponseDTO {
     title: string;
     note: string;
     warehouseId: number;
-    documentDate: Date;
     status: BookingSessionStatus;
     createdAt: Date;
     updatedAt: Date;
