@@ -514,7 +514,7 @@ export default function TemplatesFolderScreen() {
                     const id = moreItem.id;
                     setMoreOpen(false);
                     router.push({
-                      pathname: "/(tabs)/templates/folder/premjesti",
+                      pathname: "/(tabs)/templates/folder/move",
                       params: { folderId: String(id) },
                     });
                   }}
@@ -529,7 +529,7 @@ export default function TemplatesFolderScreen() {
                     const id = moreItem.id;
                     setMoreOpen(false);
                     router.push({
-                      pathname: "/(tabs)/templates/folder/kopiraj",
+                      pathname: "/(tabs)/templates/folder/copy",
                       params: { folderId: String(id) },
                     });
                   }}
