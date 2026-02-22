@@ -7,7 +7,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
-import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
+import NavigationHeader from "@/components/NavigationHeader";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import ValidateImpactModal from "@/components/ValidateImpactModal";
 
@@ -585,7 +585,7 @@ export default function SessionDetailIndex() {
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <TemplatesHeader title={headerTitle || "Evidencija"} fallbackHref="/(tabs)/sessions" />
+      <NavigationHeader title={headerTitle || "Evidencija"} fallbackHref="/(tabs)/sessions" />
 
       <View style={st.container}>
         {!!err && <Banner type="error" text={String(err)} />}

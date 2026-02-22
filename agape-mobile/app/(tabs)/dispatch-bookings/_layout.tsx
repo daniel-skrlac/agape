@@ -1,6 +1,6 @@
 import React from "react";
 import { Stack } from "expo-router";
-import RequireMainWarehouse from "../templates/RequireMainWarehouse";
+import RequireMainWarehouse from "../../../components/RequireMainWarehouse";
 import AuthBackground from "@/components/auth/AuthBackground";
 
 export default function DispatchBookingsLayout() {

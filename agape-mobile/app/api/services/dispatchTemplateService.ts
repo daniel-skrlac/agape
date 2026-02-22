@@ -15,20 +15,59 @@ import type {
   TemplateBookManyRequestDTO,
   DispatchBulkResponseDTO,
   FolderCopyRequestDTO,
+  PagedResultDTO,
 } from "@/app/models/generated";
 
 export const dispatchTemplateService = {
-  listFolders(signal?: AbortSignal) {
-    return api.request<FolderResponseDTO[]>("/api/v1/dispatch-template-folders", { method: "GET", signal });
+  listFoldersPage(
+    params?: { parentId?: number | null; page?: number; size?: number },
+    signal?: AbortSignal
+  ) {
+    const q = new URLSearchParams();
+
+    if (params?.parentId !== undefined && params.parentId !== null) {
+      q.set("parentId", String(params.parentId));
+    }
+
+    q.set("page", String(params?.page ?? 0));
+    q.set("size", String(params?.size ?? 20));
+
+    const qs = q.toString();
+
+    return api.request<PagedResultDTO<FolderResponseDTO>>(
+      `/api/v1/dispatch-template-folders${qs ? `?${qs}` : ""}`,
+      { method: "GET", signal }
+    );
   },
+
+  listFolderTree(signal?: AbortSignal) {
+    return api.request<FolderResponseDTO[]>("/api/v1/dispatch-template-folders/tree", {
+      method: "GET",
+      signal,
+    });
+  },
+
   createFolder(payload: FolderCreateRequestDTO, signal?: AbortSignal) {
-    return api.request<FolderResponseDTO>("/api/v1/dispatch-template-folders", { method: "POST", body: payload, signal });
+    return api.request<FolderResponseDTO>("/api/v1/dispatch-template-folders", {
+      method: "POST",
+      body: payload,
+      signal,
+    });
   },
+
   renameFolder(id: number, payload: FolderRenameRequestDTO, signal?: AbortSignal) {
-    return api.request<FolderResponseDTO>(`/api/v1/dispatch-template-folders/${id}`, { method: "PUT", body: payload, signal });
+    return api.request<FolderResponseDTO>(`/api/v1/dispatch-template-folders/${id}`, {
+      method: "PUT",
+      body: payload,
+      signal,
+    });
   },
+
   deleteFolder(id: number, signal?: AbortSignal) {
-    return api.request<void>(`/api/v1/dispatch-template-folders/${id}`, { method: "DELETE", signal });
+    return api.request<void>(`/api/v1/dispatch-template-folders/${id}`, {
+      method: "DELETE",
+      signal,
+    });
   },
 
   listTemplates(
@@ -38,63 +77,121 @@ export const dispatchTemplateService = {
     const q = new URLSearchParams();
 
     if (params.folderId !== undefined && params.folderId !== null) q.set("folderId", String(params.folderId));
-
     if (params.name) q.set("name", params.name);
     if (params.includeShared !== undefined) q.set("includeShared", String(params.includeShared));
-
     if (params.rootOnly === true) q.set("rootOnly", "true");
 
     const qs = q.toString();
+
     return api.request<TemplateResponseDTO[]>(
       `/api/v1/dispatch-templates${qs ? `?${qs}` : ""}`,
       { method: "GET", signal }
     );
   },
+
   getTemplate(id: number, signal?: AbortSignal) {
-    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}`, { method: "GET", signal });
+    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}`, {
+      method: "GET",
+      signal,
+    });
   },
+
   createTemplate(payload: TemplateCreateRequestDTO, signal?: AbortSignal) {
-    return api.request<TemplateResponseDTO>("/api/v1/dispatch-templates", { method: "POST", body: payload, signal });
+    return api.request<TemplateResponseDTO>("/api/v1/dispatch-templates", {
+      method: "POST",
+      body: payload,
+      signal,
+    });
   },
+
   updateTemplate(id: number, payload: TemplateUpdateRequestDTO, signal?: AbortSignal) {
-    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}`, { method: "PUT", body: payload, signal });
+    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}`, {
+      method: "PUT",
+      body: payload,
+      signal,
+    });
   },
+
   deleteTemplate(id: number, signal?: AbortSignal) {
-    return api.request<void>(`/api/v1/dispatch-templates/${id}`, { method: "DELETE", signal });
+    return api.request<void>(`/api/v1/dispatch-templates/${id}`, {
+      method: "DELETE",
+      signal,
+    });
   },
 
   upsertTemplateDoc(templateId: number, payload: TemplateDocUpsertRequestDTO, signal?: AbortSignal) {
-    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${templateId}/documents`, { method: "POST", body: payload, signal });
+    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${templateId}/documents`, {
+      method: "POST",
+      body: payload,
+      signal,
+    });
   },
-  replaceTemplateDocItems(templateId: number, templateDocId: number, items: TemplateItemUpsertRequestDTO[], signal?: AbortSignal) {
-    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${templateId}/documents/${templateDocId}/items`, { method: "PUT", body: items, signal });
+
+  replaceTemplateDocItems(
+    templateId: number,
+    templateDocId: number,
+    items: TemplateItemUpsertRequestDTO[],
+    signal?: AbortSignal
+  ) {
+    return api.request<TemplateResponseDTO>(
+      `/api/v1/dispatch-templates/${templateId}/documents/${templateDocId}/items`,
+      { method: "PUT", body: items, signal }
+    );
   },
 
   listShares(templateId: number, signal?: AbortSignal) {
-    return api.request<TemplateShareResponseDTO[]>(`/api/v1/dispatch-templates/${templateId}/shares`, { method: "GET", signal });
+    return api.request<TemplateShareResponseDTO[]>(`/api/v1/dispatch-templates/${templateId}/shares`, {
+      method: "GET",
+      signal,
+    });
   },
+
   shareTemplate(templateId: number, payload: TemplateShareCreateRequestDTO, signal?: AbortSignal) {
-    return api.request<TemplateShareResponseDTO>(`/api/v1/dispatch-templates/${templateId}/shares`, { method: "POST", body: payload, signal });
+    return api.request<TemplateShareResponseDTO>(`/api/v1/dispatch-templates/${templateId}/shares`, {
+      method: "POST",
+      body: payload,
+      signal,
+    });
   },
+
   revokeShare(templateId: number, shareId: number, signal?: AbortSignal) {
-    return api.request<void>(`/api/v1/dispatch-templates/${templateId}/shares/${shareId}`, { method: "DELETE", signal });
+    return api.request<void>(`/api/v1/dispatch-templates/${templateId}/shares/${shareId}`, {
+      method: "DELETE",
+      signal,
+    });
   },
+
   copyTemplate(templateId: number, payload: TemplateCopyRequestDTO, signal?: AbortSignal) {
-    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${templateId}/copy`, { method: "POST", body: payload, signal });
+    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${templateId}/copy`, {
+      method: "POST",
+      body: payload,
+      signal,
+    });
   },
 
   bookOne(payload: TemplateBookOneRequestDTO, signal?: AbortSignal) {
-    return api.request<DispatchBulkResponseDTO>("/api/v1/dispatch-template-booking/", { method: "POST", body: payload, signal });
+    return api.request<DispatchBulkResponseDTO>("/api/v1/dispatch-template-booking/", {
+      method: "POST",
+      body: payload,
+      signal,
+    });
   },
+
   bookMany(payload: TemplateBookManyRequestDTO, signal?: AbortSignal) {
-    return api.request<DispatchBulkResponseDTO>("/api/v1/dispatch-template-booking/bulk", { method: "POST", body: payload, signal });
+    return api.request<DispatchBulkResponseDTO>("/api/v1/dispatch-template-booking/bulk", {
+      method: "POST",
+      body: payload,
+      signal,
+    });
   },
+
   deleteTemplateDoc(templateId: number, templateDocId: number, signal?: AbortSignal) {
-    return api.request<void>(
-      `/api/v1/dispatch-templates/${templateId}/documents/${templateDocId}`,
-      { method: "DELETE", signal }
-    );
+    return api.request<void>(`/api/v1/dispatch-templates/${templateId}/documents/${templateDocId}`, {
+      method: "DELETE",
+      signal,
+    });
   },
+
   copyFolderTree(folderId: number, payload: FolderCopyRequestDTO, signal?: AbortSignal) {
     return api.request<any>(`/api/v1/dispatch-template-folders/${folderId}/copy`, {
       method: "POST",
@@ -102,6 +199,7 @@ export const dispatchTemplateService = {
       signal,
     });
   },
+
   moveFolder(folderId: number, payload: { targetParentId: number | null }, signal?: AbortSignal) {
     return api.request<any>(`/api/v1/dispatch-template-folders/${folderId}/move`, {
       method: "PUT",
@@ -109,6 +207,7 @@ export const dispatchTemplateService = {
       signal,
     });
   },
+
   moveTemplate(templateId: number, payload: { targetFolderId: number | null }, signal?: AbortSignal) {
     return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${templateId}/move`, {
       method: "PUT",

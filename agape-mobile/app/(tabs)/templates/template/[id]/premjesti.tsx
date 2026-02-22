@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import TemplatesHeader from "../../TemplatesHeader";
+import NavigationHeader from "../../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 
@@ -58,7 +58,7 @@ export default function PremjestiPredlozak() {
 
     return (
         <Screen>
-            <TemplatesHeader
+            <NavigationHeader
                 title="Premjesti predložak"
                 subtitle={hasValidId ? `#${templateId}` : "—"}
                 fallbackHref="/(tabs)/templates"

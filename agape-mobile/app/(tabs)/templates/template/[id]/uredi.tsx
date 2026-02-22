@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import Screen from "@/components/ui/Screen";
 import { Banner } from "@/components/Banner";
 import Colors from "@/constants/Colors";
-import TemplatesHeader from "../../TemplatesHeader";
+import NavigationHeader from "../../../../../components/NavigationHeader";
 
 import { useTemplate, useTemplateFolders, useUpdateTemplate } from "@/app/api/hooks/useDispatchTemplates";
 
@@ -60,7 +60,7 @@ export default function UrediPredlozak() {
 
   return (
     <Screen>
-      <TemplatesHeader title="Uredi predložak" subtitle={`#${templateId}`} fallbackHref="/(tabs)/templates" />
+      <NavigationHeader title="Uredi predložak" subtitle={`#${templateId}`} fallbackHref="/(tabs)/templates" />
 
       <View style={s.container}>
         {!!err && <Banner type="error" text={err} />}

@@ -6,7 +6,7 @@ import { useLocalSearchParams, router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
-import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
+import NavigationHeader from "@/components/NavigationHeader";
 
 import type { FolderResponseDTO, TemplateDocResponseDTO, TemplateResponseDTO } from "@/app/models/generated";
 import { dispatchTemplateService } from "@/app/api/services/dispatchTemplateService";
@@ -199,7 +199,7 @@ export default function SessionTemplatePicker() {
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <TemplatesHeader
+      <NavigationHeader
         title="Odaberi predložak"
         fallbackHref={{ pathname: "/(tabs)/sessions/[id]/entry" as const, params: { id: String(sessionId), partnerId: String(partnerId) } }}
       />

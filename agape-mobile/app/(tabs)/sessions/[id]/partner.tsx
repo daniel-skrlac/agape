@@ -6,7 +6,7 @@ import { useLocalSearchParams, router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
-import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
+import NavigationHeader from "@/components/NavigationHeader";
 import type { PartnerResponseDTO } from "@/app/models/generated";
 import { partnerService } from "@/app/api/services/partnerService";
 
@@ -110,7 +110,7 @@ export default function SessionPartnerPicker() {
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <TemplatesHeader
+      <NavigationHeader
         title="Odaberi partnera"
         fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }}
       />

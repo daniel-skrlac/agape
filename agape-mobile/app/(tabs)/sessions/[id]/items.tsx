@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
-import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
+import NavigationHeader from "@/components/NavigationHeader";
 
 import type {
   BookingSessionResponseDTO,
@@ -221,7 +221,7 @@ export default function SessionEntryStandaloneItems() {
   if (!draft) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-        <TemplatesHeader
+        <NavigationHeader
           title="Stavke"
           fallbackHref={{
             pathname: "/(tabs)/sessions/[id]/entry" as const,
@@ -238,7 +238,7 @@ export default function SessionEntryStandaloneItems() {
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <TemplatesHeader
+      <NavigationHeader
         title="Dodatne stavke"
         subtitle={`Partner #${partnerId}`}
         fallbackHref={{

@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Screen from "@/components/ui/Screen";
-import TemplatesHeader from "../TemplatesHeader";
+import NavigationHeader from "../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 
@@ -77,7 +77,7 @@ export default function KopirajMapu() {
 
   return (
     <Screen>
-      <TemplatesHeader title="Kopiraj mapu" subtitle={hasValidId ? `#${folderId}` : "—"} fallbackHref="/(tabs)/templates" />
+      <NavigationHeader title="Kopiraj mapu" subtitle={hasValidId ? `#${folderId}` : "—"} fallbackHref="/(tabs)/templates" />
 
       <View style={s.page}>
         {!!err && <Banner type="error" text={err} />}

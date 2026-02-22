@@ -16,7 +16,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import TemplatesHeader from "../../TemplatesHeader";
+import NavigationHeader from "../../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
 
 import { Banner } from "@/components/Banner";
@@ -262,7 +262,7 @@ export default function Otpremi() {
   if (ready && !warehouseId) {
     return (
       <Screen>
-        <TemplatesHeader title="Otpremi" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
+        <NavigationHeader title="Otpremi" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={s.container}
@@ -658,7 +658,7 @@ export default function Otpremi() {
   // ------------------ RENDER ------------------
   return (
     <Screen>
-      <TemplatesHeader title="Otpremi" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
+      <NavigationHeader title="Otpremi" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
 
       <ScrollView
         style={{ flex: 1 }}

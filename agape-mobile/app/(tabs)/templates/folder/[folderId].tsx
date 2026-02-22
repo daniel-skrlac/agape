@@ -21,7 +21,7 @@ import {
   useTemplateFolders,
   useTemplateList,
 } from "@/app/api/hooks/useDispatchTemplates";
-import TemplatesHeader from "../TemplatesHeader";
+import NavigationHeader from "../../../../components/NavigationHeader";
 
 type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
@@ -210,7 +210,7 @@ export default function TemplatesFolderScreen() {
         {!!errMsg && <Banner type="error" text={errMsg} />}
         {!!errText && <Banner type="error" text={String(errText)} />}
 
-        <TemplatesHeader
+        <NavigationHeader
           title={folderName}
           subtitle="Podmape i predlošci"
           fallbackHref="/(tabs)/templates"

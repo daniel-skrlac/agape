@@ -1,10 +1,8 @@
-// app/api/hooks/useBookingSessions.tsx
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
   BookingSessionCreateRequestDTO,
-  BookingSessionEntryUpsertRequestDTO,
-  BookingSessionResponseDTO,
+  BookingSessionEntryUpsertRequestDTO
 } from "@/app/models/generated";
 import dispatchBookingSessionService from "../services/dispatchTemplateSessionService";
 
@@ -63,7 +61,6 @@ export function useUpsertBookingSessionEntry(sessionId: number) {
 export function useDeleteBookingSessionEntry(sessionId: number) {
   const qc = useQueryClient();
   return useMutation({
-    // ✅ backend briše po partnerId: DELETE /{id}/entries/{partnerId}
     mutationFn: (partnerId: number) => dispatchBookingSessionService.deleteEntry(sessionId, partnerId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.one(sessionId) });

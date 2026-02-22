@@ -30,7 +30,7 @@ import {
   useDispatchBookingDetail,
   useDispatchBookingValidate,
   usePostDispatchBooking,
-} from "@/app/api/hooks/dispatch-bookings/dispatchBookingHooks";
+} from "@/app/api/hooks/dispatch-bookings/useDispatchBookings";
 
 import { formatQtyHR } from "@/app/utils/format";
 import { fmtHrDateTime } from "@/app/utils/dateIso";

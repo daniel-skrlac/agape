@@ -7,7 +7,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
-import TemplatesHeader from "@/app/(tabs)/templates/TemplatesHeader";
+import NavigationHeader from "@/components/NavigationHeader";
 import { CenterSheet } from "@/components/CenterSheet";
 
 import type {
@@ -684,7 +684,7 @@ export default function SessionEntryEditor() {
   if (!draft) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-        <TemplatesHeader title="Unos" fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }} />
+        <NavigationHeader title="Unos" fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }} />
         <View style={{ padding: 16, alignItems: "center", gap: 10 }}>
           <ActivityIndicator />
           <Text style={{ color: Colors.sub, fontWeight: "800" }}>Učitavam…</Text>
@@ -701,7 +701,7 @@ export default function SessionEntryEditor() {
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <TemplatesHeader title={headerTitle} fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }} />
+      <NavigationHeader title={headerTitle} fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }} />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={st.container} keyboardShouldPersistTaps="handled">
         {!!err && <Banner type="error" text={String(err)} />}

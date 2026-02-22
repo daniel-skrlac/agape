@@ -7,7 +7,7 @@ import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 import { useCreateTemplate } from "@/app/api/hooks/useDispatchTemplates";
-import TemplatesHeader from "../TemplatesHeader";
+import NavigationHeader from "../../../../components/NavigationHeader";
 
 export default function NewTemplateScreen() {
   const params = useLocalSearchParams<{ folderId?: string; folderName?: string }>();
@@ -32,7 +32,7 @@ export default function NewTemplateScreen() {
 
   return (
     <Screen>
-      <TemplatesHeader title="Novi predložak" subtitle={folderName ? `Mapa: ${folderName}` : "Root"} fallbackHref="/(tabs)/templates" />
+      <NavigationHeader title="Novi predložak" subtitle={folderName ? `Mapa: ${folderName}` : "Root"} fallbackHref="/(tabs)/templates" />
 
       <View style={s.container}>
         {!!errMsg && <Banner type="error" text={errMsg} />}

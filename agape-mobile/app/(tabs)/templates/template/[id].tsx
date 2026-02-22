@@ -8,7 +8,7 @@ import { useDeleteTemplate, useTemplate } from "@/app/api/hooks/useDispatchTempl
 import { Banner } from "@/components/Banner";
 import Colors from "@/constants/Colors";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
-import TemplatesHeader from "../TemplatesHeader";
+import NavigationHeader from "../../../../components/NavigationHeader";
 
 export default function PredlozakDetalji() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -22,14 +22,13 @@ export default function PredlozakDetalji() {
   const t = tQ.data;
   const err = (tQ.error as any)?.message || (delM.error as any)?.message || null;
 
-  // ✅ where we want to land when leaving this screen
   const backToMoji = () => {
     router.replace({ pathname: "/(tabs)/templates", params: { mode: "MOJI" } });
   };
 
   return (
     <Screen>
-      <TemplatesHeader
+      <NavigationHeader
         title="Predložak"
         subtitle={t?.name ? t.name : `#${id}`}
         fallbackHref={{ pathname: "/(tabs)/templates", params: { mode: "MOJI" } }}

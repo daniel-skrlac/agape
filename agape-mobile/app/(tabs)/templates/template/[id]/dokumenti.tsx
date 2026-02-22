@@ -18,7 +18,7 @@ import { Banner } from "@/components/Banner";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import Colors from "@/constants/Colors";
-import TemplatesHeader from "../../TemplatesHeader";
+import NavigationHeader from "../../../../../components/NavigationHeader";
 
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import { useTemplate, useUpsertDoc, useReplaceItems, useDeleteDoc } from "@/app/api/hooks/useDispatchTemplates";
@@ -110,7 +110,7 @@ export default function Dokumenti() {
   if (ready && !warehouseId) {
     return (
       <Screen>
-        <TemplatesHeader title="Dokumenti" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
+        <NavigationHeader title="Dokumenti" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
         <View style={s.container}>
           <Banner
             type="error"
@@ -384,7 +384,7 @@ export default function Dokumenti() {
 
   return (
     <Screen>
-      <TemplatesHeader title="Dokumenti" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
+      <NavigationHeader title="Dokumenti" subtitle={`Predložak #${templateId}`} fallbackHref="/(tabs)/templates" />
 
       <View style={s.container}>
         {!!err && <Banner type="error" text={err} />}

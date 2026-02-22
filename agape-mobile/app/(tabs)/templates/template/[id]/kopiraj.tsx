@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import TemplatesHeader from "../../TemplatesHeader";
+import NavigationHeader from "../../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 
@@ -56,7 +56,7 @@ export default function KopirajPredlozak() {
 
   return (
     <Screen>
-      <TemplatesHeader
+      <NavigationHeader
         title="Kopiraj predložak"
         subtitle={hasValidId ? `#${templateId}` : "—"}
         fallbackHref="/(tabs)/templates"

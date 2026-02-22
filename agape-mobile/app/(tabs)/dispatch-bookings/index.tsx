@@ -12,7 +12,7 @@ import InfoResultPopup from "@/components/InfoResultPopup";
 
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
-import { useDispatchBookings } from "@/app/api/hooks/useDispatchBookings";
+import { useDispatchBookings } from "@/app/api/hooks/dispatch-bookings/useDispatchBookings";
 import { useWarehouses } from "@/app/api/hooks/dashboard/useWarehouses";
 import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
 import { toUserMessage } from "@/app/api/apiClient";

@@ -12,7 +12,7 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
 import { Sheet } from "@/components/Sheet";
 import Colors from "@/constants/Colors";
-import TemplatesHeader from "../../TemplatesHeader";
+import NavigationHeader from "../../../../../components/NavigationHeader";
 
 type Perm = DispatchTemplateSharePermission;
 
@@ -41,7 +41,7 @@ export default function DijeliPredlozak() {
 
   return (
     <Screen>
-       <TemplatesHeader title="Dokumenti" subtitle={`Predložak #${templateId}`} />
+       <NavigationHeader title="Dokumenti" subtitle={`Predložak #${templateId}`} />
       <View style={s.container}>
         {!!err && <Banner type="error" text={err} />}
 

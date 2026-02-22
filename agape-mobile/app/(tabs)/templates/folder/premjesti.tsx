@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
-import TemplatesHeader from "../TemplatesHeader";
+import NavigationHeader from "../../../../components/NavigationHeader";
 
 import { FolderPicker } from "@/components/FolderPicker";
 import { useTemplateFolders, useMoveFolder } from "@/app/api/hooks/useDispatchTemplates";
@@ -106,7 +106,7 @@ export default function PremjestiFolder() {
 
   return (
     <Screen>
-      <TemplatesHeader
+      <NavigationHeader
         title="Premjesti mapu"
         subtitle={hasValidId ? `#${folderId}` : "—"}
         fallbackHref="/(tabs)/templates"

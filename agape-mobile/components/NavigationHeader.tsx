@@ -8,25 +8,18 @@ type Props = {
     title: string;
     subtitle?: string;
 
-    /**
-     * Optional: if there is no history to go back to, navigate here.
-     * Example: "/(tabs)/templates"
-     */
     fallbackHref?: Href;
 
-    /**
-     * Optional right-side actions (icons/buttons)
-     */
     right?: React.ReactNode;
 };
 
-export default function TemplatesHeader({ title, subtitle, fallbackHref = "/(tabs)/templates", right }: Props) {
+export default function NavigationHeader({ title, subtitle, fallbackHref = "/(tabs)/templates", right }: Props) {
     const router = useRouter();
 
     const goBack = () => {
         const canGoBack = (router as any)?.canGoBack?.() ?? false;
         if (canGoBack) router.back();
-        else router.replace(fallbackHref); // ✅ now OK
+        else router.replace(fallbackHref);
     };
 
     return (
