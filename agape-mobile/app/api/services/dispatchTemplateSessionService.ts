@@ -1,4 +1,3 @@
-// app/api/services/dispatchBookingSessionService.ts
 import type {
   BookingSessionCreateRequestDTO,
   BookingSessionEntryUpsertRequestDTO,
@@ -9,12 +8,37 @@ import { api } from "../api";
 
 const BASE = "/api/v1/dispatch-booking-sessions";
 
-export const dispatchBookingSessionService = {
-  list: (status?: string | null) =>
-    api.request<BookingSessionResponseDTO[]>(BASE, {
+export type BookingSessionPageDTO = {
+  items: BookingSessionResponseDTO[];
+  page: number;
+  size: number;
+  total: number;
+};
+
+type ListParams = {
+  status?: string | null;
+  page?: number;
+  size?: number;
+};
+
+const dispatchBookingSessionService = {
+  list: async ({ status, page = 0, size = 20 }: ListParams = {}): Promise<BookingSessionPageDTO> => {
+    const res = await api.request<any>(BASE, {
       method: "GET",
-      query: status ? { status } : undefined,
-    }),
+      query: {
+        ...(status ? { status } : {}),
+        page,
+        size,
+      },
+    });
+
+    return {
+      items: Array.isArray(res?.items) ? res.items : [],
+      page: Number(res?.page ?? page),
+      size: Number(res?.size ?? size),
+      total: Number(res?.total ?? 0),
+    };
+  },
 
   create: (payload: BookingSessionCreateRequestDTO) =>
     api.request<BookingSessionResponseDTO>(BASE, {

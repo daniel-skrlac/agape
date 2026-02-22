@@ -23,8 +23,8 @@ import type {
 } from "@/app/models/generated";
 
 import { partnerService } from "@/app/api/services/partnerService";
-import { useBookingSession, useDeleteBookingSessionEntry, useFinalizeBookingSession } from "@/app/api/hooks/useBookingSessions";
-import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
+import { useBookingSession, useDeleteBookingSessionEntry, useFinalizeBookingSession } from "@/app/api/hooks/sessions/useBookingSessions";
+import { useDispatchValidate } from "@/app/api/hooks/sessions/useDispatchValidate";
 import { ApiError } from "@/app/api/apiClient";
 
 import { getDraft } from "../_entryDraftStore";

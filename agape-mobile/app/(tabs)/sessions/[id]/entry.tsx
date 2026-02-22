@@ -23,7 +23,7 @@ import type {
 
 import { dispatchTemplateService } from "@/app/api/services/dispatchTemplateService";
 import { partnerService } from "@/app/api/services/partnerService";
-import { useBookingSession, useUpsertBookingSessionEntry } from "@/app/api/hooks/useBookingSessions";
+import { useBookingSession, useUpsertBookingSessionEntry } from "@/app/api/hooks/sessions/useBookingSessions";
 import { useItemsPage } from "@/app/api/hooks/useItemDirectory";
 
 import { QtyMap, useEntryDraft, getDraft, setDraft, clearDraft, patchDraft, ensureDraft } from "../_entryDraftStore";

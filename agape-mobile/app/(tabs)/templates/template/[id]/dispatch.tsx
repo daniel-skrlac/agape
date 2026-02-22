@@ -38,7 +38,7 @@ import type {
 import { toUserMessage } from "@/app/api/apiClient";
 import { partnerService } from "@/app/api/services/partnerService";
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
-import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
+import { useDispatchValidate } from "@/app/api/hooks/sessions/useDispatchValidate";
 import { toLocalDateString } from "@/app/utils/dateIso";
 import { useBookTemplateOne, useTemplateDetail } from "@/app/api/hooks/templates/useDispatchTemplates";
 import { useItemDirectoryPickerPage } from "@/app/api/hooks/documents/useItemDirectoryPickerPage";

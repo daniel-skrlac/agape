@@ -24,7 +24,7 @@ import type {
   TemplateBookItemDTO,
 } from "@/app/models/generated";
 
-import { useBookingSession } from "@/app/api/hooks/useBookingSessions";
+import { useBookingSession } from "@/app/api/hooks/sessions/useBookingSessions";
 import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
 
 import { QtyMap, useEntryDraft, patchDraft } from "../_entryDraftStore";

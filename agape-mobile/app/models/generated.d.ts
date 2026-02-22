@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-22 17:49:24.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-22 21:33:22.
 
 export interface PagedResultDTO<T> {
     items: T[];
