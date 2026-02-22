@@ -1,6 +1,7 @@
 package hr.agape.template.resource;
 
 import hr.agape.common.constant.Roles;
+import hr.agape.common.dto.BaseSearchFilter;
 import hr.agape.common.response.Responses;
 import hr.agape.template.dto.TemplateCopyRequestDTO;
 import hr.agape.template.dto.TemplateCreateRequestDTO;
@@ -8,11 +9,13 @@ import hr.agape.template.dto.TemplateDocUpsertRequestDTO;
 import hr.agape.template.dto.TemplateItemUpsertRequestDTO;
 import hr.agape.template.dto.TemplateMoveRequestDTO;
 import hr.agape.template.dto.TemplateUpdateRequestDTO;
+import hr.agape.template.enumeration.TemplateListScope;
 import hr.agape.template.service.DispatchTemplateService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.ws.rs.BeanParam;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.DefaultValue;
@@ -52,6 +55,18 @@ public class DispatchTemplateResource {
         return Responses.from(service.listTemplateHeaders(folderId, q, includeShared, rootOnly));
     }
 
+    @GET
+    @Path("/headers")
+    public Response listTemplateHeadersPaged(
+            @QueryParam("folderId") Long folderId,
+            @QueryParam("name") String q,
+            @QueryParam("scope") @DefaultValue("ALL") TemplateListScope scope,
+            @QueryParam("rootOnly") @DefaultValue("false") boolean rootOnly,
+            @BeanParam BaseSearchFilter filter
+    ) {
+        return Responses.from(service.listTemplateHeadersPaged(folderId, q, scope, rootOnly, filter));
+    }
+
     @POST
     public Response createTemplate(@Valid TemplateCreateRequestDTO req) {
         return Responses.from(service.createTemplate(req));
@@ -59,8 +74,8 @@ public class DispatchTemplateResource {
 
     @GET
     @Path("/{id}")
-    public Response getTemplate(@PathParam("id") Long id) {
-        return Responses.from(service.getTemplate(id));
+    public Response getTemplate(@PathParam("id") Long id, @QueryParam("includeItemMeta") @DefaultValue("false") boolean includeItemMeta) {
+        return Responses.from(service.getTemplate(id, includeItemMeta));
     }
 
     @PUT

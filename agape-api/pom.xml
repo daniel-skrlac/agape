@@ -215,7 +215,7 @@
                             <optionalAnnotations>
                                 <optionalAnnotation>jakarta.annotation.Nullable</optionalAnnotation>
                             </optionalAnnotations>
-                            <optionalPropertiesDeclaration>questionMark</optionalPropertiesDeclaration>
+                            <optionalPropertiesDeclaration>questionMarkAndNullableType</optionalPropertiesDeclaration>
 
                             <outputKind>module</outputKind>
 

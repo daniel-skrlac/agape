@@ -1,10 +1,14 @@
 package hr.agape.template.service;
 
+import hr.agape.common.dto.BaseSearchFilter;
+import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.service.DispatchBookingService;
+import hr.agape.item.dto.ItemDescriptorResponseDTO;
+import hr.agape.item.service.ItemDirectoryService;
 import hr.agape.template.domain.DispatchTemplateDocEntity;
 import hr.agape.template.domain.DispatchTemplateDocItemEntity;
 import hr.agape.template.domain.DispatchTemplateEntity;
@@ -14,12 +18,15 @@ import hr.agape.template.dto.TemplateBookManyRequestDTO;
 import hr.agape.template.dto.TemplateBookOneRequestDTO;
 import hr.agape.template.dto.TemplateCopyRequestDTO;
 import hr.agape.template.dto.TemplateCreateRequestDTO;
+import hr.agape.template.dto.TemplateDocResponseDTO;
 import hr.agape.template.dto.TemplateDocUpsertRequestDTO;
+import hr.agape.template.dto.TemplateItemResponseDTO;
 import hr.agape.template.dto.TemplateItemUpsertRequestDTO;
 import hr.agape.template.dto.TemplateMoveRequestDTO;
 import hr.agape.template.dto.TemplateResponseDTO;
 import hr.agape.template.dto.TemplateUpdateRequestDTO;
 import hr.agape.template.enumeration.DispatchTemplateSharePermission;
+import hr.agape.template.enumeration.TemplateListScope;
 import hr.agape.template.integration.TemplateBookingRequestBuilder;
 import hr.agape.template.mapper.DispatchTemplateMapper;
 import hr.agape.template.repository.DispatchTemplateDocItemRepository;
@@ -63,6 +70,8 @@ public class DispatchTemplateService {
 
     private final TemplateBookingRequestBuilder bookingRequestBuilder;
 
+    private final ItemDirectoryService itemDirectoryService;
+
     @Inject
     public DispatchTemplateService(
             DispatchTemplateFolderRepository folderRepo,
@@ -71,7 +80,7 @@ public class DispatchTemplateService {
             UserRepository userRepo,
             DispatchTemplateMapper templateMapper, TemplateNamingService templateNamingService,
             DispatchBookingService oracleBooking,
-            AuthUtil authUtil, TemplateBookingRequestBuilder bookingRequestBuilder
+            AuthUtil authUtil, TemplateBookingRequestBuilder bookingRequestBuilder, ItemDirectoryService itemDirectoryService
     ) {
         this.folderRepo = folderRepo;
         this.templateRepo = templateRepo;
@@ -83,6 +92,7 @@ public class DispatchTemplateService {
         this.oracleBooking = oracleBooking;
         this.authUtil = authUtil;
         this.bookingRequestBuilder = bookingRequestBuilder;
+        this.itemDirectoryService = itemDirectoryService;
     }
 
     public ServiceResponseDTO<List<TemplateResponseDTO>> listTemplateHeaders(
@@ -128,14 +138,78 @@ public class DispatchTemplateService {
         }
     }
 
-    public ServiceResponseDTO<TemplateResponseDTO> getTemplate(Long templateId) {
+    public ServiceResponseDTO<PagedResultDTO<TemplateResponseDTO>> listTemplateHeadersPaged(
+            Long folderId,
+            String q,
+            TemplateListScope scope,
+            boolean rootOnly,
+            BaseSearchFilter filter
+    ) {
+        try {
+            Long userId = authUtil.requireUserId();
+
+            TemplateListScope effectiveScope = (scope == null) ? TemplateListScope.ALL : scope;
+
+            int page = (filter == null) ? 0 : Math.max(0, filter.getPage());
+            int size = (filter == null) ? 20 : Math.max(1, Math.min(filter.getSize(), 100));
+
+            if (rootOnly && folderId != null) {
+                return ServiceResponseDirector.errorBadRequest("Use either folderId or rootOnly, not both.");
+            }
+
+            if (folderId != null && effectiveScope == TemplateListScope.SHARED) {
+                return ServiceResponseDirector.errorBadRequest("folderId is not supported for SHARED scope.");
+            }
+
+            if (folderId != null && folderRepo.doesNotBelongToOwner(folderId, userId)) {
+                return ServiceResponseDirector.errorBadRequest("Folder not found.");
+            }
+
+            long total = templateRepo.countAccessibleHeaders(userId, folderId, q, rootOnly, effectiveScope);
+            List<DispatchTemplateEntity> rows = templateRepo.pageAccessibleHeaders(userId, folderId, q, rootOnly, effectiveScope, page, size);
+
+            Set<Long> pageIds = rows.stream()
+                    .map(DispatchTemplateEntity::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            Map<Long, DispatchTemplateSharePermission> permissionByTemplateId =
+                    (effectiveScope == TemplateListScope.OWNED || pageIds.isEmpty())
+                            ? Map.of()
+                            : loadSharedPermissions(userId, pageIds);
+
+            Set<Long> sharedIds =
+                    (effectiveScope == TemplateListScope.SHARED)
+                            ? pageIds
+                            : permissionByTemplateId.keySet();
+
+            List<TemplateResponseDTO> items = mapTemplateHeaders(rows, sharedIds, permissionByTemplateId);
+
+            PagedResultDTO<TemplateResponseDTO> result = PagedResultDTO.<TemplateResponseDTO>builder()
+                    .items(items)
+                    .page(page)
+                    .size(size)
+                    .total(total)
+                    .build();
+
+            return ServiceResponseDirector.successOk(result, "OK");
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to list templates.");
+        }
+    }
+
+    public ServiceResponseDTO<TemplateResponseDTO> getTemplate(Long templateId, boolean includeItemMeta) {
         try {
             Long userId = authUtil.requireUserId();
 
             DispatchTemplateEntity t = templateRepo.findFullAccessible(templateId, userId);
             if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
 
-            return ServiceResponseDirector.successOk(templateMapper.toDto(t), "OK");
+            TemplateResponseDTO dto = includeItemMeta
+                    ? toTemplateDtoWithItemMeta(t)
+                    : templateMapper.toDto(t);
+
+            return ServiceResponseDirector.successOk(dto, "OK");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to fetch template.");
         }
@@ -471,7 +545,7 @@ public class DispatchTemplateService {
         try {
             Long userId = authUtil.requireUserId();
 
-            if (!templateRepo.isOwnedBy(templateId, userId)) {
+            if (templateRepo.isNotOwnedBy(templateId, userId)) {
                 return ServiceResponseDirector.errorNotFound("Template not found.");
             }
 
@@ -620,5 +694,53 @@ public class DispatchTemplateService {
         }
 
         return qtyByItemId;
+    }
+
+    private TemplateResponseDTO toTemplateDtoWithItemMeta(DispatchTemplateEntity template) {
+        TemplateResponseDTO dto = templateMapper.toDto(template);
+        enrichTemplateItemsWithOracleMeta(dto);
+        return dto;
+    }
+
+    private void enrichTemplateItemsWithOracleMeta(TemplateResponseDTO dto) {
+        if (dto == null || dto.getDocuments() == null || dto.getDocuments().isEmpty()) {
+            return;
+        }
+
+        List<Long> itemIds = dto.getDocuments().stream()
+                .filter(Objects::nonNull)
+                .map(TemplateDocResponseDTO::getItems)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .filter(Objects::nonNull)
+                .map(TemplateItemResponseDTO::getItemId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (itemIds.isEmpty()) {
+            return;
+        }
+
+        Map<Long, ItemDescriptorResponseDTO> metaByItemId = itemDirectoryService.findItemsByIds(itemIds);
+        if (metaByItemId.isEmpty()) {
+            return;
+        }
+
+        for (TemplateDocResponseDTO doc : dto.getDocuments()) {
+            if (doc == null || doc.getItems() == null) continue;
+
+            for (TemplateItemResponseDTO item : doc.getItems()) {
+                if (item == null || item.getItemId() == null) continue;
+
+                ItemDescriptorResponseDTO meta = metaByItemId.get(item.getItemId());
+                if (meta == null) continue;
+
+                item.setItemName(meta.getName());
+                item.setItemCode(meta.getCode());
+                item.setUnit(meta.getUnit());
+                item.setBarcode(meta.getBarcode());
+            }
+        }
     }
 }

@@ -2,10 +2,12 @@ package hr.agape.template.repository;
 
 import hr.agape.template.domain.DispatchTemplateDocEntity;
 import hr.agape.template.domain.DispatchTemplateEntity;
+import hr.agape.template.enumeration.TemplateListScope;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 
 import java.util.Collection;
 import java.util.List;
@@ -28,6 +30,88 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
         return find("id = ?1 AND owner.id = ?2", templateId, ownerUserId)
                 .singleResultOptional()
                 .orElse(null);
+    }
+
+    public long countAccessibleHeaders(
+            Long userId,
+            Long folderId,
+            String q,
+            boolean rootOnly,
+            TemplateListScope scope
+    ) {
+        String where = accessibleWhereClause();
+
+        String jpql = "SELECT COUNT(t.id) " +
+                "FROM DispatchTemplateEntity t " +
+                "WHERE " + where;
+
+        TypedQuery<Long> query = getEntityManager().createQuery(jpql, Long.class);
+        bindAccessibleParams(query, userId, folderId, q, rootOnly, scope);
+
+        return query.getSingleResult();
+    }
+
+    public List<DispatchTemplateEntity> pageAccessibleHeaders(
+            Long userId,
+            Long folderId,
+            String q,
+            boolean rootOnly,
+            TemplateListScope scope,
+            int page,
+            int size
+    ) {
+        String where = accessibleWhereClause();
+
+        String jpql = "SELECT t " +
+                "FROM DispatchTemplateEntity t " +
+                "WHERE " + where + " " +
+                "ORDER BY LOWER(COALESCE(t.name, '')) ASC, t.id DESC";
+
+        TypedQuery<DispatchTemplateEntity> query = getEntityManager().createQuery(jpql, DispatchTemplateEntity.class);
+        bindAccessibleParams(query, userId, folderId, q, rootOnly, scope);
+
+        query.setFirstResult(page * size);
+        query.setMaxResults(size);
+
+        return query.getResultList();
+    }
+
+    private String accessibleWhereClause() {
+        return "(" +
+                "(:scope = 'OWNED' AND t.owner.id = :userId) " +
+                "OR " +
+                "(:scope = 'SHARED' AND t.owner.id <> :userId AND EXISTS (" +
+                "   SELECT 1 FROM DispatchTemplateShareEntity s " +
+                "   WHERE s.template = t AND s.sharedWith.id = :userId" +
+                ")) " +
+                "OR " +
+                "(:scope = 'ALL' AND (" +
+                "   t.owner.id = :userId OR EXISTS (" +
+                "       SELECT 1 FROM DispatchTemplateShareEntity s " +
+                "       WHERE s.template = t AND s.sharedWith.id = :userId" +
+                "   )" +
+                "))" +
+                ") " +
+                "AND (:folderId IS NULL OR t.folder.id = :folderId) " +
+                "AND (:rootOnly = FALSE OR t.folder IS NULL) " +
+                "AND (:q IS NULL OR LOWER(COALESCE(t.name, '')) LIKE :q)";
+    }
+
+    private <T> void bindAccessibleParams(
+            TypedQuery<T> query,
+            Long userId,
+            Long folderId,
+            String q,
+            boolean rootOnly,
+            TemplateListScope scope
+    ) {
+        String qLike = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
+
+        query.setParameter("userId", userId);
+        query.setParameter("folderId", folderId);
+        query.setParameter("rootOnly", rootOnly);
+        query.setParameter("q", qLike);
+        query.setParameter("scope", (scope == null ? TemplateListScope.ALL : scope).name());
     }
 
     public List<DispatchTemplateEntity> listWithDocsByOwnerAndFolder(Long ownerUserId, Long folderId) {
@@ -215,12 +299,12 @@ public class DispatchTemplateRepository implements PanacheRepository<DispatchTem
 
     public boolean existsDocWithDocumentId(Long templateId, Long documentId, Long excludeDocId) {
         Long count = em.createQuery("""
-                    SELECT COUNT(d.id)
-                    FROM DispatchTemplateDocEntity d
-                    WHERE d.template.id = :templateId
-                      AND d.documentId = :documentId
-                      AND (:excludeDocId IS NULL OR d.id <> :excludeDocId)
-                    """, Long.class)
+                        SELECT COUNT(d.id)
+                        FROM DispatchTemplateDocEntity d
+                        WHERE d.template.id = :templateId
+                          AND d.documentId = :documentId
+                          AND (:excludeDocId IS NULL OR d.id <> :excludeDocId)
+                        """, Long.class)
                 .setParameter("templateId", templateId)
                 .setParameter("documentId", documentId)
                 .setParameter("excludeDocId", excludeDocId)

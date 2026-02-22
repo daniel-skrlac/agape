@@ -7,6 +7,7 @@ import jakarta.inject.Inject;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Objects;
 
 @ApplicationScoped
 public class ItemDirectoryRepository {
@@ -16,6 +17,69 @@ public class ItemDirectoryRepository {
     @Inject
     public ItemDirectoryRepository(Jdbc jdbc) {
         this.jdbc = jdbc;
+    }
+
+    public List<ItemDirectoryView> findItemsByIds(List<Long> itemIds) throws SQLException {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> ids = itemIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        String placeholders = ids.stream()
+                .map(x -> "?")
+                .collect(java.util.stream.Collectors.joining(","));
+
+        final String sql = """
+        WITH base AS (
+            SELECT
+                g.ARTIKL_ID              AS ITEM_ID,
+                z.ARTIKLID               AS CODE,
+                n.NAZIV                  AS NAME,
+                u.JEDINICAMJERE          AS UNIT,
+                (SELECT MIN(e.EAN)
+                   FROM SKL_EAN e
+                  WHERE e.ARTIKLIZ_ID = z.ARTIKLIZ_ID
+                ) AS BARCODE,
+                ROW_NUMBER() OVER (
+                    PARTITION BY g.ARTIKL_ID
+                    ORDER BY NVL(g.AKTIVANARTIKL, 1) DESC, g.SKLADISTE_ID, z.ARTIKLIZ_ID
+                ) AS RN
+            FROM SKL_ARTIKLIG g
+            JOIN SKL_ARTIKLIZ z ON z.ARTIKLIZ_ID = g.ARTIKLIZ_ID
+            JOIN SKL_ANAZIVI  n ON n.NAZIV_ID   = g.NAZIV_ID
+            LEFT JOIN SIFRE_JMJ u ON u.JMJ_ID   = z.JMJ_ID
+            WHERE g.ARTIKL_ID IN (%s)
+        )
+        SELECT ITEM_ID, CODE, NAME, UNIT, BARCODE
+          FROM base
+         WHERE RN = 1
+         ORDER BY LOWER(NAME), ITEM_ID
+        """.formatted(placeholders);
+
+        return jdbc.query(
+                sql,
+                ps -> {
+                    int i = 1;
+                    for (Long id : ids) {
+                        ps.setLong(i++, id);
+                    }
+                },
+                rs -> ItemDirectoryView.builder()
+                        .itemId(rs.getLong("ITEM_ID"))
+                        .code(rs.getString("CODE"))
+                        .name(rs.getString("NAME"))
+                        .unit(rs.getString("UNIT"))
+                        .barcode(rs.getString("BARCODE"))
+                        .build()
+        );
     }
 
     public long countItems(Long warehouseId, String q) throws SQLException {

@@ -11,4 +11,9 @@ public class TemplateItemResponseDTO {
     private Long itemId;
     private BigDecimal quantity;
     private Integer sortOrder;
+
+    private String itemName;
+    private String itemCode;
+    private String unit;
+    private String barcode;
 }

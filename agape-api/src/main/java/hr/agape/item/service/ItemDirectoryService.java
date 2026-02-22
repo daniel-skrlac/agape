@@ -11,6 +11,7 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 @ApplicationScoped
 public class ItemDirectoryService {
@@ -22,6 +23,35 @@ public class ItemDirectoryService {
     public ItemDirectoryService(ItemDirectoryRepository repo, ItemDirectoryMapper mapper) {
         this.repo = repo;
         this.mapper = mapper;
+    }
+
+    public Map<Long, ItemDescriptorResponseDTO> findItemsByIds(List<Long> itemIds) {
+        try {
+            if (itemIds == null || itemIds.isEmpty()) {
+                return Map.of();
+            }
+
+            List<Long> ids = itemIds.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            if (ids.isEmpty()) {
+                return Map.of();
+            }
+
+            return repo.findItemsByIds(ids).stream()
+                    .map(mapper::toDto)
+                    .filter(x -> x.getItemId() != null)
+                    .collect(java.util.stream.Collectors.toMap(
+                            ItemDescriptorResponseDTO::getItemId,
+                            x -> x,
+                            (a, b) -> a,
+                            java.util.LinkedHashMap::new
+                    ));
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 
     @Transactional

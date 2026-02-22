@@ -39,7 +39,6 @@ public class AuthService {
     String defaultRoleName;
 
     @Inject
-    @SuppressWarnings("CdiInjectionPointsInspection")
     public AuthService(UserRepository userRepo,
                        RoleRepository roleRepo,
                        AuthMapper authMapper) {

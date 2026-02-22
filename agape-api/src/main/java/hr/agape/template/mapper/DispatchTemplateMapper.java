@@ -20,5 +20,9 @@ public interface DispatchTemplateMapper {
 
     TemplateDocResponseDTO toDocDto(DispatchTemplateDocEntity entity);
 
+    @Mapping(target = "itemName", ignore = true)
+    @Mapping(target = "itemCode", ignore = true)
+    @Mapping(target = "unit", ignore = true)
+    @Mapping(target = "barcode", ignore = true)
     TemplateItemResponseDTO toItemDto(DispatchTemplateDocItemEntity entity);
 }
