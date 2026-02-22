@@ -1,12 +1,3 @@
-/* ============================================================
-   POSTGRESQL SCHEMA ONLY
-   - Template has many docs: dispatch_template_doc
-   - UNIQUE(template_id, document_id) => no duplicate documentId inside same template
-   - dispatch_template_item EXISTS because you have DispatchTemplateItemEntity
-   - booking session entry has doc_patches + extra_items as TEXT NOT NULL
-   - no triggers
-   ============================================================ */
-
 -- ------------------------------------------------------------
 -- USERS / ROLES
 -- ------------------------------------------------------------
@@ -175,7 +166,6 @@ CREATE TABLE dispatch_booking_session
     note          TEXT,
 
     warehouse_id  BIGINT NOT NULL,
-    document_date DATE NOT NULL DEFAULT CURRENT_DATE,
 
     status        VARCHAR(20) NOT NULL DEFAULT 'DRAFT', -- DRAFT / FINALIZED / CANCELLED
 
@@ -201,7 +191,6 @@ CREATE TABLE dispatch_booking_session_entry
     template_id   BIGINT NOT NULL REFERENCES dispatch_template(id) ON DELETE RESTRICT,
 
     draft_mode    VARCHAR(10) NOT NULL,          -- EnumType.STRING
-    document_date DATE,
 
     doc_patches   JSONB NOT NULL,
     extra_items   JSONB NOT NULL,
