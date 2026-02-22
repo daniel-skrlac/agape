@@ -7,8 +7,8 @@ import NavigationHeader from "../../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 
-import { useTemplate, useTemplateFolders, useMoveTemplate } from "@/app/api/hooks/useDispatchTemplates";
 import { FolderPicker } from "@/components/FolderPicker";
+import { useMoveTemplate, useTemplateDetail, useTemplateFolders } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
 
@@ -17,7 +17,7 @@ export default function PremjestiPredlozak() {
     const templateId = Number(params.id ?? params.templateId);
     const hasValidId = Number.isFinite(templateId) && templateId > 0;
 
-    const tQ = useTemplate(templateId);
+    const tQ = useTemplateDetail(templateId);
     const foldersQ = useTemplateFolders();
     const moveM = useMoveTemplate();
 

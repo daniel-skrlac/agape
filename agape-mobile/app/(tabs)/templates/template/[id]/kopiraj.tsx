@@ -7,8 +7,8 @@ import NavigationHeader from "../../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 
-import { useTemplate, useTemplateFolders, useCopyTemplate } from "@/app/api/hooks/useDispatchTemplates";
 import { FolderPicker } from "@/components/FolderPicker";
+import { useTemplateFolders, useCopyTemplate, useTemplateDetail } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
 
@@ -27,7 +27,7 @@ export default function KopirajPredlozak() {
   const templateId = readNumberParam(params, ["id", "templateId"]);
   const hasValidId = Number.isFinite(templateId) && templateId > 0;
 
-  const tQ = useTemplate(hasValidId ? templateId : -1);
+  const tQ = useTemplateDetail(hasValidId ? templateId : -1);
   const foldersQ = useTemplateFolders();
   const copyM = useCopyTemplate();
 

@@ -18,6 +18,18 @@ import type {
   PagedResultDTO,
 } from "@/app/models/generated";
 
+export type TemplateListScope = "ALL" | "OWNED" | "SHARED";
+
+
+export type TemplateHeaderListParams = {
+  folderId?: number | null;
+  q?: string;
+  scope?: TemplateListScope;
+  rootOnly?: boolean;
+  page?: number;
+  size?: number;
+};
+
 export const dispatchTemplateService = {
   listFoldersPage(
     params?: { parentId?: number | null; page?: number; size?: number },
@@ -89,8 +101,16 @@ export const dispatchTemplateService = {
     );
   },
 
-  getTemplate(id: number, signal?: AbortSignal) {
-    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}`, {
+  getTemplate(
+    id: number,
+    signal?: AbortSignal,
+    options?: { includeItemMeta?: boolean }
+  ) {
+    const includeItemMeta = options?.includeItemMeta ?? false;
+
+    const qs = includeItemMeta ? "?includeItemMeta=true" : "";
+
+    return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}${qs}`, {
       method: "GET",
       signal,
     });
@@ -214,5 +234,28 @@ export const dispatchTemplateService = {
       body: payload,
       signal,
     });
+  },
+
+  listTemplateHeadersPaged(
+    params: TemplateHeaderListParams,
+    signal?: AbortSignal
+  ): Promise<PagedResultDTO<TemplateResponseDTO>> {
+    const search = new URLSearchParams();
+
+    if (params.folderId != null) search.set("folderId", String(params.folderId));
+    if (params.q?.trim()) search.set("name", params.q.trim());
+
+    search.set("scope", params.scope ?? "ALL");
+    search.set("rootOnly", String(!!params.rootOnly));
+    search.set("page", String(params.page ?? 0));
+    search.set("size", String(params.size ?? 20));
+
+    return api.request<PagedResultDTO<TemplateResponseDTO>>(
+      `/api/v1/dispatch-templates/headers?${search.toString()}`,
+      {
+        method: "GET",
+        signal,
+      }
+    );
   },
 };

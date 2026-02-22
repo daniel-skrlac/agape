@@ -16,17 +16,10 @@ import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
 import { toUserMessage } from "@/app/api/apiClient";
 import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
-import {
-  canEditDeleteTemplate,
-  useCreateFolder,
-  useDeleteFolder,
-  useDeleteTemplate,
-  useRenameFolder,
-  useTemplateFolders,
-  useTemplateList,
-} from "@/app/api/hooks/useDispatchTemplates";
+
 
 import { styles as s, swipeStyles as sw } from "./styles/TemplatesRoot.styles";
+import { useTemplateFolders, useTemplateList, useCreateFolder, useRenameFolder, useDeleteFolder, useDeleteTemplate, canEditDeleteTemplate } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
@@ -90,12 +83,29 @@ export default function TemplatesRoot() {
   const [q, setQ] = useState("");
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
-  const foldersQ = useTemplateFolders({ parentId: null, size: 20 });
-  const allFolders = foldersQ.data ?? [];
-  const rootFolders = useMemo(() => allFolders.filter((f: any) => f.parentId == null), [allFolders]);
+  const showFolders = mode === "SVE";
 
-  const includeShared = mode !== "MOJI";
-  const templatesQ = useTemplateList({ folderId: null, q, includeShared, rootOnly: true });
+  const foldersQ = useTemplateFolders({ parentId: null, size: 20, enabled: showFolders });
+  const allFolders = foldersQ.data ?? [];
+  const rootFolders = useMemo(
+    () => (showFolders ? allFolders.filter((f: any) => f.parentId == null) : []),
+    [allFolders, showFolders]
+  );
+
+  const templateScope = useMemo<"ALL" | "OWNED" | "SHARED">(() => {
+    if (mode === "MOJI") return "OWNED";
+    if (mode === "DIJELJENI") return "SHARED";
+    return "ALL";
+  }, [mode]);
+
+  const templatesQ = useTemplateList({
+    folderId: null,
+    q,
+    scope: templateScope,
+    rootOnly: showFolders,
+    size: 20,
+  });
+
   const templates = templatesQ.data ?? [];
 
   const createFolderM = useCreateFolder();
@@ -105,8 +115,13 @@ export default function TemplatesRoot() {
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
-      foldersQ.clearStatus?.();
-      await Promise.allSettled([Promise.resolve(foldersQ.refresh?.()), Promise.resolve(templatesQ.refetch())]);
+      if (showFolders) foldersQ.clearStatus?.();
+      templatesQ.clearStatus?.();
+
+      await Promise.allSettled([
+        showFolders ? Promise.resolve(foldersQ.refresh?.()) : Promise.resolve(),
+        Promise.resolve(templatesQ.refetch()),
+      ]);
     },
   ]);
 
@@ -125,12 +140,11 @@ export default function TemplatesRoot() {
   const entries: Entry[] = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
-    const folderEntries: Entry[] =
-      mode === "DIJELJENI"
-        ? []
-        : rootFolders
-          .filter((f: any) => !qq || String(f.name ?? "").toLowerCase().includes(qq))
-          .map((f: any) => ({ kind: "FOLDER", id: f.id, name: f.name }));
+    const folderEntries: Entry[] = !showFolders
+      ? []
+      : rootFolders
+        .filter((f: any) => !qq || String(f.name ?? "").toLowerCase().includes(qq))
+        .map((f: any) => ({ kind: "FOLDER", id: f.id, name: f.name }));
 
     const tplEntries: Entry[] = (templates ?? []).map((t: any) => ({
       kind: "TPL",
@@ -145,13 +159,14 @@ export default function TemplatesRoot() {
     return [...folderEntries, ...tplEntries].sort((x, y) =>
       x.name.localeCompare(y.name, "hr", { sensitivity: "base" })
     );
-  }, [rootFolders, templates, q, mode]);
+  }, [showFolders, rootFolders, templates, q]);
 
   const foldersQueryErrorMessage = useMemo(() => {
+    if (!showFolders) return null;
     if (!foldersQ.error) return null;
     if ((allFolders?.length ?? 0) > 0) return null;
     return toUserMessage(foldersQ.error, "Greška prilikom učitavanja mapa.");
-  }, [foldersQ.error, allFolders?.length]);
+  }, [showFolders, foldersQ.error, allFolders?.length]);
 
   const templatesQueryErrorMessage = useMemo(() => {
     if (!templatesQ.error) return null;
@@ -162,9 +177,10 @@ export default function TemplatesRoot() {
   const topError = errMsg || foldersQueryErrorMessage || templatesQueryErrorMessage || null;
 
   const onTopErrorAction = useCallback(async () => {
-    foldersQ.clearStatus?.();
+    if (showFolders) foldersQ.clearStatus?.();
+    templatesQ.clearStatus?.();
     await onRefreshSafe();
-  }, [foldersQ, onRefreshSafe]);
+  }, [showFolders, foldersQ, templatesQ, onRefreshSafe]);
 
   const [addOpen, setAddOpen] = useState(false);
 
@@ -206,7 +222,7 @@ export default function TemplatesRoot() {
         sharedPermission: item.sharedPermission,
       });
 
-    const canDeleteFolder = item.kind === "FOLDER" && mode !== "DIJELJENI";
+    const canDeleteFolder = item.kind === "FOLDER";
 
     return (
       <View style={sw.actions}>
@@ -247,9 +263,13 @@ export default function TemplatesRoot() {
     );
   };
 
-  const isInitialLoading = (foldersQ.isLoading || templatesQ.isLoading) && !refreshing;
-  const showFooterLoadMore = foldersQ.loadingMore && mode !== "DIJELJENI";
-  const showFooterLoadMoreError = !!foldersQ.loadMoreError && mode !== "DIJELJENI";
+  const isInitialLoading = (((showFolders && foldersQ.isLoading) || templatesQ.isLoading) && !refreshing);
+
+  const anyLoadingMore = (showFolders && foldersQ.loadingMore) || templatesQ.loadingMore;
+  const nextLoadMoreError = (showFolders ? foldersQ.loadMoreError : null) || templatesQ.loadMoreError || null;
+
+  const showFooterLoadMore = !!anyLoadingMore;
+  const showFooterLoadMoreError = !!nextLoadMoreError;
 
   return (
     <Screen>
@@ -315,10 +335,18 @@ export default function TemplatesRoot() {
           contentContainerStyle={listContentStyle}
           onEndReachedThreshold={0.35}
           onEndReached={() => {
-            if (mode === "DIJELJENI") return;
-            if (!foldersQ.canLoadMore) return;
-            if (foldersQ.loadingMore || foldersQ.loading || refreshing) return;
-            foldersQ.loadMore?.();
+            if (refreshing || foldersQ.loading || foldersQ.loadingMore || templatesQ.loading || templatesQ.loadingMore) {
+              return;
+            }
+
+            if (showFolders && foldersQ.canLoadMore) {
+              foldersQ.loadMore?.();
+              return;
+            }
+
+            if (templatesQ.canLoadMore) {
+              templatesQ.loadMore?.();
+            }
           }}
           renderItem={({ item }) => {
             const onPress = () => {
@@ -413,7 +441,13 @@ export default function TemplatesRoot() {
 
                 {showFooterLoadMoreError ? (
                   <Pressable
-                    onPress={() => foldersQ.loadMore?.()}
+                    onPress={() => {
+                      if (showFolders && foldersQ.canLoadMore) {
+                        foldersQ.loadMore?.();
+                        return;
+                      }
+                      templatesQ.loadMore?.();
+                    }}
                     style={{
                       paddingHorizontal: 12,
                       paddingVertical: 8,
@@ -424,7 +458,7 @@ export default function TemplatesRoot() {
                     }}
                   >
                     <Text style={{ color: Colors.text }}>
-                      {foldersQ.loadMoreError} • Dodirni za pokušaj ponovno
+                      {String(nextLoadMoreError)} • Dodirni za pokušaj ponovno
                     </Text>
                   </Pressable>
                 ) : null}
@@ -449,7 +483,7 @@ export default function TemplatesRoot() {
               </View>
             )}
 
-            {moreItem?.kind === "FOLDER" && mode !== "DIJELJENI" && (
+            {moreItem?.kind === "FOLDER" && (
               <>
                 <Pressable
                   style={s.moreItem}
@@ -546,7 +580,7 @@ export default function TemplatesRoot() {
                       onPress={() => {
                         setMoreOpen(false);
                         router.push({
-                          pathname: "/(tabs)/templates/template/[id]/uredi",
+                          pathname: "/(tabs)/templates/template/[id]/edit",
                           params: { id: String(moreItem.id), edit: "1" },
                         });
                       }}
@@ -577,23 +611,25 @@ export default function TemplatesRoot() {
         {/* DODAJ */}
         <CenterSheet visible={addOpen} title="Dodaj" onClose={() => setAddOpen(false)}>
           <View style={s.sheetGap}>
-            <Pressable
-              style={s.addItem}
-              onPress={() => {
-                setAddOpen(false);
-                setNewFolderOpen(true);
-              }}
-            >
-              <FontAwesome name="folder" size={16} color={Colors.text} />
-              <Text style={s.addItemText}>Nova mapa</Text>
-            </Pressable>
+            {showFolders && (
+              <Pressable
+                style={s.addItem}
+                onPress={() => {
+                  setAddOpen(false);
+                  setNewFolderOpen(true);
+                }}
+              >
+                <FontAwesome name="folder" size={16} color={Colors.text} />
+                <Text style={s.addItemText}>Nova mapa</Text>
+              </Pressable>
+            )}
 
             <Pressable
               style={s.addItem}
               onPress={() => {
                 setAddOpen(false);
                 router.push({
-                  pathname: "/(tabs)/templates/template/novi",
+                  pathname: "/(tabs)/templates/template/new",
                   params: { folderId: "null" },
                 });
               }}

@@ -14,7 +14,6 @@ export function useItemsPage(params: {
     queryKey: ["items", "page", warehouseId, page, size, q ?? ""],
     enabled: !!warehouseId,
     queryFn: async () => {
-      // react-query will catch and store errors -> no "uncaught in promise"
       return itemDirectoryService.pageItems({
         warehouseId: warehouseId as number,
         page,

@@ -12,16 +12,9 @@ import { Banner } from "@/components/Banner";
 import { CenterSheet } from "@/components/CenterSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
-import {
-  canEditDeleteTemplate,
-  useCreateFolder,
-  useDeleteFolder,
-  useDeleteTemplate,
-  useRenameFolder,
-  useTemplateFolders,
-  useTemplateList,
-} from "@/app/api/hooks/useDispatchTemplates";
+
 import NavigationHeader from "../../../../components/NavigationHeader";
+import { useTemplateList, useTemplateFolders, useCreateFolder, useRenameFolder, useDeleteFolder, useDeleteTemplate, canEditDeleteTemplate } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
@@ -468,7 +461,7 @@ export default function TemplatesFolderScreen() {
               style={s.addItem}
               onPress={() => {
                 setAddOpen(false);
-                router.push({ pathname: "/(tabs)/templates/template/novi", params: { folderId: String(folderId) } });
+                router.push({ pathname: "/(tabs)/templates/template/new", params: { folderId: String(folderId) } });
               }}
             >
               <FontAwesome name="file-text-o" size={16} color={Colors.text} />

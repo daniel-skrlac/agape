@@ -40,7 +40,6 @@ import type {
 
 import { partnerService } from "@/app/api/services/partnerService";
 import { useItemsPage } from "@/app/api/hooks/useItemDirectory";
-import { useBookMany, useBookOne, useTemplate } from "@/app/api/hooks/useDispatchTemplates";
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import { useDispatchValidate } from "@/app/api/hooks/useDispatchValidate";
 import { ApiError } from "@/app/api/apiClient";
@@ -49,6 +48,7 @@ import { ApiError } from "@/app/api/apiClient";
 // If your service is named differently, adjust this import to your project.
 import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
 import { toLocalDateString } from "@/app/utils/dateIso";
+import { useBookTemplateMany, useBookTemplateOne, useTemplateDetail } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
 const ITEMS_PAGE_SIZE = 10;
@@ -241,12 +241,12 @@ export default function Otpremi() {
   const { session, ready } = useCurrentUser();
   const warehouseId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
 
-  const tplQ = useTemplate(templateId);
+  const tplQ = useTemplateDetail(templateId);
   const template = tplQ.data;
   const templateDocs: TemplateDocResponseDTO[] = (template?.documents ?? []) as any;
 
-  const bookOneM = useBookOne();
-  const bookManyM = useBookMany();
+  const bookOneM = useBookTemplateOne();
+  const bookManyM = useBookTemplateMany();
   const validateM = useDispatchValidate();
 
   const err =

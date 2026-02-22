@@ -4,17 +4,17 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import { useDeleteTemplate, useTemplate } from "@/app/api/hooks/useDispatchTemplates";
 import { Banner } from "@/components/Banner";
 import Colors from "@/constants/Colors";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import NavigationHeader from "../../../../components/NavigationHeader";
+import { useTemplateDetail, useDeleteTemplate } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 export default function PredlozakDetalji() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Number(params.id);
 
-  const tQ = useTemplate(id);
+  const tQ = useTemplateDetail(id);
   const delM = useDeleteTemplate();
 
   const [confirmDel, setConfirmDel] = useState(false);
@@ -23,7 +23,7 @@ export default function PredlozakDetalji() {
   const err = (tQ.error as any)?.message || (delM.error as any)?.message || null;
 
   const backToMoji = () => {
-    router.replace({ pathname: "/(tabs)/templates", params: { mode: "MOJI" } });
+    router.replace({ pathname: "/(tabs)/templates" });
   };
 
   return (
@@ -31,7 +31,7 @@ export default function PredlozakDetalji() {
       <NavigationHeader
         title="Predložak"
         subtitle={t?.name ? t.name : `#${id}`}
-        fallbackHref={{ pathname: "/(tabs)/templates", params: { mode: "MOJI" } }}
+        fallbackHref="/(tabs)/templates"
       />
 
       <View style={s.container}>
@@ -60,7 +60,7 @@ export default function PredlozakDetalji() {
                 label="Uredi"
                 onPress={() =>
                   router.push({
-                    pathname: "/(tabs)/templates/template/[id]/uredi",
+                    pathname: "/(tabs)/templates/template/[id]/edit",
                     params: { id: String(id) },
                   })
                 }
@@ -70,7 +70,7 @@ export default function PredlozakDetalji() {
                 label="Dokumenti"
                 onPress={() =>
                   router.push({
-                    pathname: "/(tabs)/templates/template/[id]/dokumenti",
+                    pathname: "/(tabs)/templates/template/[id]/documents",
                     params: { id: String(id) },
                   })
                 }
@@ -80,7 +80,7 @@ export default function PredlozakDetalji() {
                 label="Dijeli"
                 onPress={() =>
                   router.push({
-                    pathname: "/(tabs)/templates/template/[id]/dijeli",
+                    pathname: "/(tabs)/templates/template/[id]/share",
                     params: { id: String(id) },
                   })
                 }
@@ -113,8 +113,6 @@ export default function PredlozakDetalji() {
               onConfirm={async () => {
                 await delM.mutateAsync(id);
                 setConfirmDel(false);
-
-                // ✅ always go to templates root (MOJI)
                 backToMoji();
               }}
             />

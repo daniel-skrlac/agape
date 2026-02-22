@@ -8,8 +8,8 @@ import NavigationHeader from "../../../../components/NavigationHeader";
 import Colors from "@/constants/Colors";
 import { Banner } from "@/components/Banner";
 
-import { useTemplateFolders, useCopyFolderTree } from "@/app/api/hooks/useDispatchTemplates";
 import { FolderPicker } from "@/components/FolderPicker";
+import { useCopyFolder, useTemplateFolders } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
 
@@ -47,7 +47,7 @@ export default function KopirajMapu() {
   const hasValidId = Number.isFinite(folderId) && folderId > 0;
 
   const foldersQ = useTemplateFolders();
-  const copyM = useCopyFolderTree();
+  const copyM = useCopyFolder();
 
   const folders = (foldersQ.data ?? []) as FolderLike[];
   const me = useMemo(() => folders.find((f) => Number(f.id) === folderId) ?? null, [folders, folderId]);

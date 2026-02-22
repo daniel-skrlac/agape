@@ -8,7 +8,7 @@ import { Banner } from "@/components/Banner";
 import NavigationHeader from "../../../../components/NavigationHeader";
 
 import { FolderPicker } from "@/components/FolderPicker";
-import { useTemplateFolders, useMoveFolder } from "@/app/api/hooks/useDispatchTemplates";
+import { useTemplateFolders, useMoveFolder } from "@/app/api/hooks/templates/useDispatchTemplates";
 
 type FolderLike = {
   id: number;
