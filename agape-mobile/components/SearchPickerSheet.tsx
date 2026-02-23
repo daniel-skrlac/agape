@@ -187,10 +187,10 @@ export function SearchPickerSheet<T>(props: Props<T>) {
               <ErrorCard
                 title="Greška prilikom učitavanja"
                 message={error}
-                primaryText="Pokušaj ponovno"
-                onPrimary={resetAndLoad}
-                secondaryText="Zatvori"
-                onSecondary={close}
+                actionText="Pokušaj ponovno"
+                onAction={() => {
+                  void resetAndLoad();
+                }}
               />
             </View>
           ) : (

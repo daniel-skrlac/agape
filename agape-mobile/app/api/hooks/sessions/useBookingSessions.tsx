@@ -6,28 +6,55 @@ import type {
   BookingSessionEntryUpsertRequestDTO,
   BookingSessionResponseDTO,
 } from "@/app/models/generated";
-import dispatchBookingSessionService, { BookingSessionPageDTO } from "../../services/dispatchTemplateSessionService";
-
+import dispatchBookingSessionService, {
+  type BookingSessionPageDTO,
+} from "../../services/dispatchTemplateSessionService";
 
 const qk = {
-  list: (status?: string | null, size?: number) =>
-    ["bookingSessions", "list", status ?? "ALL", size ?? 20] as const,
+  list: (
+    status?: string | null,
+    q?: string | null,
+    dateFrom?: string | null,
+    dateTo?: string | null,
+    size?: number
+  ) =>
+    [
+      "bookingSessions",
+      "list",
+      status ?? "ALL",
+      q ?? "",
+      dateFrom ?? "",
+      dateTo ?? "",
+      size ?? 20,
+    ] as const,
+
   one: (id: number) => ["bookingSessions", "one", id] as const,
 };
 
-type UseBookingSessionsOptions = {
+export type UseBookingSessionsParams = {
+  status?: "DRAFT" | "FINALIZED" | "CANCELLED" | null;
+  q?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
   size?: number;
 };
 
-export function useBookingSessions(status?: string | null, options?: UseBookingSessionsOptions) {
-  const size = Number(options?.size ?? 20);
+export function useBookingSessions(params?: UseBookingSessionsParams) {
+  const status = params?.status ?? null;
+  const q = (params?.q ?? "").trim() || null;
+  const dateFrom = params?.dateFrom ?? null;
+  const dateTo = params?.dateTo ?? null;
+  const size = Math.max(1, Math.min(200, Number(params?.size ?? 20)));
 
-  const q = useInfiniteQuery({
-    queryKey: qk.list(status, size),
+  const iq = useInfiniteQuery({
+    queryKey: qk.list(status, q, dateFrom, dateTo, size),
     initialPageParam: 0,
     queryFn: async ({ pageParam }) =>
       dispatchBookingSessionService.list({
-        status: status ?? undefined,
+        status,
+        q,
+        dateFrom,
+        dateTo,
         page: Number(pageParam ?? 0),
         size,
       }),
@@ -43,34 +70,30 @@ export function useBookingSessions(status?: string | null, options?: UseBookingS
   });
 
   const data = useMemo<BookingSessionResponseDTO[]>(
-    () => (q.data?.pages ?? []).flatMap((p) => p?.items ?? []),
-    [q.data]
+    () => (iq.data?.pages ?? []).flatMap((p) => p?.items ?? []),
+    [iq.data]
   );
 
-  const first = q.data?.pages?.[0];
+  const first = iq.data?.pages?.[0];
   const total = Number(first?.total ?? 0);
 
   return {
     data,
     total,
 
-    error: q.error,
-    isLoading: q.isLoading,
-    isFetching: q.isFetching,
-    isRefetching: q.isRefetching,
-    refreshing: q.isRefetching && !q.isFetchingNextPage,
+    error: iq.error,
+    isLoading: iq.isLoading,
+    isFetching: iq.isFetching,
+    isRefetching: iq.isRefetching,
 
-    loadingMore: q.isFetchingNextPage,
-    canLoadMore: !!q.hasNextPage,
-    loadMoreError: q.isFetchNextPageError ? q.error : null,
+    refreshing: iq.isRefetching && !iq.isFetchingNextPage,
+    loadingMore: iq.isFetchingNextPage,
+    canLoadMore: !!iq.hasNextPage,
+    loadMoreError: iq.isFetchNextPageError ? iq.error : null,
 
-    refetch: q.refetch,
-    refresh: q.refetch,
-    loadMore: () => q.fetchNextPage(),
-
-    clearStatus: () => {
-      // no-op, kept for compatibility with your existing screen patterns
-    },
+    refresh: () => iq.refetch(),
+    refetch: () => iq.refetch(),
+    loadMore: () => iq.fetchNextPage(),
   };
 }
 
@@ -86,7 +109,8 @@ export function useCreateBookingSession() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: BookingSessionCreateRequestDTO) => dispatchBookingSessionService.create(payload),
+    mutationFn: (payload: BookingSessionCreateRequestDTO) =>
+      dispatchBookingSessionService.create(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bookingSessions"] });
     },
@@ -132,7 +156,8 @@ export function useDeleteBookingSessionEntry(sessionId: number) {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (partnerId: number) => dispatchBookingSessionService.deleteEntry(sessionId, partnerId),
+    mutationFn: (partnerId: number) =>
+      dispatchBookingSessionService.deleteEntry(sessionId, partnerId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.one(sessionId) });
       qc.invalidateQueries({ queryKey: ["bookingSessions"] });

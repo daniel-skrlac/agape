@@ -98,15 +98,57 @@ export const s = StyleSheet.create({
     gap: 10,
   },
 
-  search: {
-    backgroundColor: Colors.bg,
+  searchWrap: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(148,163,184,0.14)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  searchInput: {
+    flex: 1,
+    height: 25,
+    paddingVertical: 0,
+    fontWeight: "800",
+    color: Colors.text,
+    fontSize: 14,
+  },
+
+  filterRow: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  filterPill: {
+    flexGrow: 1,
+    minWidth: 170,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontWeight: "800",
+    backgroundColor: "rgba(148,163,184,0.10)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  filterPillActive: {
+    backgroundColor: "rgba(249,115,22,0.10)",
+    borderColor: "rgba(249,115,22,0.25)",
+  },
+
+  filterText: {
+    flex: 1,
+    fontWeight: "900",
     color: Colors.text,
+    fontSize: 12,
   },
 
   list: {
@@ -264,23 +306,45 @@ export const s = StyleSheet.create({
 
   rowBtns: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
 
   primaryBtn: {
-    flex: 1,
+    flex: 1.15,
     height: 40,
     borderRadius: 14,
     backgroundColor: Colors.orange,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
+    paddingHorizontal: 8,
   },
 
   primaryBtnText: {
     color: "#fff",
     fontWeight: "900",
+    fontSize: 12,
+  },
+
+  cancelActionBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: "rgba(249,115,22,0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.30)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 8,
+  },
+
+  cancelActionBtnText: {
+    color: Colors.text,
+    fontWeight: "900",
+    fontSize: 12,
   },
 
   dangerBtn: {
@@ -293,12 +357,14 @@ export const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
+    paddingHorizontal: 8,
   },
 
   dangerBtnText: {
     color: Colors.dangerText,
     fontWeight: "900",
+    fontSize: 12,
   },
 
   disabled: {

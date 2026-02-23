@@ -15,18 +15,31 @@ export type BookingSessionPageDTO = {
   total: number;
 };
 
-type ListParams = {
-  status?: string | null;
+export type ListBookingSessionsParams = {
+  status?: "DRAFT" | "FINALIZED" | "CANCELLED" | null;
+  q?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
   page?: number;
   size?: number;
 };
 
 const dispatchBookingSessionService = {
-  list: async ({ status, page = 0, size = 20 }: ListParams = {}): Promise<BookingSessionPageDTO> => {
+  list: async ({
+    status,
+    q,
+    dateFrom,
+    dateTo,
+    page = 0,
+    size = 20,
+  }: ListBookingSessionsParams = {}): Promise<BookingSessionPageDTO> => {
     const res = await api.request<any>(BASE, {
       method: "GET",
       query: {
         ...(status ? { status } : {}),
+        ...(q ? { q } : {}),
+        ...(dateFrom ? { dateFrom } : {}),
+        ...(dateTo ? { dateTo } : {}),
         page,
         size,
       },

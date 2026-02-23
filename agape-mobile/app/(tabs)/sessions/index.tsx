@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,10 +16,10 @@ import { ErrorCard } from "@/components/ErrorCard";
 import { CenterSheet } from "@/components/CenterSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import { Segmented } from "@/components/Segmented";
-import InfoResultPopup from "@/components/InfoResultPopup";
+import { DateRangeSheet } from "@/components/DateRangeSheet";
 
 import { toUserMessage } from "@/app/api/apiClient";
-import { toLocalDateString } from "@/app/utils/dateIso";
+import { toLocalDateString, fmtHrFromIso } from "@/app/utils/dateIso";
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import type {
   BookingSessionCreateRequestDTO,
@@ -27,6 +27,7 @@ import type {
 } from "@/app/models/generated";
 import {
   useBookingSessions,
+  useCancelBookingSession,
   useCreateBookingSession,
   useDeleteBookingSession,
 } from "@/app/api/hooks/sessions/useBookingSessions";
@@ -43,7 +44,7 @@ type ResultPopupState = {
   message: string;
 };
 
-function cleanText(v: any) {
+function cleanText(v: unknown) {
   const x = String(v ?? "").trim();
   if (
     x.length >= 2 &&
@@ -54,7 +55,7 @@ function cleanText(v: any) {
   return x;
 }
 
-function cleanDescription(v: any): string | null {
+function cleanDescription(v: unknown): string | null {
   if (v == null) return null;
   if (Array.isArray(v) && v.length === 0) return null;
 
@@ -76,14 +77,14 @@ function initials(title: string) {
   return (a + b).toUpperCase();
 }
 
-function statusHr(status: any) {
+function statusLabel(status: unknown) {
   if (status === "DRAFT") return "DRAFT";
   if (status === "FINALIZED") return "FINAL";
-  if (status === "CANCELLED") return "STORNO";
+  if (status === "CANCELLED") return "CANCELED";
   return String(status ?? "");
 }
 
-function badgeStyle(status: any) {
+function badgeStyle(status: unknown) {
   if (status === "FINALIZED") {
     return {
       backgroundColor: "rgba(34,197,94,0.16)",
@@ -104,10 +105,10 @@ function badgeStyle(status: any) {
   };
 }
 
-function formatDateTimeHr(v: any): string | null {
+function formatDateTimeHr(v: unknown): string | null {
   if (!v) return null;
 
-  const d = new Date(v);
+  const d = new Date(String(v));
   if (!Number.isFinite(d.getTime())) return null;
 
   return new Intl.DateTimeFormat("hr-HR", {
@@ -125,17 +126,34 @@ export default function SessionsIndex() {
     session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
 
   const [filter, setFilter] = useState<SessionFilter>("ALL");
+
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+
+  const [dateOpen, setDateOpen] = useState(false);
+  const [dateFromIso, setDateFromIso] = useState<string | null>(null);
+  const [dateToIso, setDateToIso] = useState<string | null>(null);
 
   const statusParam = filter === "ALL" ? null : filter;
-  const listQ = useBookingSessions(statusParam, { size: 20 });
+
+  const listQ = useBookingSessions({
+    status: statusParam,
+    q: debouncedQ || undefined,
+    dateFrom: dateFromIso || undefined,
+    dateTo: dateToIso || undefined,
+    size: 20,
+  });
 
   const createM = useCreateBookingSession();
+  const cancelM = useCancelBookingSession();
   const deleteM = useDeleteBookingSession();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
+
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<BookingSessionResponseDTO | null>(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<BookingSessionResponseDTO | null>(null);
@@ -143,29 +161,40 @@ export default function SessionsIndex() {
   const [screenError, setScreenError] = useState<string | null>(null);
   const [suppressTopError, setSuppressTopError] = useState(false);
 
-  const [resultPopup, setResultPopup] = useState<ResultPopupState>({
+  const [, setResultPopup] = useState<ResultPopupState>({
     visible: false,
     kind: "info",
     title: "",
     message: "",
   });
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q.trim()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
   const rawTopError =
     screenError ||
     (listQ.error ? toUserMessage(listQ.error, "Greška pri učitavanju evidencija.") : null) ||
     (createM.error ? toUserMessage(createM.error, "Greška pri kreiranju evidencije.") : null) ||
+    (cancelM.error ? toUserMessage(cancelM.error, "Greška pri otkazivanju evidencije.") : null) ||
     (deleteM.error ? toUserMessage(deleteM.error, "Greška pri brisanju evidencije.") : null);
 
   const topError = suppressTopError ? null : rawTopError;
 
+  const resetMutationErrors = () => {
+    createM.reset();
+    cancelM.reset();
+    deleteM.reset();
+  };
+
   const retryTopError = async () => {
     setSuppressTopError(true);
     setScreenError(null);
-    createM.reset();
-    deleteM.reset();
+    resetMutationErrors();
 
     try {
-      await listQ.refetch();
+      await listQ.refresh();
     } finally {
       setSuppressTopError(false);
     }
@@ -195,6 +224,7 @@ export default function SessionsIndex() {
     try {
       setSuppressTopError(false);
       setScreenError(null);
+      resetMutationErrors();
 
       const payload: BookingSessionCreateRequestDTO = {
         title: title.trim(),
@@ -211,16 +241,59 @@ export default function SessionsIndex() {
         visible: true,
         kind: "success",
         title: "Evidencija kreirana",
-        message: `Kreirana je evidencija "${cleanText((created as any)?.title) || title.trim()}".`,
+        message: `Kreirana je evidencija "${cleanText(created?.title) || title.trim()}".`,
       });
     } catch (e) {
       setScreenError(toUserMessage(e, "Greška pri kreiranju evidencije."));
     }
   };
 
+  const askCancel = (it: BookingSessionResponseDTO) => {
+    const st = String((it as any)?.status ?? "");
+    if (st !== "DRAFT") {
+      setResultPopup({
+        visible: true,
+        kind: "info",
+        title: "Nije moguće otkazati",
+        message: "Moguće je otkazati samo draft evidenciju.",
+      });
+      return;
+    }
+
+    setCancelTarget(it);
+    setCancelOpen(true);
+  };
+
+  const confirmCancel = async () => {
+    if (!cancelTarget) return;
+
+    try {
+      setSuppressTopError(false);
+      setScreenError(null);
+      resetMutationErrors();
+
+      const id = Number((cancelTarget as any)?.id);
+      await cancelM.mutateAsync(id);
+
+      setCancelOpen(false);
+
+      const canceledTitle = cleanText((cancelTarget as any)?.title) || `#${id}`;
+      setCancelTarget(null);
+
+      setResultPopup({
+        visible: true,
+        kind: "success",
+        title: "Evidencija otkazana",
+        message: `Evidencija "${canceledTitle}" je označena kao canceled.`,
+      });
+    } catch (e) {
+      setScreenError(toUserMessage(e, "Greška pri otkazivanju evidencije."));
+    }
+  };
+
   const askDelete = (it: BookingSessionResponseDTO) => {
-    const status = String((it as any)?.status ?? "");
-    if (status !== "DRAFT") {
+    const st = String((it as any)?.status ?? "");
+    if (st !== "DRAFT") {
       setResultPopup({
         visible: true,
         kind: "info",
@@ -240,10 +313,11 @@ export default function SessionsIndex() {
     try {
       setSuppressTopError(false);
       setScreenError(null);
+      resetMutationErrors();
 
       const id = Number((deleteTarget as any)?.id);
-      clearDraftsForSession(id);
 
+      clearDraftsForSession(id);
       await deleteM.mutateAsync(id);
 
       setDeleteOpen(false);
@@ -262,29 +336,23 @@ export default function SessionsIndex() {
     }
   };
 
-  const sessions = (listQ.data ?? []) as BookingSessionResponseDTO[];
-
-  const filteredSessions = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return sessions;
-
-    return sessions.filter((x: any) => {
-      const t = cleanText(x?.title).toLowerCase();
-      const n = cleanDescription(x?.note)?.toLowerCase() ?? "";
-      const id = String(Number(x?.id ?? 0));
-      return t.includes(qq) || n.includes(qq) || id.includes(qq);
-    });
-  }, [sessions, q]);
+  const sessions = listQ.data ?? [];
 
   const stats = useMemo(() => {
     const total = listQ.total || 0;
-    const draft = sessions.filter((x: any) => x.status === "DRAFT").length;
-    const fin = sessions.filter((x: any) => x.status === "FINALIZED").length;
-    const storno = sessions.filter((x: any) => x.status === "CANCELLED").length;
-    return { total, draft, fin, storno };
+    const draft = sessions.filter((x: any) => x?.status === "DRAFT").length;
+    const fin = sessions.filter((x: any) => x?.status === "FINALIZED").length;
+    const canceled = sessions.filter((x: any) => x?.status === "CANCELLED").length;
+    return { total, draft, fin, canceled };
   }, [sessions, listQ.total]);
 
   const isInitialLoading = listQ.isLoading && sessions.length === 0;
+  const dateActive = !!dateFromIso && !!dateToIso;
+
+  const dateLabel = useMemo(() => {
+    if (!dateActive) return "Datum";
+    return `${fmtHrFromIso(dateFromIso)} → ${fmtHrFromIso(dateToIso)}`;
+  }, [dateActive, dateFromIso, dateToIso]);
 
   return (
     <Screen style={s.screen} edges={["left", "right"]}>
@@ -330,34 +398,72 @@ export default function SessionsIndex() {
 
             <View style={s.statChip}>
               <FontAwesome name="ban" size={14} color={Colors.sub} />
-              <Text style={s.statChipText}>Storno: {stats.storno}</Text>
+              <Text style={s.statChipText}>Canceled: {stats.canceled}</Text>
             </View>
           </View>
         </View>
 
         <View style={s.filterWrap}>
+          <View style={s.searchWrap}>
+            <FontAwesome name="search" size={14} color={Colors.sub} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Pretraži po nazivu, opisu ili ID-u…"
+              placeholderTextColor={Colors.sub}
+              style={s.searchInput}
+              autoCorrect={false}
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+            {!!q && (
+              <Pressable onPress={() => setQ("")} hitSlop={8}>
+                <FontAwesome name="times-circle" size={16} color={Colors.sub} />
+              </Pressable>
+            )}
+          </View>
+
+          <View style={s.filterRow}>
+            <Pressable
+              style={[s.filterPill, dateActive && s.filterPillActive]}
+              onPress={() => setDateOpen(true)}
+            >
+              <FontAwesome name="calendar" size={14} color={Colors.text} />
+              <Text style={s.filterText} numberOfLines={1}>
+                {dateLabel}
+              </Text>
+
+              {dateActive ? (
+                <Pressable
+                  onPressIn={(e) => e.stopPropagation?.()}
+                  onPress={() => {
+                    setDateFromIso(null);
+                    setDateToIso(null);
+                  }}
+                  hitSlop={10}
+                >
+                  <FontAwesome name="times-circle" size={16} color={Colors.sub} />
+                </Pressable>
+              ) : (
+                <FontAwesome name="chevron-down" size={12} color={Colors.sub} />
+              )}
+            </Pressable>
+          </View>
+
           <Segmented<SessionFilter>
             value={filter}
             options={[
               { value: "ALL", label: "Sve" },
               { value: "DRAFT", label: "Draft" },
               { value: "FINALIZED", label: "Final" },
-              { value: "CANCELLED", label: "Storno" },
+              { value: "CANCELLED", label: "Canceled" },
             ]}
             onChange={(next) => {
               setSuppressTopError(false);
               setScreenError(null);
+              resetMutationErrors();
               setFilter(next);
             }}
-          />
-
-          <TextInput
-            value={q}
-            onChangeText={setQ}
-            placeholder="Pretraži po nazivu, opisu ili ID-u…"
-            placeholderTextColor={Colors.sub}
-            style={s.search}
-            autoCorrect={false}
           />
         </View>
 
@@ -369,15 +475,20 @@ export default function SessionsIndex() {
         ) : (
           <FlatList
             style={s.list}
-            data={filteredSessions}
+            data={sessions}
             keyExtractor={(x) => String((x as any)?.id)}
             refreshing={listQ.refreshing}
             onRefresh={async () => {
               setSuppressTopError(false);
               setScreenError(null);
-              createM.reset();
-              deleteM.reset();
+              resetMutationErrors();
               await listQ.refresh();
+            }}
+            onEndReachedThreshold={0.35}
+            onEndReached={() => {
+              if (!sessions.length) return;
+              if (listQ.loadingMore || !listQ.canLoadMore) return;
+              void listQ.loadMore();
             }}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={s.listContent}
@@ -386,15 +497,19 @@ export default function SessionsIndex() {
               const status = (item as any)?.status;
               const t = cleanText((item as any)?.title);
               const n = cleanDescription((item as any)?.note);
+
               const updatedAt =
                 formatDateTimeHr((item as any)?.updatedAt) ||
                 formatDateTimeHr((item as any)?.dateModified);
+
               const createdAt =
                 formatDateTimeHr((item as any)?.createdAt) ||
                 formatDateTimeHr((item as any)?.dateCreated);
 
-              const canDelete = status === "DRAFT";
+              const canMutate = status === "DRAFT";
               const av = initials(t || `#${id}`);
+
+              const anyBusy = createM.isPending || cancelM.isPending || deleteM.isPending;
 
               const open = () =>
                 router.push({
@@ -421,7 +536,7 @@ export default function SessionsIndex() {
                     </View>
 
                     <View style={[s.badge, badgeStyle(status)]}>
-                      <Text style={s.badgeText}>{statusHr(status)}</Text>
+                      <Text style={s.badgeText}>{statusLabel(status)}</Text>
                     </View>
                   </View>
 
@@ -450,18 +565,29 @@ export default function SessionsIndex() {
 
                   <View style={s.rowBtns}>
                     <Pressable style={s.primaryBtn} onPress={open}>
-                      <FontAwesome name="folder-open" size={14} color="#fff" />
+                      <FontAwesome name="folder-open" size={13} color="#fff" />
                       <Text style={s.primaryBtnText}>Otvori</Text>
                     </Pressable>
 
                     <Pressable
-                      style={[s.dangerBtn, (!canDelete || deleteM.isPending) && s.disabled]}
-                      onPress={() => askDelete(item)}
-                      disabled={!canDelete || deleteM.isPending}
+                      style={[s.cancelActionBtn, (!canMutate || anyBusy) && s.disabled]}
+                      onPress={() => askCancel(item)}
+                      disabled={!canMutate || anyBusy}
                     >
-                      <FontAwesome name="trash" size={14} color={Colors.dangerText} />
+                      <FontAwesome name="ban" size={13} color={Colors.text} />
+                      <Text style={s.cancelActionBtnText}>
+                        {canMutate ? "Otkaži" : "Zaključ."}
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[s.dangerBtn, (!canMutate || anyBusy) && s.disabled]}
+                      onPress={() => askDelete(item)}
+                      disabled={!canMutate || anyBusy}
+                    >
+                      <FontAwesome name="trash" size={13} color={Colors.dangerText} />
                       <Text style={s.dangerBtnText}>
-                        {canDelete ? (deleteM.isPending ? "…" : "Obriši") : "Zaključano"}
+                        {canMutate ? "Obriši" : "Zaključ."}
                       </Text>
                     </Pressable>
                   </View>
@@ -475,10 +601,12 @@ export default function SessionsIndex() {
                 <Text style={s.emptySub}>
                   {q.trim()
                     ? "Nijedna evidencija ne odgovara pretrazi."
-                    : "Kreiraj novu evidenciju za početak."}
+                    : dateActive
+                      ? "Nema evidencija za odabrani period."
+                      : "Kreiraj novu evidenciju za početak."}
                 </Text>
 
-                {!q.trim() && (
+                {!q.trim() && !dateActive && (
                   <Pressable style={s.addBtn} onPress={openCreate}>
                     <FontAwesome name="plus" size={14} color="#fff" />
                     <Text style={s.addBtnText}>Nova evidencija</Text>
@@ -589,6 +717,17 @@ export default function SessionsIndex() {
       </CenterSheet>
 
       <CenterConfirmSheet
+        visible={cancelOpen}
+        title="Otkaži evidenciju?"
+        description={cancelTarget ? cleanText((cancelTarget as any)?.title) : ""}
+        confirmText="Otkaži"
+        loading={cancelM.isPending}
+        onClose={() => setCancelOpen(false)}
+        onConfirm={confirmCancel}
+        closeOnBackdrop={!cancelM.isPending}
+      />
+
+      <CenterConfirmSheet
         visible={deleteOpen}
         title="Obrisati evidenciju?"
         description={deleteTarget ? cleanText((deleteTarget as any)?.title) : ""}
@@ -600,14 +739,15 @@ export default function SessionsIndex() {
         closeOnBackdrop={!deleteM.isPending}
       />
 
-      <InfoResultPopup
-        visible={resultPopup.visible}
-        variant={resultPopup.kind}
-        title={resultPopup.title}
-        message={resultPopup.message}
-        buttonText="U redu"
-        onClose={() => setResultPopup((prev) => ({ ...prev, visible: false }))}
-        closeOnBackdrop={false}
+      <DateRangeSheet
+        visible={dateOpen}
+        onClose={() => setDateOpen(false)}
+        valueFromIso={dateFromIso}
+        valueToIso={dateToIso}
+        onApplyIso={(fromIso, toIso) => {
+          setDateFromIso(fromIso);
+          setDateToIso(toIso);
+        }}
       />
     </Screen>
   );
