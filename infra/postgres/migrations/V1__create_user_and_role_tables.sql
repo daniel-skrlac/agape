@@ -204,3 +204,9 @@ CREATE TABLE dispatch_booking_session_entry
 
 CREATE INDEX idx_dbse_session ON dispatch_booking_session_entry(session_id);
 CREATE INDEX idx_dbse_template ON dispatch_booking_session_entry(template_id);
+
+CREATE INDEX IF NOT EXISTS idx_dbs_owner_created_id
+    ON dispatch_booking_session (owner_user_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_dbs_owner_status_created_id
+    ON dispatch_booking_session (owner_user_id, status, created_at DESC, id DESC);
