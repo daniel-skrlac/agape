@@ -1,10 +1,10 @@
 package hr.agape.template.resource;
 
 import hr.agape.common.constant.Roles;
-import hr.agape.common.dto.BaseSearchFilter;
 import hr.agape.common.response.Responses;
 import hr.agape.template.dto.BookingSessionCreateRequestDTO;
 import hr.agape.template.dto.BookingSessionEntryUpsertRequestDTO;
+import hr.agape.template.dto.BookingSessionsQueryDTO;
 import hr.agape.template.service.DispatchBookingSessionService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
@@ -38,11 +38,8 @@ public class DispatchBookingSessionResource {
     }
 
     @GET
-    public Response list(
-            @QueryParam("status") String status,
-            @BeanParam @Valid BaseSearchFilter paging
-    ) {
-        return Responses.from(service.listSessions(status, paging));
+    public Response list(@BeanParam @Valid BookingSessionsQueryDTO query) {
+        return Responses.from(service.listSessions(query));
     }
 
     @POST

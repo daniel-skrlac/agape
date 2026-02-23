@@ -16,6 +16,7 @@ import hr.agape.template.dto.BookingSessionCreateRequestDTO;
 import hr.agape.template.dto.BookingSessionEntryResponseDTO;
 import hr.agape.template.dto.BookingSessionEntryUpsertRequestDTO;
 import hr.agape.template.dto.BookingSessionResponseDTO;
+import hr.agape.template.dto.BookingSessionsQueryDTO;
 import hr.agape.template.dto.TemplateBookDocPatchDTO;
 import hr.agape.template.dto.TemplateBookItemDTO;
 import hr.agape.template.enumeration.BookingSessionStatus;
@@ -79,18 +80,17 @@ public class DispatchBookingSessionService {
         this.mapper = mapper;
     }
 
-    public ServiceResponseDTO<PagedResultDTO<BookingSessionResponseDTO>> listSessions(
-            String statusRaw,
-            BaseSearchFilter f
-    ) {
+    public ServiceResponseDTO<PagedResultDTO<BookingSessionResponseDTO>> listSessions(BookingSessionsQueryDTO q) {
         try {
             Long userId = authUtil.requireUserId();
 
-            int page = (f == null) ? 0 : f.getPage();
-            int size = (f == null) ? 10 : f.getSize();
+            int page = (q == null) ? 0 : Math.max(0, q.getPage());
+            int size = (q == null) ? 10 : q.getSize();
 
             BookingSessionStatus status = null;
-            if (statusRaw != null && !statusRaw.isBlank()) {
+            String statusRaw = (q == null) ? null : q.getStatus();
+
+            if (statusRaw != null && !statusRaw.isBlank() && !"ALL".equalsIgnoreCase(statusRaw.trim())) {
                 try {
                     status = BookingSessionStatus.valueOf(statusRaw.trim().toUpperCase());
                 } catch (Exception e) {
@@ -98,16 +98,46 @@ public class DispatchBookingSessionService {
                 }
             }
 
-            long total;
-            List<DispatchBookingSessionEntity> list;
-
-            if (status == null) {
-                total = sessionRepo.countForOwner(userId);
-                list = sessionRepo.pageForOwner(userId, page, size);
-            } else {
-                total = sessionRepo.countForOwnerByStatus(userId, status);
-                list = sessionRepo.pageForOwnerByStatus(userId, status, page, size);
+            String search = (q == null) ? null : q.getQ();
+            if (search != null) {
+                search = search.trim();
+                if (search.isBlank()) search = null;
             }
+
+            var dateFrom = (q == null) ? null : q.getDateFrom();
+            var dateTo = (q == null) ? null : q.getDateTo();
+
+            if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+                return ServiceResponseDirector.errorBadRequest("dateFrom cannot be after dateTo.");
+            }
+
+            OffsetDateTime createdFrom = null;
+            OffsetDateTime createdToExclusive = null;
+
+            if (dateFrom != null) {
+                createdFrom = dateFrom.atStartOfDay(ZAGREB).toOffsetDateTime();
+            }
+            if (dateTo != null) {
+                createdToExclusive = dateTo.plusDays(1).atStartOfDay(ZAGREB).toOffsetDateTime();
+            }
+
+            long total = sessionRepo.countForOwnerFiltered(
+                    userId,
+                    status,
+                    search,
+                    createdFrom,
+                    createdToExclusive
+            );
+
+            List<DispatchBookingSessionEntity> list = sessionRepo.pageForOwnerFiltered(
+                    userId,
+                    status,
+                    search,
+                    createdFrom,
+                    createdToExclusive,
+                    page,
+                    size
+            );
 
             List<BookingSessionResponseDTO> items = list.stream()
                     .map(s -> {
