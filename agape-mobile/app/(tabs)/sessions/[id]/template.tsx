@@ -1,41 +1,44 @@
-// app/(tabs)/sessions/[id]/template.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, router } from "expo-router";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
 import NavigationHeader from "@/components/NavigationHeader";
+import { ErrorCard } from "@/components/ErrorCard";
 
-import type { FolderResponseDTO, TemplateDocResponseDTO, TemplateResponseDTO } from "@/app/models/generated";
-import { dispatchTemplateService } from "@/app/api/services/dispatchTemplateService";
+import { toUserMessage } from "@/app/api/apiClient";
+import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
+import { useTemplateFolders, useTemplateList } from "@/app/api/hooks/templates/useDispatchTemplates";
+import type { FolderResponseDTO, TemplateResponseDTO } from "@/app/models/generated";
 import { patchDraft } from "../_entryDraftStore";
 
 const MAX_W = 560;
+const PAGE_SIZE = 20;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
 const SEARCH_DEBOUNCE_MS = 220;
 
 type ScopeTab = "mine" | "shared";
 
-function isTemplateInFolder(t: any, folderId: number | null) {
-  const fid = t?.folderId ?? t?.folder?.id ?? null;
-  if (folderId == null) return fid == null;
-  return Number(fid ?? 0) === Number(folderId ?? 0);
-}
+type RowEntry =
+  | { kind: "FOLDER"; id: number; name: string; raw: FolderResponseDTO }
+  | { kind: "TPL"; id: number; raw: TemplateResponseDTO };
 
 function normDocDocumentId(d: any): number {
   return Number(d?.documentId ?? d?.document_id ?? d?.document?.id ?? d?.document?.documentId ?? 0);
 }
+
 function normDocLabel(d: any): string {
-  // Prefer explicit "documentName" / "documentCode" if backend supplies it.
   const name = String(d?.documentName ?? d?.document?.name ?? d?.name ?? "").trim();
   const code = String(d?.documentCode ?? d?.document?.code ?? d?.code ?? "").trim();
   const docId = normDocDocumentId(d);
+
   if (name) return name;
   if (code) return code;
   if (docId) return `Dokument #${docId}`;
-  // fallback to template-doc id if nothing
+
   const tid = Number(d?.id ?? 0);
   return tid ? `Doc #${tid}` : "Dokument";
 }
@@ -44,13 +47,13 @@ function summarizeDocTypes(tpl: any): string {
   const docs = ((tpl as any)?.documents ?? (tpl as any)?.docs ?? []) as any[];
   const labels = docs.map(normDocLabel).filter(Boolean);
 
-  // keep it short: unique, first 2 + “+N”
   const uniq: string[] = [];
   for (const x of labels) {
-    const k = x.trim();
+    const k = String(x).trim();
     if (!k) continue;
     if (!uniq.includes(k)) uniq.push(k);
   }
+
   if (!uniq.length) return "—";
   if (uniq.length <= 2) return uniq.join(" • ");
   return `${uniq.slice(0, 2).join(" • ")} • +${uniq.length - 2}`;
@@ -61,125 +64,132 @@ export default function SessionTemplatePicker() {
   const sessionId = Number(params.id);
   const partnerId = Number(params.partnerId);
 
-  const [tab, setTab] = useState<ScopeTab>("mine");
+  const tabBarHeight = useBottomTabBarHeight();
+  const listBottomPad = tabBarHeight + 16;
 
+  const [tab, setTab] = useState<ScopeTab>("mine");
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
 
-  // folders (mine only)
-  const [folders, setFolders] = useState<FolderResponseDTO[]>([]);
   const [folderId, setFolderId] = useState<number | null>(null);
   const [folderStack, setFolderStack] = useState<Array<{ id: number | null; name: string }>>([{ id: null, name: "Root" }]);
 
-  // lists
-  const [mineAll, setMineAll] = useState<TemplateResponseDTO[]>([]);
-  const [sharedAll, setSharedAll] = useState<TemplateResponseDTO[]>([]);
+  const showFolders = tab === "mine";
 
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  // debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [q]);
 
-  // load folders once (for browsing my templates)
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const list = await dispatchTemplateService.listFolders();
-        if (!alive) return;
-        setFolders((list ?? []) as any);
-      } catch {
-        if (!alive) return;
-        setFolders([]);
+  const foldersQ = useTemplateFolders({
+    parentId: folderId,
+    size: PAGE_SIZE,
+    enabled: showFolders,
+  });
+
+  const templatesQ = useTemplateList({
+    folderId: tab === "mine" ? folderId : null,
+    q: debouncedQ,
+    scope: tab === "mine" ? "OWNED" : "SHARED",
+    rootOnly: tab === "mine" && folderId == null,
+    size: PAGE_SIZE,
+    enabled: true,
+  });
+
+  const folderRows = useMemo(() => {
+    const qq = debouncedQ.toLowerCase();
+    const src = (foldersQ.data ?? []) as FolderResponseDTO[];
+    if (!qq) return src;
+
+    return src.filter((f: any) => String((f as any)?.name ?? "").toLowerCase().includes(qq));
+  }, [foldersQ.data, debouncedQ]);
+
+  const templateRows = useMemo(() => {
+    return (templatesQ.data ?? []) as TemplateResponseDTO[];
+  }, [templatesQ.data]);
+
+  const rows = useMemo<RowEntry[]>(() => {
+    const out: RowEntry[] = [];
+
+    if (showFolders) {
+      for (const f of folderRows) {
+        const id = Number((f as any)?.id ?? 0);
+        if (!id) continue;
+
+        out.push({
+          kind: "FOLDER",
+          id,
+          name: String((f as any)?.name ?? `Folder #${id}`),
+          raw: f,
+        });
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+    }
 
-  const childFolders = useMemo(() => {
-    return (folders ?? []).filter((f: any) => {
-      const pid = (f as any)?.parentId ?? (f as any)?.parent?.id ?? null;
-      return Number(pid ?? 0) === Number(folderId ?? 0);
-    });
-  }, [folders, folderId]);
+    for (const t of templateRows) {
+      const id = Number((t as any)?.id ?? 0);
+      if (!id) continue;
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setLoading(true);
-      setLoadError(null);
+      out.push({
+        kind: "TPL",
+        id,
+        raw: t,
+      });
+    }
 
-      try {
-        const name = debouncedQ || "";
+    return out;
+  }, [showFolders, folderRows, templateRows]);
 
-        // 1) My templates for current folder context
-        const mineParams = {
-          folderId: folderId == null ? null : folderId,
-          name,
-          includeShared: false,
-          rootOnly: folderId == null,
-        };
+  const { refreshing, onRefresh } = usePullToRefresh([
+    async () => {
+      if (showFolders) foldersQ.clearStatus?.();
+      templatesQ.clearStatus?.();
 
-        const mine = (await dispatchTemplateService.listTemplates(mineParams as any)) ?? [];
-        if (!alive) return;
-        setMineAll(mine as any);
+      await Promise.allSettled([
+        showFolders ? Promise.resolve(foldersQ.refresh?.()) : Promise.resolve(),
+        Promise.resolve(templatesQ.refresh?.()),
+      ]);
+    },
+  ]);
 
-        // 2) shared-only = mixed(includeShared=true) - mineRoot(includeShared=false)
-        const mixedParams = {
-          folderId: null,
-          name,
-          includeShared: true,
-          rootOnly: false,
-        };
-        const mixed = (await dispatchTemplateService.listTemplates(mixedParams as any)) ?? [];
-        if (!alive) return;
+  const onRefreshSafe = useCallback(async () => {
+    await onRefresh();
+  }, [onRefresh]);
 
-        const mineRootParams = {
-          folderId: null,
-          name,
-          includeShared: false,
-          rootOnly: false,
-        };
-        const mineRoot = (await dispatchTemplateService.listTemplates(mineRootParams as any)) ?? [];
+  const foldersQueryErrorMessage = useMemo(() => {
+    if (!showFolders) return null;
+    if (!foldersQ.error) return null;
+    if ((foldersQ.data?.length ?? 0) > 0) return null;
+    return toUserMessage(foldersQ.error, "Greška pri učitavanju mapa.");
+  }, [showFolders, foldersQ.error, foldersQ.data?.length]);
 
-        const mineIds = new Set((mineRoot as any[]).map((t: any) => String(t?.id)));
-        const sharedOnly = (mixed as any[]).filter((t: any) => !mineIds.has(String(t?.id)));
+  const templatesQueryErrorMessage = useMemo(() => {
+    if (!templatesQ.error) return null;
+    if ((templatesQ.data?.length ?? 0) > 0) return null;
+    return toUserMessage(templatesQ.error, "Greška pri učitavanju predložaka.");
+  }, [templatesQ.error, templatesQ.data?.length]);
 
-        setSharedAll(sharedOnly as any);
-      } catch (e: any) {
-        if (!alive) return;
-        setMineAll([]);
-        setSharedAll([]);
-        setLoadError(e?.message ?? "Greška pri dohvaćanju predložaka.");
-      } finally {
-        if (!alive) return;
-        setLoading(false);
-      }
-    })();
+  const topError = foldersQueryErrorMessage || templatesQueryErrorMessage || null;
 
-    return () => {
-      alive = false;
-    };
-  }, [folderId, debouncedQ]);
+  const onTopErrorAction = useCallback(async () => {
+    if (showFolders) foldersQ.clearStatus?.();
+    templatesQ.clearStatus?.();
+    await onRefreshSafe();
+  }, [showFolders, foldersQ, templatesQ, onRefreshSafe]);
+
+  const anyLoadingMore = (showFolders && foldersQ.loadingMore) || templatesQ.loadingMore;
+  const nextLoadMoreError = (showFolders ? foldersQ.loadMoreError : null) || templatesQ.loadMoreError || null;
+
+  const showFooterLoadMore = !!anyLoadingMore;
+  const showFooterLoadMoreError = !!nextLoadMoreError;
+
+  const isInitialLoading = (((showFolders && foldersQ.isLoading) || templatesQ.isLoading) && !refreshing);
 
   const breadcrumb = useMemo(() => folderStack.map((x) => x.name).join(" / "), [folderStack]);
 
-  const pick = (t: any) => {
-    const tplId = Number(t?.id ?? 0);
-    if (!tplId) return;
-    patchDraft(sessionId, partnerId, { templateId: tplId, docPatches: [], standaloneQty: {} });
-    router.back();
-  };
-
-  const openFolder = (f: any) => {
+  const openFolder = (f: FolderResponseDTO) => {
     const id = Number((f as any)?.id ?? 0);
     if (!id) return;
+
     setFolderId(id);
     setFolderStack((cur) => [...cur, { id, name: String((f as any)?.name ?? `Folder #${id}`) }]);
   };
@@ -187,36 +197,61 @@ export default function SessionTemplatePicker() {
   const goBackFolder = () => {
     setFolderStack((cur) => {
       if (cur.length <= 1) return cur;
+
       const next = cur.slice(0, -1);
       const last = next[next.length - 1];
       setFolderId(last?.id ?? null);
+
       return next;
     });
   };
 
-  const currentTemplates = useMemo(() => (tab === "shared" ? sharedAll : mineAll), [tab, mineAll, sharedAll]);
-  const showFolders = tab === "mine";
+  const pick = (tpl: TemplateResponseDTO) => {
+    const tplId = Number((tpl as any)?.id ?? 0);
+    if (!tplId) return;
+
+    patchDraft(sessionId, partnerId, { templateId: tplId, docPatches: [], standaloneQty: {} });
+    router.back();
+  };
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
       <NavigationHeader
         title="Odaberi predložak"
-        fallbackHref={{ pathname: "/(tabs)/sessions/[id]/entry" as const, params: { id: String(sessionId), partnerId: String(partnerId) } }}
+        fallbackHref={{
+          pathname: "/(tabs)/sessions/[id]/entry" as const,
+          params: { id: String(sessionId), partnerId: String(partnerId) },
+        }}
       />
 
       <View style={s.wrap}>
-        {/* tabs */}
+        {!!topError && (
+          <ErrorCard
+            title="Greška"
+            message={topError}
+            actionText="Pokušaj ponovno"
+            onAction={onTopErrorAction}
+            titleLines={1}
+            messageLines={3}
+          />
+        )}
+
         <View style={s.tabs}>
-          <Pressable style={[s.tabBtn, tab === "mine" && s.tabBtnActive]} onPress={() => setTab("mine")}>
+          <Pressable
+            style={[s.tabBtn, tab === "mine" && s.tabBtnActive]}
+            onPress={() => setTab("mine")}
+          >
             <Text style={[s.tabText, tab === "mine" && s.tabTextActive]}>Moji</Text>
           </Pressable>
 
-          <Pressable style={[s.tabBtn, tab === "shared" && s.tabBtnActive]} onPress={() => setTab("shared")}>
+          <Pressable
+            style={[s.tabBtn, tab === "shared" && s.tabBtnActive]}
+            onPress={() => setTab("shared")}
+          >
             <Text style={[s.tabText, tab === "shared" && s.tabTextActive]}>Dijeljeni</Text>
           </Pressable>
         </View>
 
-        {/* search */}
         <View style={s.searchWrap}>
           <FontAwesome name="search" size={14} color={Colors.sub} />
           <TextInput
@@ -236,10 +271,13 @@ export default function SessionTemplatePicker() {
           )}
         </View>
 
-        {/* breadcrumb only in mine */}
         {showFolders ? (
           <View style={s.breadcrumbRow}>
-            <Pressable style={[s.folderBackBtn, folderStack.length <= 1 && { opacity: 0.4 }]} disabled={folderStack.length <= 1} onPress={goBackFolder}>
+            <Pressable
+              style={[s.folderBackBtn, folderStack.length <= 1 && { opacity: 0.4 }]}
+              disabled={folderStack.length <= 1}
+              onPress={goBackFolder}
+            >
               <FontAwesome name="chevron-left" size={14} color={Colors.text} />
               <Text style={s.folderBackText}>Nazad</Text>
             </Pressable>
@@ -250,34 +288,52 @@ export default function SessionTemplatePicker() {
           </View>
         ) : null}
 
-        {!!loadError && <Text style={s.errText}>{loadError}</Text>}
-
-        {loading ? (
+        {isInitialLoading ? (
           <View style={s.center}>
             <ActivityIndicator />
             <Text style={s.muted}>Učitavam…</Text>
           </View>
         ) : (
           <FlatList
-            data={[...(showFolders ? (childFolders as any[]) : []), ...(currentTemplates as any[])]}
-            keyExtractor={(x: any, idx) => {
-              const looksLikeFolder = (x as any)?.parentId !== undefined || (x as any)?.parent !== undefined;
-              return looksLikeFolder ? `folder-${String((x as any)?.id)}` : `tpl-${String((x as any)?.id)}-${idx}`;
-            }}
-            contentContainerStyle={{ gap: 10, paddingBottom: 20 }}
-            renderItem={({ item }: any) => {
-              const looksLikeFolder = showFolders && ((item as any)?.parentId !== undefined || (item as any)?.parent !== undefined);
+            style={s.list}
+            data={rows}
+            keyExtractor={(x) => `${x.kind}-${x.id}`}
+            refreshing={refreshing}
+            onRefresh={onRefreshSafe}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[s.listContent, { paddingBottom: listBottomPad }]}
+            scrollIndicatorInsets={{ bottom: listBottomPad }}
+            onEndReachedThreshold={0.35}
+            onEndReached={() => {
+              if (
+                refreshing ||
+                (showFolders && (foldersQ.loading || foldersQ.loadingMore)) ||
+                templatesQ.loading ||
+                templatesQ.loadingMore
+              ) {
+                return;
+              }
 
-              if (looksLikeFolder && (item as any)?.id != null && (item as any)?.name != null) {
+              if (showFolders && foldersQ.canLoadMore) {
+                foldersQ.loadMore?.();
+                return;
+              }
+
+              if (templatesQ.canLoadMore) {
+                templatesQ.loadMore?.();
+              }
+            }}
+            renderItem={({ item }) => {
+              if (item.kind === "FOLDER") {
                 return (
-                  <Pressable style={[s.row, s.folderRow]} onPress={() => openFolder(item)}>
+                  <Pressable style={[s.row, s.folderRow]} onPress={() => openFolder(item.raw)}>
                     <FontAwesome name="folder" size={16} color={Colors.text} />
                     <View style={{ flex: 1 }}>
                       <Text style={s.rowTitle} numberOfLines={1}>
-                        {(item as any).name}
+                        {item.name}
                       </Text>
                       <Text style={s.rowSub} numberOfLines={1}>
-                        Folder • ID: {(item as any).id}
+                        Folder • ID: {item.id}
                       </Text>
                     </View>
                     <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
@@ -285,36 +341,53 @@ export default function SessionTemplatePicker() {
                 );
               }
 
-              // template row
-              if (tab === "mine" && !isTemplateInFolder(item, folderId)) return null;
-
-              const isShared = tab === "shared";
-              const perm = String((item as any)?.sharedPermission ?? "").toUpperCase();
-              const permLabel = isShared ? (perm ? `Dijeljeni • ${perm}` : "Dijeljeni") : "Moj";
-
-              const docTypes = summarizeDocTypes(item);
+              const tpl: any = item.raw;
+              const perm = String(tpl?.sharedPermission ?? "").toUpperCase();
+              const permLabel = tab === "shared" ? (perm ? `Dijeljeni • ${perm}` : "Dijeljeni") : "Moj";
+              const docTypes = summarizeDocTypes(tpl);
 
               return (
-                <Pressable style={s.row} onPress={() => pick(item)}>
+                <Pressable style={s.row} onPress={() => pick(item.raw)}>
                   <View style={{ flex: 1 }}>
                     <Text style={s.rowTitle} numberOfLines={2}>
-                      {(item as any).name ?? `Predložak #${(item as any).id}`}
+                      {tpl?.name ?? `Predložak #${tpl?.id}`}
                     </Text>
                     <Text style={s.rowSub} numberOfLines={1}>
-                      #{(item as any).id} • {permLabel}
+                      #{tpl?.id} • {permLabel}
                     </Text>
-
-                    {/* ✅ document type line (e.g. Izdatnica, Primka...) */}
                     <Text style={s.rowDocType} numberOfLines={1}>
                       {docTypes}
                     </Text>
                   </View>
-
                   <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
                 </Pressable>
               );
             }}
             ListEmptyComponent={<Text style={s.empty}>Nema rezultata.</Text>}
+            ListFooterComponent={
+              showFooterLoadMore || showFooterLoadMoreError ? (
+                <View style={s.footerWrap}>
+                  {showFooterLoadMore ? <ActivityIndicator size="small" /> : null}
+
+                  {showFooterLoadMoreError ? (
+                    <Pressable
+                      onPress={() => {
+                        if (showFolders && foldersQ.canLoadMore) {
+                          foldersQ.loadMore?.();
+                          return;
+                        }
+                        templatesQ.loadMore?.();
+                      }}
+                      style={s.footerRetryBtn}
+                    >
+                      <Text style={s.footerRetryText}>
+                        {String(nextLoadMoreError)} • Dodirni za pokušaj ponovno
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null
+            }
           />
         )}
       </View>
@@ -323,9 +396,21 @@ export default function SessionTemplatePicker() {
 }
 
 const s = StyleSheet.create({
-  wrap: { padding: 14, gap: 12, alignSelf: "center", width: "100%", maxWidth: MAX_W },
+  wrap: {
+    flex: 1,
+    minHeight: 0,
+    padding: 14,
+    gap: 12,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: MAX_W,
+  },
 
-  tabs: { width: "100%", flexDirection: "row", gap: 10 },
+  tabs: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+  },
   tabBtn: {
     flex: 1,
     paddingVertical: 10,
@@ -334,14 +419,18 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  tabBtnActive: { backgroundColor: "rgba(249,115,22,0.18)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(249,115,22,0.35)" },
+  tabBtnActive: {
+    backgroundColor: "rgba(249,115,22,0.18)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.35)",
+  },
   tabText: { fontWeight: "900", color: Colors.sub },
   tabTextActive: { color: Colors.text },
 
   searchWrap: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
     backgroundColor: "rgba(148,163,184,0.14)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
@@ -349,14 +438,39 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  search: { flex: 1, fontWeight: "800", color: Colors.text },
+  search: {
+    flex: 1,
+    height: 24,
+    paddingVertical: 0,
+    fontWeight: "800",
+    color: Colors.text,
+    fontSize: 14,
+  },
 
-  breadcrumbRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  folderBackBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)" },
+  breadcrumbRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  folderBackBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.18)",
+  },
   folderBackText: { fontWeight: "900", color: Colors.text },
   breadcrumbText: { flex: 1, fontWeight: "800", color: Colors.sub },
 
-  errText: { color: Colors.dangerText, fontWeight: "900" },
+  list: {
+    flex: 1,
+    minHeight: 0,
+  },
+  listContent: {
+    gap: 10,
+  },
 
   row: {
     padding: 12,
@@ -368,7 +482,10 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  folderRow: { backgroundColor: "rgba(148,163,184,0.10)", borderColor: "rgba(148,163,184,0.30)" },
+  folderRow: {
+    backgroundColor: "rgba(148,163,184,0.10)",
+    borderColor: "rgba(148,163,184,0.30)",
+  },
 
   rowTitle: { fontWeight: "900", color: Colors.text },
   rowSub: { color: Colors.sub, fontWeight: "800", marginTop: 2 },
@@ -377,4 +494,22 @@ const s = StyleSheet.create({
   center: { padding: 20, alignItems: "center", gap: 10 },
   muted: { color: Colors.sub, fontWeight: "800" },
   empty: { textAlign: "center", color: Colors.sub, fontWeight: "800", paddingVertical: 18 },
+
+  footerWrap: {
+    paddingVertical: 12,
+    alignItems: "center",
+    gap: 8,
+  },
+  footerRetryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+  },
+  footerRetryText: {
+    color: Colors.text,
+    fontWeight: "700",
+  },
 });

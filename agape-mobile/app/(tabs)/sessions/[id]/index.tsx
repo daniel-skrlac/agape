@@ -1,12 +1,11 @@
-// app/(tabs)/sessions/[id]/index.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
-import { Banner } from "@/components/Banner";
+import { ErrorCard } from "@/components/ErrorCard";
 import NavigationHeader from "@/components/NavigationHeader";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import ValidateImpactModal from "@/components/ValidateImpactModal";
@@ -23,19 +22,28 @@ import type {
 } from "@/app/models/generated";
 
 import { partnerService } from "@/app/api/services/partnerService";
-import { useBookingSession, useDeleteBookingSessionEntry, useFinalizeBookingSession } from "@/app/api/hooks/sessions/useBookingSessions";
+import {
+  useBookingSession,
+  useDeleteBookingSessionEntry,
+  useFinalizeBookingSession,
+} from "@/app/api/hooks/sessions/useBookingSessions";
 import { useDispatchValidate } from "@/app/api/hooks/sessions/useDispatchValidate";
-import { ApiError } from "@/app/api/apiClient";
+import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
+import { toUserMessage } from "@/app/api/apiClient";
 
-import { getDraft } from "../_entryDraftStore";
-
-/* ----------------------- helpers ----------------------- */
+import {
+  clearDraft,
+  clearDraftsForSession,
+  getDraft,
+  type EntryDraft,
+} from "../_entryDraftStore";
 
 function cleanText(v: any) {
   const s = String(v ?? "").trim();
   if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) return s.slice(1, -1);
   return s;
 }
+
 function cleanDescription(v: any): string | null {
   if (v == null) return null;
   if (Array.isArray(v) && v.length === 0) return null;
@@ -44,17 +52,7 @@ function cleanDescription(v: any): string | null {
   if (s.replace(/\s/g, "") === "[]") return null;
   return s;
 }
-function badgeStyle(status: any) {
-  if (status === "FINALIZED") return { backgroundColor: "rgba(34,197,94,0.16)", borderColor: "rgba(34,197,94,0.34)" };
-  if (status === "CANCELLED") return { backgroundColor: "rgba(239,68,68,0.14)", borderColor: "rgba(239,68,68,0.34)" };
-  return { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.35)" };
-}
-function statusHr(status: any) {
-  if (status === "DRAFT") return "DRAFT";
-  if (status === "FINALIZED") return "FINAL";
-  if (status === "CANCELLED") return "STORNO";
-  return String(status ?? "");
-}
+
 function initials(name: string) {
   const n = cleanText(name);
   if (!n) return "•";
@@ -64,33 +62,170 @@ function initials(name: string) {
   return (a + b).toUpperCase();
 }
 
-/** Show only backend "message" (no JSON dump). */
-function getBackendMessage(e: unknown): string {
-  if (e instanceof ApiError) {
-    const body = e.body as any;
-    return (body?.message as string) || e.message || "Request failed";
-  }
-  if (e instanceof Error) return e.message || "Request failed";
-  return "Request failed";
+function statusHr(status: any) {
+  if (status === "DRAFT") return "DRAFT";
+  if (status === "FINALIZED") return "FINAL";
+  if (status === "CANCELLED") return "STORNO";
+  return String(status ?? "");
 }
 
-/** tiny concurrency helper (no caching; just faster) */
+function badgeStyle(kind: any): { backgroundColor: string; borderColor: string; textColor: string } {
+  if (kind === "FINALIZED" || kind === "FINAL") {
+    return {
+      backgroundColor: "rgba(34,197,94,0.14)",
+      borderColor: "rgba(34,197,94,0.30)",
+      textColor: Colors.text,
+    };
+  }
+
+  if (kind === "CANCELLED" || kind === "ERROR" || kind === "BAD") {
+    return {
+      backgroundColor: "rgba(239,68,68,0.10)",
+      borderColor: "rgba(239,68,68,0.30)",
+      textColor: Colors.dangerText,
+    };
+  }
+
+  if (kind === "WARN") {
+    return {
+      backgroundColor: "rgba(249,115,22,0.14)",
+      borderColor: "rgba(249,115,22,0.30)",
+      textColor: Colors.text,
+    };
+  }
+
+  return {
+    backgroundColor: "rgba(249,115,22,0.10)",
+    borderColor: "rgba(249,115,22,0.28)",
+    textColor: Colors.text,
+  };
+}
+
 async function mapConcurrent<T, R>(items: T[], concurrency: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let i = 0;
+
   const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
     while (i < items.length) {
       const idx = i++;
       out[idx] = await fn(items[idx]);
     }
   });
+
   await Promise.all(workers);
   return out;
 }
 
-/* ----------------------- validate payload ----------------------- */
+function entryNameHint(entry: any): string | null {
+  const candidates = [entry?.partnerName, entry?.partner?.name, entry?.name];
+  for (const c of candidates) {
+    const s = cleanText(c);
+    if (s) return s;
+  }
+  return null;
+}
+
+function entryMode(entry: any): DraftMode {
+  return ((entry?.draftMode as any) || (entry?.draft ? ("DRAFT" as any) : ("FINAL" as any)) || ("DRAFT" as any)) as any;
+}
+
+function entryMetaCounts(entry: any) {
+  const docs = Array.isArray(entry?.docPatches)
+    ? entry.docPatches.length
+    : Array.isArray(entry?.documentPatches)
+      ? entry.documentPatches.length
+      : Array.isArray(entry?.patches)
+        ? entry.patches.length
+        : 0;
+
+  const extras = Array.isArray(entry?.extraItems) ? entry.extraItems.length : Array.isArray(entry?.extras) ? entry.extras.length : 0;
+  const direct = Array.isArray(entry?.items)
+    ? entry.items.length
+    : Array.isArray(entry?.validationItems)
+      ? entry.validationItems.length
+      : Array.isArray(entry?.standaloneItems)
+        ? entry.standaloneItems.length
+        : 0;
+
+  return { docs, extras, direct };
+}
+
+function usePartnerNameMap(entries: BookingSessionEntryResponseDTO[], enabled: boolean) {
+  const [fetchedMap, setFetchedMap] = useState<Record<string, PartnerResponseDTO>>({});
+  const [loading, setLoading] = useState(false);
+  const runRef = useRef(0);
+
+  const directMap = useMemo(() => {
+    const map: Record<string, PartnerResponseDTO> = {};
+    for (const e of entries as any[]) {
+      const pid = Number(e?.partnerId);
+      const name = entryNameHint(e);
+      if (!pid || !name) continue;
+      map[String(pid)] = { id: pid, name } as any;
+    }
+    return map;
+  }, [entries]);
+
+  const ids = useMemo(() => {
+    const raw = entries.map((e: any) => Number(e?.partnerId)).filter((x) => Number.isFinite(x) && x > 0);
+    return Array.from(new Set(raw));
+  }, [entries]);
+
+  const missingIds = useMemo(
+    () => ids.filter((id) => !directMap[String(id)] && !fetchedMap[String(id)]),
+    [ids, directMap, fetchedMap]
+  );
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (!missingIds.length) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const runId = ++runRef.current;
+    setLoading(true);
+
+    (async () => {
+      try {
+        const results = await mapConcurrent(missingIds, 3, async (id) => {
+          try {
+            const res = await partnerService.pagePartners({ page: 0, size: 10, q: String(id) });
+            const hit = (res.items ?? []).find((p: any) => Number(p?.id) === Number(id)) ?? null;
+            return { id, hit } as { id: number; hit: PartnerResponseDTO | null };
+          } catch {
+            return { id, hit: null } as { id: number; hit: PartnerResponseDTO | null };
+          }
+        });
+
+        if (cancelled || runRef.current !== runId) return;
+
+        setFetchedMap((prev) => {
+          const next = { ...prev };
+          for (const r of results) {
+            if (r.hit) next[String((r.hit as any).id)] = r.hit;
+          }
+          return next;
+        });
+      } finally {
+        if (cancelled || runRef.current !== runId) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, missingIds]);
+
+  const partnerById = useMemo(() => ({ ...fetchedMap, ...directMap }), [fetchedMap, directMap]);
+
+  return { partnerById, loading };
+}
 
 type QtyMap = Record<string, number>;
+
 function addQtyToMap(qty: QtyMap, itemId: any, q: any) {
   const id = Number(itemId);
   const n = Number(q ?? 0);
@@ -98,6 +233,7 @@ function addQtyToMap(qty: QtyMap, itemId: any, q: any) {
   const k = String(id);
   qty[k] = Number(qty[k] ?? 0) + n;
 }
+
 function sumToItems(qty: QtyMap): TemplateBookItemDTO[] {
   return Object.entries(qty)
     .map(([k, v]) => ({ itemId: Number(k), quantity: Number(v) }))
@@ -105,10 +241,15 @@ function sumToItems(qty: QtyMap): TemplateBookItemDTO[] {
     .sort((a, b) => Number(a.itemId) - Number(b.itemId));
 }
 
-/**
- * Build payload for validate endpoint for ONE partner entry.
- * Uses store draft if available to prevent "overriding with empty".
- */
+function pickTouchedAware<T = any>(draft: EntryDraft | null, key: keyof EntryDraft, fallback: T): T {
+  if (!draft) return fallback;
+  if (draft._touched?.[key]) {
+    return (draft as any)[key] as T;
+  }
+  const value = (draft as any)[key];
+  return (value ?? fallback) as T;
+}
+
 function buildValidatePayloadFromEntry(args: {
   sessionId: number;
   warehouseId: number;
@@ -116,30 +257,39 @@ function buildValidatePayloadFromEntry(args: {
   entry: any;
 }): { payload: DispatchRequestValidationDTO; warning: string | null } {
   const { sessionId, warehouseId, partnerId, entry } = args;
-
   const draft = getDraft(sessionId, partnerId);
 
   const draftMode: DraftMode =
-    ((draft?.draftMode as any) || (entry?.draftMode as any) || (entry?.draft ? ("DRAFT" as any) : ("FINAL" as any)) || ("DRAFT" as any)) as any;
+    (pickTouchedAware<DraftMode | null>(draft, "draftMode", null) ||
+      (entry?.draftMode as any) ||
+      (entry?.draft ? ("DRAFT" as any) : ("FINAL" as any)) ||
+      ("DRAFT" as any)) as any;
 
-  const note = (draft?.note ?? entry?.note ?? undefined) as any;
+  const noteRaw = pickTouchedAware<any>(draft, "note", entry?.note);
+  const documentDateRaw = pickTouchedAware<any>(draft, "documentDate", entry?.documentDate);
+
+  const note = noteRaw ?? undefined;
+  const documentDate = documentDateRaw ?? undefined;
 
   const docPatches: TemplateBookDocPatchDTO[] =
-    (draft?.docPatches as any) || (entry?.docPatches as any) || (entry?.documentPatches as any) || (entry?.patches as any) || [];
+    (pickTouchedAware<any>(draft, "docPatches", null) as any) ||
+    (entry?.docPatches as any) ||
+    (entry?.documentPatches as any) ||
+    (entry?.patches as any) ||
+    [];
 
   const extraItems: TemplateBookItemDTO[] = (entry?.extraItems as any) || (entry?.extras as any) || [];
-
   const directItems: TemplateBookItemDTO[] = (entry?.items as any) || (entry?.validationItems as any) || (entry?.standaloneItems as any) || [];
 
   const qty: QtyMap = {};
   let warning: string | null = null;
 
-  if (draft?.standaloneQty && typeof draft.standaloneQty === "object") {
-    Object.entries(draft.standaloneQty).forEach(([k, v]) => addQtyToMap(qty, k, v));
+  const standaloneQty = pickTouchedAware<any>(draft, "standaloneQty", null);
+  if (standaloneQty && typeof standaloneQty === "object") {
+    Object.entries(standaloneQty).forEach(([k, v]) => addQtyToMap(qty, k, v));
   }
 
   (docPatches ?? []).forEach((p: any) => ((p?.addItems ?? []) as any[]).forEach((it) => addQtyToMap(qty, it?.itemId, it?.quantity)));
-
   (extraItems ?? []).forEach((it: any) => addQtyToMap(qty, it?.itemId, it?.quantity));
 
   if (Object.keys(qty).length === 0 && Array.isArray(directItems) && directItems.length > 0) {
@@ -152,7 +302,7 @@ function buildValidatePayloadFromEntry(args: {
   const payload: DispatchRequestValidationDTO = {
     warehouseId: Number(warehouseId),
     partnerId: Number(partnerId),
-    documentDate: undefined as any,
+    documentDate: documentDate as any,
     draft: draftMode === "DRAFT",
     note,
     items: items as any,
@@ -164,35 +314,33 @@ function buildValidatePayloadFromEntry(args: {
 type ValidateRow = {
   partnerId: number;
   partnerName: string;
-
   ok: number;
   warn: number;
   bad: number;
   total: number;
-
   data: WarehouseBookingImpactDTO | null;
   error: string | null;
-
   warning: string | null;
 };
 
 function classifyImpact(data: any) {
   const items: any[] = ((data as any)?.items ?? []) as any[];
-  let ok = 0,
-    warn = 0,
-    bad = 0;
+  let ok = 0;
+  let warn = 0;
+  let bad = 0;
+
   for (const it of items) {
-    if (!!it?.missingInWarehouse) bad++;
-    else {
-      const after = Number(String(it?.afterEffectiveQty ?? "").replace(",", "."));
-      if (Number.isFinite(after) && after < 0) warn++;
-      else ok++;
+    if (!!it?.missingInWarehouse) {
+      bad++;
+      continue;
     }
+    const after = Number(String(it?.afterEffectiveQty ?? "").replace(",", "."));
+    if (Number.isFinite(after) && after < 0) warn++;
+    else ok++;
   }
+
   return { ok, warn, bad, total: items.length };
 }
-
-/* ----------------------- validate-many modal ----------------------- */
 
 function ValidateManyModal(props: {
   visible: boolean;
@@ -205,72 +353,100 @@ function ValidateManyModal(props: {
 }) {
   const { visible, loading, rows, onClose, onConfirm, onOpenDetail, disableClose } = props;
 
-  const anyBad = rows.some((r) => r.bad > 0);
-  const anyError = rows.some((r) => !!r.error);
-  const canConfirm = !loading && !anyError && !anyBad;
+  const summary = useMemo(() => {
+    const anyBad = rows.some((r) => r.bad > 0);
+    const anyError = rows.some((r) => !!r.error);
+    const anyWarning = rows.some((r) => !!r.warning);
 
-  const anyWarning = rows.some((r) => !!r.warning);
+    const okPartners = rows.filter((r) => !r.error && r.bad === 0 && r.warn === 0).length;
+    const warnPartners = rows.filter((r) => !r.error && r.bad === 0 && r.warn > 0).length;
+    const badPartners = rows.filter((r) => !r.error && r.bad > 0).length;
+    const errorPartners = rows.filter((r) => !!r.error).length;
+
+    return { anyBad, anyError, anyWarning, okPartners, warnPartners, badPartners, errorPartners };
+  }, [rows]);
+
+  const canConfirm = !loading && !summary.anyError && !summary.anyBad;
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={disableClose ? undefined : onClose}>
-      <View style={st2.wrap}>
-        <Pressable style={st2.backdrop} onPress={disableClose ? undefined : onClose} />
+      <View style={vm.wrap}>
+        <Pressable style={vm.backdrop} onPress={disableClose ? undefined : onClose} />
 
-        <View style={st2.card}>
-          <View style={st2.header}>
+        <View style={vm.card}>
+          <View style={vm.header}>
             <View style={{ flex: 1 }}>
-              <Text style={st2.title}>Validacija prije knjiženja</Text>
-              <Text style={st2.sub}>Pozivamo backend za svakog partnera. Draft iz store-a (ako postoji) je izvor istine.</Text>
+              <Text style={vm.title}>Validacija prije knjiženja</Text>
+              <Text style={vm.sub}>Provjera po partneru prije finalnog knjiženja sesije.</Text>
             </View>
 
-            <Pressable style={[st2.iconBtn, disableClose && { opacity: 0.5 }]} onPress={disableClose ? undefined : onClose} disabled={disableClose}>
+            <Pressable style={[vm.iconBtn, disableClose && { opacity: 0.5 }]} onPress={disableClose ? undefined : onClose} disabled={disableClose}>
               <FontAwesome name="close" size={18} color={Colors.text} />
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={st2.body} keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerStyle={vm.body} keyboardShouldPersistTaps="handled">
             {loading ? (
-              <View style={st2.stateBox}>
+              <View style={vm.stateBox}>
                 <ActivityIndicator />
-                <Text style={st2.stateTitle}>Provjeravam…</Text>
-                <Text style={st2.stateSub}>Molim pričekaj.</Text>
+                <Text style={vm.stateTitle}>Provjeravam…</Text>
+                <Text style={vm.stateSub}>Molim pričekaj.</Text>
               </View>
             ) : (
               <>
-                {!!anyWarning && (
-                  <View style={st2.warnBox}>
-                    <View style={st2.warnHeader}>
-                      <FontAwesome name="warning" size={16} color={Colors.text} />
-                      <Text style={st2.warnTitle}>Napomena</Text>
+                <View style={vm.summaryGrid}>
+                  <View style={vm.summaryChip}>
+                    <Text style={vm.summaryChipLabel}>OK</Text>
+                    <Text style={vm.summaryChipValue}>{summary.okPartners}</Text>
+                  </View>
+                  <View style={vm.summaryChip}>
+                    <Text style={vm.summaryChipLabel}>MINUS</Text>
+                    <Text style={vm.summaryChipValue}>{summary.warnPartners}</Text>
+                  </View>
+                  <View style={vm.summaryChip}>
+                    <Text style={vm.summaryChipLabel}>NEMA</Text>
+                    <Text style={vm.summaryChipValue}>{summary.badPartners}</Text>
+                  </View>
+                  <View style={vm.summaryChip}>
+                    <Text style={vm.summaryChipLabel}>ERROR</Text>
+                    <Text style={vm.summaryChipValue}>{summary.errorPartners}</Text>
+                  </View>
+                </View>
+
+                {!!summary.anyWarning && (
+                  <View style={vm.warnBox}>
+                    <View style={vm.warnHeader}>
+                      <FontAwesome name="warning" size={14} color={Colors.text} />
+                      <Text style={vm.warnTitle}>Napomena</Text>
                     </View>
-                    <Text style={st2.warnText}>Neki unosi koriste store draft / agregirane stavke jer backend entry DTO nema default stavke dokumenata.</Text>
+                    <Text style={vm.warnText}>Neki unosi koriste draft/store fallback za stavke.</Text>
                   </View>
                 )}
 
-                {!!anyError && (
-                  <View style={st2.errBox}>
-                    <View style={st2.errHeader}>
-                      <FontAwesome name="exclamation-triangle" size={16} color={Colors.dangerText} />
-                      <Text style={st2.errTitle}>Validacija nije uspjela za neke partnere</Text>
+                {!!summary.anyError && (
+                  <View style={vm.errBox}>
+                    <View style={vm.errHeader}>
+                      <FontAwesome name="exclamation-triangle" size={14} color={Colors.dangerText} />
+                      <Text style={vm.errTitle}>Validacija nije uspjela za neke partnere</Text>
                     </View>
                     {rows
                       .filter((r) => !!r.error)
                       .slice(0, 6)
                       .map((r) => (
-                        <Text key={`e-${r.partnerId}`} style={st2.errText}>
+                        <Text key={`e-${r.partnerId}`} style={vm.errText}>
                           {r.partnerName} • {r.error}
                         </Text>
                       ))}
                   </View>
                 )}
 
-                {!anyError && anyBad ? (
-                  <View style={st2.badBox}>
-                    <View style={st2.badHeader}>
-                      <FontAwesome name="ban" size={16} color={Colors.dangerText} />
-                      <Text style={st2.badTitle}>Neke stavke nisu u skladištu</Text>
+                {!summary.anyError && summary.anyBad ? (
+                  <View style={vm.badBox}>
+                    <View style={vm.badHeader}>
+                      <FontAwesome name="ban" size={14} color={Colors.dangerText} />
+                      <Text style={vm.badTitle}>Nedostaju stavke u skladištu</Text>
                     </View>
-                    <Text style={st2.badText}>Ne možemo knjižiti dok stavke koje nedostaju nisu dostupne.</Text>
+                    <Text style={vm.badText}>Knjiženje je blokirano dok nedostaci nisu riješeni.</Text>
                   </View>
                 ) : null}
 
@@ -278,61 +454,68 @@ function ValidateManyModal(props: {
                   {rows.map((r) => {
                     const pill =
                       !!r.error ? (
-                        <View style={[st2.pill, { backgroundColor: Colors.dangerBg, borderColor: "rgba(239,68,68,0.35)" }]}>
-                          <Text style={[st2.pillText, { color: Colors.dangerText }]}>ERROR</Text>
+                        <View style={[vm.pill, badgeStyle("ERROR")]}>
+                          <Text style={[vm.pillText, { color: badgeStyle("ERROR").textColor }]}>ERROR</Text>
                         </View>
                       ) : r.bad > 0 ? (
-                        <View style={[st2.pill, { backgroundColor: "rgba(239,68,68,0.12)", borderColor: "rgba(239,68,68,0.30)" }]}>
-                          <Text style={st2.pillText}>NEMA: {r.bad}</Text>
+                        <View style={[vm.pill, badgeStyle("BAD")]}>
+                          <Text style={[vm.pillText, { color: badgeStyle("BAD").textColor }]}>NEMA {r.bad}</Text>
                         </View>
                       ) : r.warn > 0 ? (
-                        <View style={[st2.pill, { backgroundColor: "rgba(249,115,22,0.14)", borderColor: "rgba(249,115,22,0.30)" }]}>
-                          <Text style={st2.pillText}>MINUS: {r.warn}</Text>
+                        <View style={[vm.pill, badgeStyle("WARN")]}>
+                          <Text style={[vm.pillText, { color: badgeStyle("WARN").textColor }]}>MINUS {r.warn}</Text>
                         </View>
                       ) : (
-                        <View style={[st2.pill, { backgroundColor: "rgba(34,197,94,0.14)", borderColor: "rgba(34,197,94,0.30)" }]}>
-                          <Text style={st2.pillText}>OK</Text>
+                        <View style={[vm.pill, badgeStyle("FINAL")]}>
+                          <Text style={[vm.pillText, { color: badgeStyle("FINAL").textColor }]}>OK</Text>
                         </View>
                       );
 
                     return (
-                      <Pressable key={`r-${r.partnerId}`} style={st2.rowCard} onPress={() => onOpenDetail(r)} android_disableSound>
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <Pressable key={`r-${r.partnerId}`} style={vm.rowCard} onPress={() => onOpenDetail(r)} android_disableSound>
+                        <View style={vm.rowTop}>
                           <View style={{ flex: 1 }}>
-                            <Text style={st2.rowName} numberOfLines={1}>
+                            <Text style={vm.rowName} numberOfLines={1}>
                               {r.partnerName}
                             </Text>
-                            <Text style={st2.rowSub}>
-                              Partner #{r.partnerId} • Validirano stavki: {r.total}
+                            <Text style={vm.rowSub}>
+                              Partner #{r.partnerId} • Stavki: {r.total}
                               {!!r.warning ? " • ⚠️" : ""}
                             </Text>
                           </View>
                           {pill}
                         </View>
 
-                        <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
-                          <View style={st2.smallHintPill}>
-                            <FontAwesome name="search" size={12} color={Colors.sub} />
-                            <Text style={st2.smallHintText}>Detalji</Text>
+                        <View style={vm.rowBottom}>
+                          <View style={vm.rowMiniPills}>
+                            <Text style={vm.rowMiniText}>OK {r.ok}</Text>
+                            <Text style={vm.rowMiniText}>MINUS {r.warn}</Text>
+                            <Text style={vm.rowMiniText}>NEMA {r.bad}</Text>
                           </View>
-                          {!!r.warning ? (
-                            <Text style={st2.warningLine} numberOfLines={2}>
-                              {r.warning}
-                            </Text>
-                          ) : null}
+
+                          <View style={vm.smallHintPill}>
+                            <FontAwesome name="search" size={11} color={Colors.sub} />
+                            <Text style={vm.smallHintText}>Detalji</Text>
+                          </View>
                         </View>
+
+                        {!!r.warning ? (
+                          <Text style={vm.warningLine} numberOfLines={2}>
+                            {r.warning}
+                          </Text>
+                        ) : null}
                       </Pressable>
                     );
                   })}
                 </View>
 
                 <View style={{ gap: 10, marginTop: 6 }}>
-                  <Pressable style={[st2.primary, !canConfirm && { opacity: 0.5 }]} onPress={onConfirm} disabled={!canConfirm}>
-                    <Text style={st2.primaryText}>{canConfirm ? "Knjiži" : anyBad ? "Ne mogu knjižiti" : "Ne mogu nastaviti"}</Text>
+                  <Pressable style={[vm.primary, !canConfirm && { opacity: 0.5 }]} onPress={onConfirm} disabled={!canConfirm}>
+                    <Text style={vm.primaryText}>{canConfirm ? "Knjiži sesiju" : summary.anyBad ? "Ne mogu knjižiti" : "Ne mogu nastaviti"}</Text>
                   </Pressable>
 
-                  <Pressable style={st2.secondary} onPress={onClose} disabled={disableClose}>
-                    <Text style={st2.secondaryText}>Zatvori</Text>
+                  <Pressable style={vm.secondary} onPress={onClose} disabled={disableClose}>
+                    <Text style={vm.secondaryText}>Zatvori</Text>
                   </Pressable>
                 </View>
               </>
@@ -343,8 +526,6 @@ function ValidateManyModal(props: {
     </Modal>
   );
 }
-
-/* ----------------------- screen ----------------------- */
 
 export default function SessionDetailIndex() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -357,123 +538,164 @@ export default function SessionDetailIndex() {
   const finalizeM = useFinalizeBookingSession(sessionId);
   const validateM = useDispatchValidate();
 
-  const err = (sQ.error as any)?.message || (delEntryM.error as any)?.message || (finalizeM.error as any)?.message || null;
+  const [screenError, setScreenError] = useState<string | null>(null);
+  const [suppressTopError, setSuppressTopError] = useState(false);
 
-  const headerTitle = cleanText((session as any)?.title) || "";
+  const resetMutationErrors = useCallback(() => {
+    delEntryM.reset();
+    finalizeM.reset();
+    validateM.reset();
+  }, [delEntryM, finalizeM, validateM]);
 
-  const entries = useMemo(
-    () => (((session as any)?.entries ?? []) as BookingSessionEntryResponseDTO[]),
-    [session?.id, (session as any)?.entries?.length]
+  const rawTopError =
+    screenError ||
+    (sQ.error ? toUserMessage(sQ.error, "Greška pri učitavanju evidencije.") : null) ||
+    (delEntryM.error ? toUserMessage(delEntryM.error, "Greška pri brisanju unosa.") : null) ||
+    (finalizeM.error ? toUserMessage(finalizeM.error, "Greška pri knjiženju sesije.") : null);
+
+  const topError = suppressTopError ? null : rawTopError;
+
+  const retryTopError = useCallback(async () => {
+    setSuppressTopError(true);
+    setScreenError(null);
+    resetMutationErrors();
+
+    try {
+      await sQ.refetch();
+    } finally {
+      setSuppressTopError(false);
+    }
+  }, [resetMutationErrors, sQ]);
+
+  const { refreshing, onRefresh } = usePullToRefresh([
+    async () => {
+      setSuppressTopError(false);
+      setScreenError(null);
+      resetMutationErrors();
+      await sQ.refetch();
+    },
+  ]);
+
+  const headerTitle = cleanText((session as any)?.title) || "Evidencija";
+  const status = (session as any)?.status;
+  const warehouseId = Number((session as any)?.warehouseId ?? 0) || null;
+  const canEdit = status === "DRAFT";
+
+  const entries = useMemo(() => (((session as any)?.entries ?? []) as BookingSessionEntryResponseDTO[]), [session]);
+  const { partnerById, loading: partnersLoading } = usePartnerNameMap(entries, !!session);
+
+  const partnerName = useCallback(
+    (partnerId: number, entry?: any) => {
+      const hint = entryNameHint(entry);
+      if (hint) return hint;
+      return cleanText(partnerById[String(partnerId)]?.name || "") || `Partner #${partnerId}`;
+    },
+    [partnerById]
   );
 
-  // ---------- partner names ----------
-  const [partnerById, setPartnerById] = useState<Record<string, PartnerResponseDTO>>({});
-  const [partnersLoading, setPartnersLoading] = useState(false);
+  const openPartnerPicker = useCallback(() => {
+    router.push({ pathname: "/(tabs)/sessions/[id]/partner" as const, params: { id: String(sessionId) } });
+  }, [sessionId]);
 
-  const loadRunRef = useRef(0);
+  const openEntry = useCallback(
+    (partnerId: number) => {
+      router.push({
+        pathname: "/(tabs)/sessions/[id]/entry" as const,
+        params: { id: String(sessionId), partnerId: String(partnerId) },
+      });
+    },
+    [sessionId]
+  );
+
   useEffect(() => {
     if (!session) return;
-
-    const ids = entries.map((e: any) => Number(e.partnerId)).filter(Boolean);
-    const uniq = Array.from(new Set(ids));
-
-    if (!uniq.length) {
-      setPartnerById({});
-      setPartnersLoading(false);
-      return;
+    if ((session as any)?.status && (session as any)?.status !== "DRAFT") {
+      clearDraftsForSession(sessionId);
     }
+  }, [session?.id, (session as any)?.status, sessionId]);
 
-    setPartnersLoading(true);
-
-    const runId = ++loadRunRef.current;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const results = await mapConcurrent(uniq, 3, async (id) => {
-          try {
-            const res = await partnerService.pagePartners({ page: 0, size: 10, q: String(id) });
-            const hit = (res.items ?? []).find((p: any) => Number(p.id) === Number(id)) ?? null;
-            return { id, hit } as { id: number; hit: PartnerResponseDTO | null };
-          } catch {
-            return { id, hit: null } as { id: number; hit: PartnerResponseDTO | null };
-          }
-        });
-
-        if (cancelled) return;
-        if (loadRunRef.current !== runId) return;
-
-        const map: Record<string, PartnerResponseDTO> = {};
-        for (const r of results) {
-          if (r.hit) map[String((r.hit as any).id)] = r.hit;
-        }
-
-        setPartnerById(map);
-      } finally {
-        if (cancelled) return;
-        if (loadRunRef.current !== runId) return;
-        setPartnersLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.id, entries.length]);
-
-  const partnerName = (partnerId: number) => cleanText(partnerById[String(partnerId)]?.name || "");
-
-  const openPartnerPicker = () => {
-    router.push({ pathname: "/(tabs)/sessions/[id]/partner" as const, params: { id: String(sessionId) } });
-  };
-
-  const openEntry = (partnerId: number) => {
-    router.push({
-      pathname: "/(tabs)/sessions/[id]/entry" as const,
-      params: { id: String(sessionId), partnerId: String(partnerId) },
-    });
-  };
-
-  // ---------- delete confirm ----------
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePid, setDeletePid] = useState<number | null>(null);
   const [deleteLbl, setDeleteLbl] = useState("");
 
-  const askDelete = (pid: number) => {
-    const nm = partnerName(pid);
-    setDeletePid(pid);
-    setDeleteLbl(nm ? `${nm} (#${pid})` : `Partner #${pid}`);
-    setDeleteOpen(true);
-  };
+  const askDelete = useCallback(
+    (pid: number, entry?: any) => {
+      const nm = partnerName(pid, entry);
+      setDeletePid(pid);
+      setDeleteLbl(`${nm} (#${pid})`);
+      setDeleteOpen(true);
+    },
+    [partnerName]
+  );
 
-  const deleteEntry = async () => {
+  const deleteEntry = useCallback(async () => {
     if (!deletePid) return;
-    await delEntryM.mutateAsync(Number(deletePid));
-    setDeleteOpen(false);
-    setDeletePid(null);
-    await sQ.refetch();
-  };
 
-  const status = (session as any)?.status;
-  const warehouseId = Number((session as any)?.warehouseId ?? 0) || null;
+    try {
+      setSuppressTopError(false);
+      setScreenError(null);
+      resetMutationErrors();
 
-  // ---------- VALIDATE then CONFIRM then FINALIZE ----------
-  const [validateOpen, setValidateOpen] = useState(false); // detail modal
+      await delEntryM.mutateAsync(Number(deletePid));
+      clearDraft(sessionId, Number(deletePid));
+      setDeleteOpen(false);
+      setDeletePid(null);
+      await sQ.refetch();
+    } catch (e) {
+      setScreenError(toUserMessage(e, "Greška pri brisanju unosa."));
+    }
+  }, [deletePid, delEntryM, sQ, sessionId, resetMutationErrors]);
+
+  const [validateOpen, setValidateOpen] = useState(false);
   const [validateManyOpen, setValidateManyOpen] = useState(false);
   const [validateBusy, setValidateBusy] = useState(false);
   const [validateManyRows, setValidateManyRows] = useState<ValidateRow[]>([]);
 
-  // detail modal state
   const [validateOneData, setValidateOneData] = useState<WarehouseBookingImpactDTO | null>(null);
   const [validateOneError, setValidateOneError] = useState<string | null>(null);
   const [validateOneWarning, setValidateOneWarning] = useState<string | null>(null);
 
-  // ✅ when detail opened from MANY, hide per-partner "Knjiži"
   const [detailFromMany, setDetailFromMany] = useState(false);
 
-  const startValidateThenConfirm = async () => {
-    if (!session) return;
-    if (status !== "DRAFT") return;
+  const validateOneEntry = useCallback(
+    async (e: any): Promise<ValidateRow> => {
+      const pid = Number(e?.partnerId);
+      const nm = partnerName(pid, e);
+
+      const { payload, warning } = buildValidatePayloadFromEntry({
+        sessionId,
+        warehouseId: Number(warehouseId),
+        partnerId: pid,
+        entry: e,
+      });
+
+      try {
+        const data = (await validateM.mutateAsync(payload as any)) as any;
+        const c = classifyImpact(data);
+        return { partnerId: pid, partnerName: nm, ...c, data: data as any, error: null, warning };
+      } catch (ex) {
+        return {
+          partnerId: pid,
+          partnerName: nm,
+          ok: 0,
+          warn: 0,
+          bad: 0,
+          total: 0,
+          data: null,
+          error: toUserMessage(ex, "Greška pri validaciji partnera."),
+          warning,
+        };
+      }
+    },
+    [partnerName, sessionId, warehouseId, validateM]
+  );
+
+  const startValidateThenConfirm = useCallback(async () => {
+    if (!session || status !== "DRAFT") return;
+
+    setSuppressTopError(false);
+    setScreenError(null);
+    resetMutationErrors();
 
     if (!warehouseId) {
       setDetailFromMany(false);
@@ -493,102 +715,186 @@ export default function SessionDetailIndex() {
       return;
     }
 
-    // ✅ single entry: open detail WITH "Knjiži"
+    validateM.reset();
+
     if (entries.length === 1) {
-      const e: any = entries[0];
-      const pid = Number(e?.partnerId);
-
-      const { payload, warning } = buildValidatePayloadFromEntry({ sessionId, warehouseId, partnerId: pid, entry: e });
-
       setDetailFromMany(false);
       setValidateOpen(true);
       setValidateBusy(true);
       setValidateOneData(null);
       setValidateOneError(null);
-      setValidateOneWarning(warning);
+      setValidateOneWarning(null);
 
-      validateM.reset();
       try {
-        const data = (await validateM.mutateAsync(payload as any)) as any;
-        setValidateOneData(data as any);
-        setValidateOneError(null);
-      } catch (ex) {
+        const row = await validateOneEntry(entries[0] as any);
+        setValidateOneData(row.data);
+        setValidateOneError(row.error);
+        setValidateOneWarning(row.warning);
+      } catch (e) {
         setValidateOneData(null);
-        setValidateOneError(getBackendMessage(ex));
+        setValidateOneError(toUserMessage(e, "Greška pri validaciji."));
+        setValidateOneWarning(null);
       } finally {
         setValidateBusy(false);
       }
       return;
     }
 
-    // ✅ many entries: show summary modal + ONLY bulk "Knjiži"
+    setDetailFromMany(false);
     setValidateManyOpen(true);
     setValidateBusy(true);
     setValidateManyRows([]);
-    validateM.reset();
 
     try {
       const rows: ValidateRow[] = [];
-
       for (const e of entries as any[]) {
-        const pid = Number(e?.partnerId);
-        const nm = partnerName(pid) || `Partner #${pid}`;
-
-        const { payload, warning } = buildValidatePayloadFromEntry({ sessionId, warehouseId, partnerId: pid, entry: e });
-
-        try {
-          const data = (await validateM.mutateAsync(payload as any)) as any;
-          const c = classifyImpact(data);
-          rows.push({ partnerId: pid, partnerName: nm, ...c, data: data as any, error: null, warning });
-        } catch (ex) {
-          rows.push({
-            partnerId: pid,
-            partnerName: nm,
-            ok: 0,
-            warn: 0,
-            bad: 0,
-            total: 0,
-            data: null,
-            error: getBackendMessage(ex),
-            warning,
-          });
-        }
+        rows.push(await validateOneEntry(e));
       }
-
       setValidateManyRows(rows);
+    } catch (e) {
+      setValidateManyRows([]);
+      setValidateManyOpen(false);
+      setScreenError(toUserMessage(e, "Greška pri validaciji sesije."));
     } finally {
       setValidateBusy(false);
     }
-  };
+  }, [session, status, warehouseId, entries, validateM, validateOneEntry, resetMutationErrors]);
 
-  const confirmValidateAndFinalize = async () => {
-    setValidateOpen(false);
-    setValidateManyOpen(false);
-    setDetailFromMany(false);
+  const confirmValidateAndFinalize = useCallback(async () => {
+    try {
+      setSuppressTopError(false);
+      setScreenError(null);
+      resetMutationErrors();
 
-    await finalizeM.mutateAsync();
-    await sQ.refetch();
-  };
+      setValidateOpen(false);
+      setValidateManyOpen(false);
+      setDetailFromMany(false);
 
-  const openDetailFromRow = (row: ValidateRow) => {
-    // ✅ close MANY so detail is clickable/visible
+      await finalizeM.mutateAsync();
+      clearDraftsForSession(sessionId);
+      await sQ.refetch();
+    } catch (e) {
+      setScreenError(toUserMessage(e, "Greška pri knjiženju sesije."));
+    }
+  }, [finalizeM, sQ, sessionId, resetMutationErrors]);
+
+  const openDetailFromRow = useCallback((row: ValidateRow) => {
     setDetailFromMany(true);
     setValidateManyOpen(false);
-
     setValidateOneData(row.data);
     setValidateOneError(row.error);
     setValidateOneWarning(row.warning);
     setValidateOpen(true);
-  };
+  }, []);
 
   const readyToRender = !!session && !partnersLoading;
 
+  const sessionStats = useMemo(() => {
+    const total = entries.length;
+    const draft = entries.filter((e: any) => entryMode(e) === "DRAFT").length;
+    const fin = entries.filter((e: any) => entryMode(e) === "FINAL").length;
+    return { total, draft, fin };
+  }, [entries]);
+
+  const renderEntry = useCallback(
+    ({ item }: { item: BookingSessionEntryResponseDTO }) => {
+      const e: any = item;
+      const pid = Number(e?.partnerId);
+      const nm = partnerName(pid, e);
+      const avatar = initials(nm);
+      const dm = entryMode(e);
+      const pillLabel = dm === "FINAL" ? "FINAL" : "DRAFT";
+      const b = badgeStyle(dm === "FINAL" ? "FINALIZED" : "DRAFT");
+      const note = cleanDescription(e?.note);
+      const meta = entryMetaCounts(e);
+
+      return (
+        <View style={st.card}>
+          <View style={st.cardTop}>
+            <View style={st.left}>
+              <View style={st.avatar}>
+                <Text style={st.avatarText}>{avatar}</Text>
+              </View>
+
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={st.title} numberOfLines={1}>
+                  {nm}
+                </Text>
+                <Text style={st.sub} numberOfLines={1}>
+                  Partner #{pid}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[st.badge, { backgroundColor: b.backgroundColor, borderColor: b.borderColor }]}>
+              <Text style={[st.badgeText, { color: b.textColor }]}>{pillLabel}</Text>
+            </View>
+          </View>
+
+          {!!note && (
+            <View style={st.noteBox}>
+              <FontAwesome name="sticky-note" size={12} color={Colors.sub} />
+              <Text style={st.noteText} numberOfLines={2}>
+                {note}
+              </Text>
+            </View>
+          )}
+
+          <View style={st.metaPillsRow}>
+            <View style={st.metaMiniPill}>
+              <Text style={st.metaMiniPillText}>Dok: {meta.docs}</Text>
+            </View>
+            <View style={st.metaMiniPill}>
+              <Text style={st.metaMiniPillText}>Extra: {meta.extras}</Text>
+            </View>
+            <View style={st.metaMiniPill}>
+              <Text style={st.metaMiniPillText}>Stavke: {meta.direct}</Text>
+            </View>
+          </View>
+
+          <View style={st.divider} />
+
+          <View style={st.rowBtns}>
+            <Pressable style={[st.rowBtnPrimary, !canEdit && { opacity: 0.5 }]} disabled={!canEdit} onPress={() => openEntry(pid)}>
+              <FontAwesome name="folder-open" size={14} color="#fff" />
+              <Text style={st.rowBtnPrimaryText}>Otvori</Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                st.rowBtnDanger,
+                (!canEdit || delEntryM.isPending || finalizeM.isPending || validateBusy) && { opacity: 0.5 },
+              ]}
+              disabled={!canEdit || delEntryM.isPending || finalizeM.isPending || validateBusy}
+              onPress={() => askDelete(pid, e)}
+            >
+              <FontAwesome name="trash" size={14} color={Colors.dangerText} />
+              <Text style={st.rowBtnDangerText}>{delEntryM.isPending && deletePid === pid ? "…" : "Obriši"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      );
+    },
+    [partnerName, canEdit, openEntry, delEntryM.isPending, finalizeM.isPending, validateBusy, askDelete, deletePid]
+  );
+
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <NavigationHeader title={headerTitle || "Evidencija"} fallbackHref="/(tabs)/sessions" />
+      <NavigationHeader title={headerTitle} fallbackHref="/(tabs)/sessions" />
 
       <View style={st.container}>
-        {!!err && <Banner type="error" text={String(err)} />}
+        {!!topError && (
+          <View style={st.topErrorWrap}>
+            <ErrorCard
+              title="Greška"
+              message={topError}
+              actionText="Pokušaj ponovno"
+              onAction={retryTopError}
+              titleLines={1}
+              messageLines={3}
+            />
+          </View>
+        )}
 
         {!session ? (
           <View style={st.center}>
@@ -601,131 +907,92 @@ export default function SessionDetailIndex() {
             <Text style={st.helper}>Učitavam partnere…</Text>
           </View>
         ) : (
-          <>
-            {/* HERO */}
-            <View style={st.heroCard}>
-              <View style={{ gap: 8 }}>
-                {!!cleanDescription((session as any).note) && <Text style={st.heroNote}>{cleanDescription((session as any).note)}</Text>}
+          <FlatList
+            data={entries}
+            keyExtractor={(item: any, idx) => String(item?.id ?? `${item?.partnerId}-${idx}`)}
+            renderItem={renderEntry}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ gap: 10, paddingBottom: 28 }}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListHeaderComponent={
+              <View style={{ gap: 12 }}>
+                <View style={st.heroCard}>
+                  <View style={{ gap: 10 }}>
+                    {!!cleanDescription((session as any).note) && <Text style={st.heroNote}>{cleanDescription((session as any).note)}</Text>}
 
-                <View style={st.metaLine}>
-                  <View style={[st.badge, badgeStyle(status)]}>
-                    <Text style={st.badgeText}>{statusHr(status)}</Text>
-                  </View>
-
-                  <View style={st.metaRight}>
-                    <View style={st.metaChip}>
-                      <FontAwesome name="home" size={14} color={Colors.sub} />
-                      <Text style={st.metaChipText}>Skladište #{(session as any).warehouseId}</Text>
-                    </View>
-                  </View>
-                </View>
-
-                {status === "DRAFT" ? (
-                  <View style={st.heroBtns}>
-                    <Pressable style={st.primaryBtn} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
-                      <FontAwesome name="plus" size={14} color="#fff" />
-                      <Text style={st.primaryBtnText}>Dodaj partnera</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[st.secondaryBtn, (finalizeM.isPending || validateBusy) && { opacity: 0.7 }]}
-                      onPress={startValidateThenConfirm}
-                      disabled={finalizeM.isPending || validateBusy}
-                    >
-                      <FontAwesome name="check" size={14} color={Colors.text} />
-                      <Text style={st.secondaryBtnText}>{finalizeM.isPending || validateBusy ? "…" : "Knjiži"}</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={st.lockedLine}>
-                    <FontAwesome name="lock" size={14} color={Colors.sub} />
-                    <Text style={st.lockedText}>Sesija je zaključana – unosi se ne mogu mijenjati.</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* LIST HEADER */}
-            <View style={st.listHeader}>
-              <View style={{ gap: 2 }}>
-                <Text style={st.h2}>Unosi</Text>
-                <Text style={st.h2sub}>Po partneru</Text>
-              </View>
-
-              {status === "DRAFT" ? (
-                <Pressable style={st.smallPill} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
-                  <Text style={st.smallPillText}>+ Partner</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 28 }} keyboardShouldPersistTaps="handled">
-              {entries.length === 0 ? (
-                <View style={st.emptyBox}>
-                  <FontAwesome name="info-circle" size={18} color={Colors.sub} />
-                  <Text style={st.helper}>Nema unosa. Dodaj partnera.</Text>
-                </View>
-              ) : (
-                entries.map((item: any) => {
-                  const pid = Number(item?.partnerId);
-                  const dm = item?.draftMode;
-
-                  const nm = partnerName(pid) || `Partner #${pid}`;
-                  const avatar = initials(nm);
-
-                  const pillLabel = dm === "FINAL" ? "FINAL" : "DRAFT";
-                  const pillStatus = dm === "FINAL" ? "FINALIZED" : "DRAFT";
-
-                  return (
-                    <View key={String(item?.id ?? pid)} style={st.card}>
-                      <View style={st.cardTop}>
-                        <View style={st.left}>
-                          <View style={st.avatar}>
-                            <Text style={st.avatarText}>{avatar}</Text>
-                          </View>
-
-                          <View style={{ flex: 1, gap: 2 }}>
-                            <Text style={st.title} numberOfLines={1}>
-                              {nm}
-                            </Text>
-                            <Text style={st.sub} numberOfLines={1}>
-                              Partner #{pid}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <View style={[st.badge, badgeStyle(pillStatus)]}>
-                          <Text style={st.badgeText}>{pillLabel}</Text>
-                        </View>
+                    <View style={st.heroTopRow}>
+                      <View style={[st.badge, badgeStyle(status)]}>
+                        <Text style={st.badgeText}>{statusHr(status)}</Text>
                       </View>
 
-                      <View style={st.divider} />
+                      <View style={st.metaChip}>
+                        <FontAwesome name="home" size={13} color={Colors.sub} />
+                        <Text style={st.metaChipText}>Skladište #{(session as any).warehouseId}</Text>
+                      </View>
+                    </View>
 
-                      <View style={st.rowBtns}>
-                        <Pressable
-                          style={[st.rowBtnPrimary, status !== "DRAFT" && { opacity: 0.5 }]}
-                          disabled={status !== "DRAFT"}
-                          onPress={() => openEntry(pid)}
-                        >
-                          <FontAwesome name="folder-open" size={14} color="#fff" />
-                          <Text style={st.rowBtnPrimaryText}>Otvori</Text>
+                    <View style={st.heroStatsRow}>
+                      <View style={st.statChip}>
+                        <Text style={st.statLabel}>Partneri</Text>
+                        <Text style={st.statValue}>{sessionStats.total}</Text>
+                      </View>
+                      <View style={st.statChip}>
+                        <Text style={st.statLabel}>Draft</Text>
+                        <Text style={st.statValue}>{sessionStats.draft}</Text>
+                      </View>
+                      <View style={st.statChip}>
+                        <Text style={st.statLabel}>Final</Text>
+                        <Text style={st.statValue}>{sessionStats.fin}</Text>
+                      </View>
+                    </View>
+
+                    {status === "DRAFT" ? (
+                      <View style={st.heroBtns}>
+                        <Pressable style={st.primaryBtn} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
+                          <FontAwesome name="plus" size={14} color="#fff" />
+                          <Text style={st.primaryBtnText}>Dodaj partnera</Text>
                         </Pressable>
 
                         <Pressable
-                          style={[st.rowBtnDanger, status !== "DRAFT" && { opacity: 0.5 }]}
-                          disabled={status !== "DRAFT" || delEntryM.isPending || finalizeM.isPending || validateBusy}
-                          onPress={() => askDelete(pid)}
+                          style={[st.secondaryBtn, (finalizeM.isPending || validateBusy) && { opacity: 0.7 }]}
+                          onPress={startValidateThenConfirm}
+                          disabled={finalizeM.isPending || validateBusy}
                         >
-                          <FontAwesome name="trash" size={14} color={Colors.dangerText} />
-                          <Text style={st.rowBtnDangerText}>{delEntryM.isPending ? "…" : "Obriši"}</Text>
+                          <FontAwesome name="check" size={14} color={Colors.text} />
+                          <Text style={st.secondaryBtnText}>{finalizeM.isPending || validateBusy ? "…" : "Validiraj & knjiži"}</Text>
                         </Pressable>
                       </View>
-                    </View>
-                  );
-                })
-              )}
-            </ScrollView>
-          </>
+                    ) : (
+                      <View style={st.lockedLine}>
+                        <FontAwesome name="lock" size={14} color={Colors.sub} />
+                        <Text style={st.lockedText}>Sesija je zaključana – unosi se ne mogu mijenjati.</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                <View style={st.listHeader}>
+                  <View style={{ gap: 2 }}>
+                    <Text style={st.h2}>Unosi</Text>
+                    <Text style={st.h2sub}>Po partneru</Text>
+                  </View>
+
+                  {status === "DRAFT" ? (
+                    <Pressable style={st.smallPill} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
+                      <Text style={st.smallPillText}>+ Partner</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            }
+            ListEmptyComponent={
+              <View style={st.emptyBox}>
+                <FontAwesome name="info-circle" size={18} color={Colors.sub} />
+                <Text style={st.helper}>{status === "DRAFT" ? "Nema unosa. Dodaj partnera." : "Nema unosa."}</Text>
+              </View>
+            }
+          />
         )}
       </View>
 
@@ -741,16 +1008,12 @@ export default function SessionDetailIndex() {
         closeOnBackdrop={!delEntryM.isPending}
       />
 
-      {/* Detail modal:
-          - single booking => show confirm ("Knjiži")
-          - bulk booking (opened from "Detalji") => HIDE confirm (bulk only) */}
       <ValidateImpactModal
         visible={validateOpen}
         onClose={() => {
           if (validateBusy || finalizeM.isPending) return;
           setValidateOpen(false);
 
-          // return back to MANY summary
           if (detailFromMany) {
             setValidateManyOpen(true);
             setDetailFromMany(false);
@@ -762,11 +1025,10 @@ export default function SessionDetailIndex() {
         data={validateOneData}
         onConfirm={confirmValidateAndFinalize}
         confirmText="Knjiži"
-        showConfirm={!detailFromMany} // ✅ THIS IS THE KEY
+        showConfirm={!detailFromMany}
         bulkHint={detailFromMany ? "Bulk knjiženje: potvrda se radi na prethodnom ekranu." : null}
       />
 
-      {/* Many partners modal */}
       <ValidateManyModal
         visible={validateManyOpen}
         loading={validateBusy}
@@ -784,10 +1046,10 @@ export default function SessionDetailIndex() {
   );
 }
 
-/* ----------------------- styles ----------------------- */
-
 const st = StyleSheet.create({
-  container: { padding: 14, gap: 12 },
+  container: { flex: 1, padding: 14, gap: 12 },
+
+  topErrorWrap: { marginBottom: 2 },
 
   center: { padding: 20, alignItems: "center", justifyContent: "center", gap: 10 },
   helper: { color: Colors.sub, fontWeight: "800", textAlign: "center" },
@@ -801,9 +1063,21 @@ const st = StyleSheet.create({
   },
   heroNote: { color: Colors.text, fontWeight: "900", lineHeight: 19 },
 
-  metaLine: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginTop: 10 },
+  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 },
+  heroStatsRow: { flexDirection: "row", gap: 8 },
 
-  metaRight: { alignItems: "flex-end", gap: 8 },
+  statChip: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2, 6, 23, 0.08)",
+    backgroundColor: "rgba(255,255,255,0.45)",
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  statLabel: { color: Colors.sub, fontWeight: "800", fontSize: 11 },
+  statValue: { color: Colors.text, fontWeight: "900", fontSize: 15 },
+
   metaChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -815,15 +1089,15 @@ const st = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(2, 6, 23, 0.08)",
   },
-  metaChipText: { color: Colors.sub, fontWeight: "900" },
+  metaChipText: { color: Colors.sub, fontWeight: "900", fontSize: 12 },
 
   badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
-  badgeText: { fontWeight: "900", color: Colors.text },
+  badgeText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
 
-  heroBtns: { flexDirection: "row", gap: 10, marginTop: 14 },
+  heroBtns: { flexDirection: "row", gap: 10, marginTop: 2 },
   primaryBtn: {
     flex: 1,
-    height: 40,
+    height: 42,
     borderRadius: 999,
     backgroundColor: Colors.orange,
     alignItems: "center",
@@ -835,7 +1109,7 @@ const st = StyleSheet.create({
 
   secondaryBtn: {
     flex: 1,
-    height: 40,
+    height: 42,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.55)",
     borderWidth: StyleSheet.hairlineWidth,
@@ -847,10 +1121,10 @@ const st = StyleSheet.create({
   },
   secondaryBtnText: { fontWeight: "900", color: Colors.text },
 
-  lockedLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 },
-  lockedText: { color: Colors.sub, fontWeight: "800" },
+  lockedLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  lockedText: { color: Colors.sub, fontWeight: "800", flex: 1 },
 
-  listHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+  listHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
   h2: { fontWeight: "900", color: Colors.text, fontSize: 18 },
   h2sub: { color: Colors.sub, fontWeight: "800" },
 
@@ -901,7 +1175,30 @@ const st = StyleSheet.create({
   avatarText: { fontWeight: "900", color: Colors.text },
 
   title: { fontWeight: "900", color: Colors.text },
-  sub: { color: Colors.sub, fontWeight: "800" },
+  sub: { color: Colors.sub, fontWeight: "800", fontSize: 12 },
+
+  noteBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(148,163,184,0.08)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2, 6, 23, 0.08)",
+  },
+  noteText: { flex: 1, color: Colors.text, fontWeight: "700", fontSize: 12, lineHeight: 16 },
+
+  metaPillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  metaMiniPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2, 6, 23, 0.08)",
+  },
+  metaMiniPillText: { color: Colors.sub, fontWeight: "900", fontSize: 11 },
 
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(2, 6, 23, 0.10)" },
 
@@ -934,7 +1231,7 @@ const st = StyleSheet.create({
   rowBtnDangerText: { color: Colors.dangerText, fontWeight: "900" },
 });
 
-const st2 = StyleSheet.create({
+const vm = StyleSheet.create({
   wrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
 
@@ -976,41 +1273,54 @@ const st2 = StyleSheet.create({
   stateTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
   stateSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, textAlign: "center" },
 
+  summaryGrid: { flexDirection: "row", gap: 8 },
+  summaryChip: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+    backgroundColor: "rgba(148,163,184,0.08)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2, 6, 23, 0.08)",
+  },
+  summaryChipLabel: { fontWeight: "800", color: Colors.sub, fontSize: 10 },
+  summaryChipValue: { fontWeight: "900", color: Colors.text, fontSize: 14 },
+
   warnBox: {
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 14,
     backgroundColor: "rgba(249,115,22,0.10)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(249,115,22,0.28)",
     gap: 8,
   },
   warnHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  warnTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-  warnText: { fontWeight: "800", color: Colors.text, opacity: 0.95 },
+  warnTitle: { fontWeight: "900", color: Colors.text, fontSize: 13 },
+  warnText: { fontWeight: "800", color: Colors.text, opacity: 0.95, fontSize: 12 },
 
   errBox: {
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 14,
     backgroundColor: Colors.dangerBg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(239,68,68,0.35)",
     gap: 8,
   },
   errHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  errTitle: { fontWeight: "900", color: Colors.dangerText, fontSize: 14 },
-  errText: { fontWeight: "800", color: Colors.dangerText },
+  errTitle: { fontWeight: "900", color: Colors.dangerText, fontSize: 13 },
+  errText: { fontWeight: "800", color: Colors.dangerText, fontSize: 12 },
 
   badBox: {
     padding: 12,
-    borderRadius: 16,
+    borderRadius: 14,
     backgroundColor: "rgba(239,68,68,0.10)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(239,68,68,0.28)",
     gap: 8,
   },
   badHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  badTitle: { fontWeight: "900", color: Colors.dangerText, fontSize: 14 },
-  badText: { fontWeight: "800", color: Colors.dangerText, opacity: 0.95 },
+  badTitle: { fontWeight: "900", color: Colors.dangerText, fontSize: 13 },
+  badText: { fontWeight: "800", color: Colors.dangerText, opacity: 0.95, fontSize: 12 },
 
   rowCard: {
     borderRadius: 16,
@@ -1018,12 +1328,17 @@ const st2 = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.bg,
     padding: 12,
-    gap: 10,
+    gap: 8,
   },
+  rowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   rowName: { fontWeight: "900", color: Colors.text, fontSize: 15 },
   rowSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, marginTop: 2 },
 
-  warningLine: { flex: 1, fontWeight: "800", color: Colors.sub, fontSize: 12 },
+  rowBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  rowMiniPills: { flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 },
+  rowMiniText: { fontWeight: "800", color: Colors.sub, fontSize: 11 },
+
+  warningLine: { fontWeight: "800", color: Colors.sub, fontSize: 12 },
 
   smallHintPill: {
     flexDirection: "row",
@@ -1036,17 +1351,15 @@ const st2 = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(2, 6, 23, 0.08)",
   },
-  smallHintText: { fontWeight: "900", color: Colors.sub, fontSize: 12 },
+  smallHintText: { fontWeight: "900", color: Colors.sub, fontSize: 11 },
 
   pill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(148,163,184,0.14)",
-    borderColor: Colors.border,
   },
-  pillText: { fontWeight: "900", color: Colors.text, fontSize: 11 },
+  pillText: { fontWeight: "900", fontSize: 11 },
 
   primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
   primaryText: { color: "#fff", fontWeight: "900" },

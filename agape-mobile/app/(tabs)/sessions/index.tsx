@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
+  RefreshControl,
   Text,
   TextInput,
   View,
@@ -21,6 +22,7 @@ import { DateRangeSheet } from "@/components/DateRangeSheet";
 import { toUserMessage } from "@/app/api/apiClient";
 import { toLocalDateString, fmtHrFromIso } from "@/app/utils/dateIso";
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
+import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
 import type {
   BookingSessionCreateRequestDTO,
   BookingSessionResponseDTO,
@@ -173,6 +175,21 @@ export default function SessionsIndex() {
     return () => clearTimeout(t);
   }, [q]);
 
+  const resetMutationErrors = useCallback(() => {
+    createM.reset();
+    cancelM.reset();
+    deleteM.reset();
+  }, [createM, cancelM, deleteM]);
+
+  const refreshScreen = useCallback(async () => {
+    setSuppressTopError(false);
+    setScreenError(null);
+    resetMutationErrors();
+    await Promise.resolve(listQ.refresh?.());
+  }, [listQ, resetMutationErrors]);
+
+  const { refreshing, onRefresh } = usePullToRefresh([refreshScreen]);
+
   const rawTopError =
     screenError ||
     (listQ.error ? toUserMessage(listQ.error, "Greška pri učitavanju evidencija.") : null) ||
@@ -182,23 +199,17 @@ export default function SessionsIndex() {
 
   const topError = suppressTopError ? null : rawTopError;
 
-  const resetMutationErrors = () => {
-    createM.reset();
-    cancelM.reset();
-    deleteM.reset();
-  };
-
-  const retryTopError = async () => {
+  const retryTopError = useCallback(async () => {
     setSuppressTopError(true);
     setScreenError(null);
     resetMutationErrors();
 
     try {
-      await listQ.refresh();
+      await Promise.resolve(listQ.refresh?.());
     } finally {
       setSuppressTopError(false);
     }
-  };
+  }, [listQ, resetMutationErrors]);
 
   const openCreate = () => {
     setTitle("");
@@ -243,6 +254,8 @@ export default function SessionsIndex() {
         title: "Evidencija kreirana",
         message: `Kreirana je evidencija "${cleanText(created?.title) || title.trim()}".`,
       });
+
+      await Promise.resolve(listQ.refresh?.());
     } catch (e) {
       setScreenError(toUserMessage(e, "Greška pri kreiranju evidencije."));
     }
@@ -286,6 +299,8 @@ export default function SessionsIndex() {
         title: "Evidencija otkazana",
         message: `Evidencija "${canceledTitle}" je označena kao canceled.`,
       });
+
+      await Promise.resolve(listQ.refresh?.());
     } catch (e) {
       setScreenError(toUserMessage(e, "Greška pri otkazivanju evidencije."));
     }
@@ -331,6 +346,8 @@ export default function SessionsIndex() {
         title: "Evidencija obrisana",
         message: `Obrisana je evidencija "${deletedTitle}".`,
       });
+
+      await Promise.resolve(listQ.refresh?.());
     } catch (e) {
       setScreenError(toUserMessage(e, "Greška pri brisanju evidencije."));
     }
@@ -346,7 +363,7 @@ export default function SessionsIndex() {
     return { total, draft, fin, canceled };
   }, [sessions, listQ.total]);
 
-  const isInitialLoading = listQ.isLoading && sessions.length === 0;
+  const isInitialLoading = listQ.isLoading && sessions.length === 0 && !refreshing;
   const dateActive = !!dateFromIso && !!dateToIso;
 
   const dateLabel = useMemo(() => {
@@ -374,9 +391,7 @@ export default function SessionsIndex() {
           <View style={s.heroTop}>
             <View style={s.heroTitleWrap}>
               <Text style={s.h1}>Evidencije</Text>
-              <Text style={s.h1sub}>
-                {stats.total} ukupno • učitano {sessions.length}
-              </Text>
+              <Text style={s.h1sub}>{stats.total} ukupno</Text>
             </View>
 
             <Pressable style={s.addBtn} onPress={openCreate} hitSlop={10}>
@@ -477,17 +492,13 @@ export default function SessionsIndex() {
             style={s.list}
             data={sessions}
             keyExtractor={(x) => String((x as any)?.id)}
-            refreshing={listQ.refreshing}
-            onRefresh={async () => {
-              setSuppressTopError(false);
-              setScreenError(null);
-              resetMutationErrors();
-              await listQ.refresh();
-            }}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
             onEndReachedThreshold={0.35}
             onEndReached={() => {
               if (!sessions.length) return;
-              if (listQ.loadingMore || !listQ.canLoadMore) return;
+              if (listQ.loadingMore || !listQ.canLoadMore || refreshing) return;
               void listQ.loadMore();
             }}
             keyboardShouldPersistTaps="handled"
@@ -509,7 +520,8 @@ export default function SessionsIndex() {
               const canMutate = status === "DRAFT";
               const av = initials(t || `#${id}`);
 
-              const anyBusy = createM.isPending || cancelM.isPending || deleteM.isPending;
+              const anyBusy =
+                createM.isPending || cancelM.isPending || deleteM.isPending || refreshing;
 
               const open = () =>
                 router.push({

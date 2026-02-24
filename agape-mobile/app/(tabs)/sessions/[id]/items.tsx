@@ -1,22 +1,13 @@
-// app/(tabs)/sessions/[id]/items.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useLocalSearchParams, router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useLocalSearchParams } from "expo-router";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
-import { Banner } from "@/components/Banner";
 import NavigationHeader from "@/components/NavigationHeader";
+import { ErrorCard } from "@/components/ErrorCard";
 
 import type {
   BookingSessionResponseDTO,
@@ -24,8 +15,9 @@ import type {
   TemplateBookItemDTO,
 } from "@/app/models/generated";
 
+import { toUserMessage } from "@/app/api/apiClient";
 import { useBookingSession } from "@/app/api/hooks/sessions/useBookingSessions";
-import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
+import { useItemDirectoryPickerPage } from "@/app/api/hooks/documents/useItemDirectoryPickerPage";
 
 import { QtyMap, useEntryDraft, patchDraft } from "../_entryDraftStore";
 
@@ -33,45 +25,74 @@ const MAX_W = 560;
 const PAGE_SIZE = 20;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
 
-// bottom guard to avoid bottom tabs covering last row in RESULTS list
-const TAB_BAR_GUARD = 72;
-
 function normItemId(x: any) {
   return Number(x?.itemId ?? x?.id ?? x?.item_id ?? x?.item?.id ?? 0);
 }
 
-function upsertMetaMap(prev: Map<number, ItemDescriptorResponseDTO>, items: any[] | null | undefined) {
+function mergeItemMeta(
+  prev: Map<number, ItemDescriptorResponseDTO>,
+  items: ItemDescriptorResponseDTO[] | null | undefined
+) {
   const next = new Map(prev);
-  (items ?? []).forEach((it) => {
-    const id = normItemId(it);
-    if (!id) return;
-    next.set(id, it as any);
-  });
+  for (const item of items ?? []) {
+    const id = normItemId(item);
+    if (!id) continue;
+    next.set(id, item);
+  }
   return next;
 }
 
-function itemName(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
-  return metaById.get(Number(itemId))?.name?.trim() ?? "";
-}
-function itemMeta(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
+function formatItemDisplay(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>, row?: any) {
+  const rowName = String(row?.name ?? row?.itemName ?? "").trim();
+  const rowCode = String(row?.code ?? row?.itemCode ?? "").trim();
+  const rowUnit = String(row?.unit ?? "").trim();
+  const rowBarcode = String(row?.barcode ?? "").trim();
+
+  if (rowName || rowCode || rowUnit || rowBarcode) {
+    const subtitle = [
+      rowCode ? `Šifra: ${rowCode}` : null,
+      rowUnit ? `JMJ: ${rowUnit}` : null,
+      rowBarcode ? `BC: ${rowBarcode}` : null,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+
+    return {
+      name: rowName || `Artikl #${itemId}`,
+      meta: subtitle,
+    };
+  }
+
   const m: any = metaById.get(Number(itemId));
-  if (!m) return "";
-  const parts = [
-    m.code ? `Šifra: ${m.code}` : null,
-    m.unit ? `JMJ: ${m.unit}` : null,
-    m.barcode ? `BC: ${m.barcode}` : null,
-  ].filter(Boolean);
-  return parts.join(" • ");
+  const name = String(m?.name ?? "").trim();
+  const code = String(m?.code ?? "").trim();
+  const unit = String(m?.unit ?? "").trim();
+  const barcode = String(m?.barcode ?? "").trim();
+
+  const subtitle = [
+    code ? `Šifra: ${code}` : null,
+    unit ? `JMJ: ${unit}` : null,
+    barcode ? `BC: ${barcode}` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
+  return {
+    name: name || `Artikl #${itemId}`,
+    meta: subtitle,
+  };
 }
 
 function upsertQty(qty: QtyMap, itemId: number, delta: number) {
   const k = String(itemId);
   const cur = Number(qty[k] ?? 0);
   const next = cur + delta;
+
   if (next <= 0) {
     const { [k]: _, ...rest } = qty;
     return rest;
   }
+
   return { ...qty, [k]: next };
 }
 
@@ -82,20 +103,22 @@ function qtyToItems(qty: QtyMap): TemplateBookItemDTO[] {
     .sort((a, b) => Number(a.itemId) - Number(b.itemId));
 }
 
-function Spacer({ h }: { h: number }) {
-  return <View style={{ height: h }} />;
-}
-
 export default function SessionEntryStandaloneItems() {
   const params = useLocalSearchParams<{ id: string; partnerId: string }>();
   const sessionId = Number(params.id);
   const partnerId = Number(params.partnerId);
 
-  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const listBottomPad = tabBarHeight + 16;
 
-  const sQ = useBookingSession(sessionId);
-  const session = sQ.data as BookingSessionResponseDTO | undefined;
+  const sessionQ = useBookingSession(sessionId);
+  const session = sessionQ.data as BookingSessionResponseDTO | undefined;
   const warehouseId = Number((session as any)?.warehouseId ?? 0) || null;
+
+  const { fetchItemsPage } = useItemDirectoryPickerPage({
+    warehouseId: warehouseId ? Number(warehouseId) : null,
+    enabled: !!warehouseId,
+  });
 
   const draft = useEntryDraft(sessionId, partnerId);
 
@@ -103,53 +126,55 @@ export default function SessionEntryStandaloneItems() {
   const [searchQ, setSearchQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
 
+  const [qtyDraft, setQtyDraft] = useState<QtyMap>({});
+  const [metaById, setMetaById] = useState<Map<number, ItemDescriptorResponseDTO>>(new Map());
+
+  const [page, setPage] = useState(0);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const [items, setItems] = useState<ItemDescriptorResponseDTO[]>([]);
+  const [total, setTotal] = useState<number>(0);
+
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [loadMoreErr, setLoadMoreErr] = useState<string | null>(null);
+
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchQ.trim()), 250);
+    const t = setTimeout(() => setDebouncedQ(searchQ.trim()), 220);
     return () => clearTimeout(t);
   }, [searchQ]);
 
-  // qty draft
-  const [qtyDraft, setQtyDraft] = useState<QtyMap>({});
   useEffect(() => {
     setQtyDraft({ ...(draft?.standaloneQty ?? {}) });
   }, [draft?.standaloneQty]);
 
-  // infinite list state (RESULTS)
-  const [page, setPage] = useState(0);
-  const [items, setItems] = useState<ItemDescriptorResponseDTO[]>([]);
-  const [total, setTotal] = useState<number>(0);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
-
-  const hasMore = items.length < total;
-
-  // cache for names in ADDED tab
-  const [metaById, setMetaById] = useState<Map<number, ItemDescriptorResponseDTO>>(new Map());
-
-  // reset list when search or warehouse changes
   useEffect(() => {
     setPage(0);
     setItems([]);
     setTotal(0);
     setLoadErr(null);
+    setLoadMoreErr(null);
+    setReloadTick((x) => x + 1);
   }, [warehouseId, debouncedQ]);
 
-  // load page (RESULTS)
   useEffect(() => {
     let alive = true;
+
     if (!warehouseId) return;
 
     (async () => {
       const isFirst = page === 0;
+
       try {
         if (isFirst) setLoading(true);
         else setLoadingMore(true);
 
-        setLoadErr(null);
+        if (isFirst) setLoadErr(null);
+        setLoadMoreErr(null);
 
-        const res = await itemDirectoryService.pageItems({
-          warehouseId,
+        const res = await fetchItemsPage({
           page,
           size: PAGE_SIZE,
           q: debouncedQ || undefined,
@@ -157,29 +182,34 @@ export default function SessionEntryStandaloneItems() {
 
         if (!alive) return;
 
-        const newItems = (res.items ?? []) as any[];
+        const nextItems = (res.items ?? []) as ItemDescriptorResponseDTO[];
         setTotal(Number(res.total ?? 0));
 
         setItems((prev) => {
-          if (isFirst) return newItems as any;
+          if (isFirst) return nextItems;
 
           const seen = new Set(prev.map((x: any) => String(normItemId(x))));
           const merged = [...prev];
 
-          for (const it of newItems) {
+          for (const it of nextItems) {
             const id = String(normItemId(it));
-            if (!id || id === "0") continue;
-            if (seen.has(id)) continue;
+            if (!id || id === "0" || seen.has(id)) continue;
             seen.add(id);
             merged.push(it);
           }
-          return merged as any;
+
+          return merged;
         });
 
-        setMetaById((prev) => upsertMetaMap(prev, newItems));
-      } catch (e: any) {
+        if (nextItems.length) {
+          setMetaById((prev) => mergeItemMeta(prev, nextItems));
+        }
+      } catch (e) {
         if (!alive) return;
-        setLoadErr(e?.message ?? "Greška pri dohvaćanju artikala.");
+
+        const msg = toUserMessage(e, "Greška pri dohvaćanju artikala.");
+        if (isFirst) setLoadErr(msg);
+        else setLoadMoreErr(msg);
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -190,33 +220,48 @@ export default function SessionEntryStandaloneItems() {
     return () => {
       alive = false;
     };
-  }, [warehouseId, debouncedQ, page]);
+  }, [warehouseId, debouncedQ, page, reloadTick, fetchItemsPage]);
 
-  const onEndReached = () => {
+  const hasMore = useMemo(() => items.length < total, [items.length, total]);
+
+  const addedItems = useMemo(() => qtyToItems(qtyDraft), [qtyDraft]);
+
+  const topError = useMemo(() => {
+    if (sessionQ.error) return toUserMessage(sessionQ.error, "Greška pri učitavanju sesije.");
+    if (loadErr) return loadErr;
+    return null;
+  }, [sessionQ.error, loadErr]);
+
+  const retryTop = useCallback(() => {
+    setLoadErr(null);
+    setLoadMoreErr(null);
+    setItems([]);
+    setTotal(0);
+    setPage(0);
+    setReloadTick((x) => x + 1);
+    sessionQ.refetch?.();
+  }, [sessionQ]);
+
+  const onRefreshResults = useCallback(() => {
+    setLoadErr(null);
+    setLoadMoreErr(null);
+    setItems([]);
+    setTotal(0);
+    setPage(0);
+    setReloadTick((x) => x + 1);
+    sessionQ.refetch?.();
+  }, [sessionQ]);
+
+  const onEndReached = useCallback(() => {
     if (!hasMore) return;
     if (loading || loadingMore) return;
     setPage((p) => p + 1);
-  };
+  }, [hasMore, loading, loadingMore]);
 
-  const requiredItemIds = useMemo(
-    () => qtyToItems(qtyDraft).map((x) => Number(x.itemId)).filter(Boolean),
-    [qtyDraft]
-  );
-
-  const namesReady = useMemo(() => {
-    for (const id of requiredItemIds) if (!metaById.get(id)?.name?.trim()) return false;
-    return true;
-  }, [requiredItemIds, metaById]);
-
-  const err = (sQ.error as any)?.message || loadErr || null;
-
-  const apply = () => {
+  const apply = useCallback(() => {
     patchDraft(sessionId, partnerId, { standaloneQty: qtyDraft });
     router.back();
-  };
-
-  // ✅ ONLY results list needs bottom guard (to avoid bottom tabs)
-  const resultsBottomSpace = Math.max(14, insets.bottom) + TAB_BAR_GUARD;
+  }, [sessionId, partnerId, qtyDraft]);
 
   if (!draft) {
     return (
@@ -228,9 +273,9 @@ export default function SessionEntryStandaloneItems() {
             params: { id: String(sessionId), partnerId: String(partnerId) },
           }}
         />
-        <View style={{ padding: 16, alignItems: "center", gap: 10 }}>
+        <View style={s.center}>
           <ActivityIndicator />
-          <Text style={{ color: Colors.sub, fontWeight: "800" }}>Učitavam…</Text>
+          <Text style={s.muted}>Učitavam…</Text>
         </View>
       </Screen>
     );
@@ -248,10 +293,26 @@ export default function SessionEntryStandaloneItems() {
       />
 
       <View style={s.wrap}>
-        {!!err && <Banner type="error" text={String(err)} />}
+        {!!topError && (
+          <ErrorCard
+            title="Greška"
+            message={topError}
+            actionText="Pokušaj ponovno"
+            onAction={retryTop}
+            titleLines={1}
+            messageLines={3}
+          />
+        )}
 
         {!warehouseId ? (
-          <Banner type="error" text="Nema warehouseId na evidenciji." />
+          <ErrorCard
+            title="Nedostaje skladište"
+            message="Na sesiji nije postavljeno skladište."
+            actionText="Natrag"
+            onAction={() => router.back()}
+            titleLines={1}
+            messageLines={2}
+          />
         ) : (
           <>
             <View style={s.tabs}>
@@ -261,12 +322,13 @@ export default function SessionEntryStandaloneItems() {
               >
                 <Text style={[s.tabText, tab === "results" && s.tabTextActive]}>Rezultati</Text>
               </Pressable>
+
               <Pressable
                 style={[s.tabBtn, tab === "added" && s.tabBtnActive]}
                 onPress={() => setTab("added")}
               >
                 <Text style={[s.tabText, tab === "added" && s.tabTextActive]}>
-                  Dodano ({qtyToItems(qtyDraft).length})
+                  Dodano ({addedItems.length})
                 </Text>
               </Pressable>
             </View>
@@ -293,129 +355,145 @@ export default function SessionEntryStandaloneItems() {
                 </View>
 
                 {loading && items.length === 0 ? (
-                  <View style={{ paddingVertical: 14, alignItems: "center" }}>
+                  <View style={s.centerInline}>
                     <ActivityIndicator />
+                    <Text style={s.muted}>Učitavam…</Text>
                   </View>
                 ) : (
                   <FlatList
+                    style={s.list}
                     data={items}
                     keyExtractor={(it: any) => String(normItemId(it))}
                     keyboardShouldPersistTaps="handled"
+                    refreshing={loading && page === 0}
+                    onRefresh={onRefreshResults}
                     onEndReachedThreshold={0.35}
                     onEndReached={onEndReached}
-                    contentContainerStyle={{ gap: 10, paddingBottom: resultsBottomSpace }}
+                    contentContainerStyle={[s.listContent, { paddingBottom: listBottomPad }]}
+                    scrollIndicatorInsets={{ bottom: listBottomPad }}
                     ListEmptyComponent={<Text style={s.helper}>Nema rezultata.</Text>}
                     ListFooterComponent={
-                      <>
-                        {loadingMore ? (
-                          <View style={{ paddingVertical: 14, alignItems: "center" }}>
-                            <ActivityIndicator />
-                          </View>
-                        ) : !hasMore && items.length > 0 ? (
-                          <Text style={[s.helper, { paddingVertical: 10 }]}>Kraj liste.</Text>
-                        ) : null}
-                        {/* ONLY in results */}
-                        <Spacer h={resultsBottomSpace} />
-                      </>
-                    }
-                    renderItem={({ item }: any) => (
-                      <Pressable
-                        style={s.resultRow}
-                        onPress={() => {
-                          const id = normItemId(item);
-                          setMetaById((prev) => upsertMetaMap(prev, [item]));
-                          setQtyDraft((cur) => upsertQty(cur, id, 1));
-                          setTab("added");
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.itemNameStrong} numberOfLines={2}>
-                            {item?.name}
-                          </Text>
-                          {!![item?.code, item?.unit].filter(Boolean).length && (
-                            <Text style={s.itemMeta} numberOfLines={1}>
-                              {[item?.code ? `Šifra: ${item.code}` : null, item?.unit ? `JMJ: ${item.unit}` : null]
-                                .filter(Boolean)
-                                .join(" • ")}
-                            </Text>
-                          )}
-                        </View>
+                      loadingMore || loadMoreErr || (!hasMore && items.length > 0) ? (
+                        <View style={s.footerWrap}>
+                          {loadingMore ? <ActivityIndicator size="small" /> : null}
 
-                        <View style={s.addBtn}>
-                          <Text style={s.addBtnText}>+1</Text>
+                          {loadMoreErr ? (
+                            <Pressable
+                              style={s.footerRetryBtn}
+                              onPress={() => {
+                                if (loading || loadingMore) return;
+                                setLoadMoreErr(null);
+                                setPage((p) => p + 1);
+                              }}
+                            >
+                              <Text style={s.footerRetryText}>
+                                {loadMoreErr} • Dodirni za pokušaj ponovno
+                              </Text>
+                            </Pressable>
+                          ) : null}
+
+                          {!loadingMore && !loadMoreErr && !hasMore && items.length > 0 ? (
+                            <Text style={s.helper}>Kraj liste.</Text>
+                          ) : null}
                         </View>
-                      </Pressable>
-                    )}
-                  />
-                )}
-              </>
-            ) : (
-              // ✅ ADDED: NO spacer, NO extra bottom padding
-              <View style={{ gap: 10 }}>
-                {!namesReady ? (
-                  <View style={{ paddingVertical: 14, alignItems: "center", gap: 10 }}>
-                    <ActivityIndicator />
-                    <Text style={s.helper}>Učitavam nazive stavki…</Text>
-                  </View>
-                ) : qtyToItems(qtyDraft).length === 0 ? (
-                  <Text style={s.helper}>Još nema dodanih stavki. Dodaj iz “Rezultati”.</Text>
-                ) : (
-                  <View style={{ gap: 10 }}>
-                    {qtyToItems(qtyDraft).map((x) => {
-                      const nm = itemName(Number(x.itemId), metaById) || `Item #${x.itemId}`;
-                      const meta = itemMeta(Number(x.itemId), metaById);
+                      ) : null
+                    }
+                    renderItem={({ item }: any) => {
+                      const id = normItemId(item);
+                      const display = formatItemDisplay(id, metaById, item);
 
                       return (
-                        <View key={String(x.itemId)} style={s.addedRow}>
+                        <Pressable
+                          style={s.resultRow}
+                          onPress={() => {
+                            setMetaById((prev) => mergeItemMeta(prev, [item]));
+                            setQtyDraft((cur) => upsertQty(cur, id, 1));
+                            setTab("added");
+                          }}
+                        >
                           <View style={{ flex: 1 }}>
                             <Text style={s.itemNameStrong} numberOfLines={2}>
-                              {nm}
+                              {display.name}
                             </Text>
-                            {!!meta && (
+                            {!!display.meta && (
                               <Text style={s.itemMeta} numberOfLines={1}>
-                                {meta}
+                                {display.meta}
                               </Text>
                             )}
                           </View>
 
-                          <View style={s.qtyBox}>
-                            <Pressable
-                              style={s.qtyBtn}
-                              onPress={() => setQtyDraft((cur) => upsertQty(cur, Number(x.itemId), -1))}
-                            >
-                              <Text style={s.qtyBtnText}>−</Text>
-                            </Pressable>
-
-                            <View style={s.qtyPill}>
-                              <Text style={s.qtyPillText}>{Number(x.quantity ?? 0)}</Text>
-                            </View>
-
-                            <Pressable
-                              style={s.qtyBtn}
-                              onPress={() => setQtyDraft((cur) => upsertQty(cur, Number(x.itemId), +1))}
-                            >
-                              <Text style={s.qtyBtnText}>+</Text>
-                            </Pressable>
+                          <View style={s.addBtn}>
+                            <Text style={s.addBtnText}>+1</Text>
                           </View>
-
-                          <Pressable
-                            style={s.smallDangerBtn}
-                            onPress={() =>
-                              setQtyDraft((cur) => {
-                                const k = String(x.itemId);
-                                const { [k]: _, ...rest } = cur;
-                                return rest;
-                              })
-                            }
-                          >
-                            <Text style={s.smallDangerText}>X</Text>
-                          </Pressable>
-                        </View>
+                        </Pressable>
                       );
-                    })}
-                  </View>
+                    }}
+                  />
                 )}
-              </View>
+              </>
+            ) : (
+              <FlatList
+                style={s.list}
+                data={addedItems}
+                keyExtractor={(x) => String(x.itemId)}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={[s.listContent, { paddingBottom: listBottomPad }]}
+                scrollIndicatorInsets={{ bottom: listBottomPad }}
+                ListEmptyComponent={<Text style={s.helper}>Još nema dodanih stavki. Dodaj iz “Rezultati”.</Text>}
+                renderItem={({ item }) => {
+                  const itemId = Number((item as any)?.itemId);
+                  const quantity = Number((item as any)?.quantity ?? 0);
+                  const display = formatItemDisplay(itemId, metaById);
+
+                  return (
+                    <View style={s.addedRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.itemNameStrong} numberOfLines={2}>
+                          {display.name}
+                        </Text>
+                        {!!display.meta && (
+                          <Text style={s.itemMeta} numberOfLines={1}>
+                            {display.meta}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={s.qtyBox}>
+                        <Pressable
+                          style={s.qtyBtn}
+                          onPress={() => setQtyDraft((cur) => upsertQty(cur, itemId, -1))}
+                        >
+                          <Text style={s.qtyBtnText}>−</Text>
+                        </Pressable>
+
+                        <View style={s.qtyPill}>
+                          <Text style={s.qtyPillText}>{quantity}</Text>
+                        </View>
+
+                        <Pressable
+                          style={s.qtyBtn}
+                          onPress={() => setQtyDraft((cur) => upsertQty(cur, itemId, +1))}
+                        >
+                          <Text style={s.qtyBtnText}>+</Text>
+                        </Pressable>
+                      </View>
+
+                      <Pressable
+                        style={s.smallDangerBtn}
+                        onPress={() =>
+                          setQtyDraft((cur) => {
+                            const k = String(itemId);
+                            const { [k]: _, ...rest } = cur;
+                            return rest;
+                          })
+                        }
+                      >
+                        <Text style={s.smallDangerText}>X</Text>
+                      </Pressable>
+                    </View>
+                  );
+                }}
+              />
             )}
 
             <Pressable style={s.primary} onPress={apply}>
@@ -433,12 +511,55 @@ export default function SessionEntryStandaloneItems() {
 }
 
 const s = StyleSheet.create({
-  wrap: { padding: 14, gap: 12, alignSelf: "center", width: "100%", maxWidth: MAX_W },
+  wrap: {
+    flex: 1,
+    minHeight: 0,
+    padding: 14,
+    gap: 12,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: MAX_W,
+  },
 
-  helper: { color: Colors.sub, fontWeight: "800", textAlign: "center" },
+  list: {
+    flex: 1,
+    minHeight: 0,
+  },
+  listContent: {
+    gap: 10,
+  },
 
-  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
-  primaryText: { color: "#fff", fontWeight: "900" },
+  center: {
+    padding: 16,
+    alignItems: "center",
+    gap: 10,
+  },
+  centerInline: {
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 10,
+  },
+
+  muted: {
+    color: Colors.sub,
+    fontWeight: "800",
+  },
+  helper: {
+    color: Colors.sub,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  primary: {
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.orange,
+    alignItems: "center",
+  },
+  primaryText: {
+    color: "#fff",
+    fontWeight: "900",
+  },
 
   btnWide: {
     width: "100%",
@@ -448,13 +569,36 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  btnText: { fontWeight: "900", color: Colors.text },
+  btnText: {
+    fontWeight: "900",
+    color: Colors.text,
+  },
 
-  tabs: { width: "100%", flexDirection: "row", gap: 10 },
-  tabBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center", justifyContent: "center" },
-  tabBtnActive: { backgroundColor: "rgba(249,115,22,0.18)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(249,115,22,0.35)" },
-  tabText: { fontWeight: "900", color: Colors.sub },
-  tabTextActive: { color: Colors.text },
+  tabs: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabBtnActive: {
+    backgroundColor: "rgba(249,115,22,0.18)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.35)",
+  },
+  tabText: {
+    fontWeight: "900",
+    color: Colors.sub,
+  },
+  tabTextActive: {
+    color: Colors.text,
+  },
 
   searchWrap: {
     paddingHorizontal: 12,
@@ -467,7 +611,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  search: { flex: 1, fontWeight: "800", color: Colors.text },
+  search: {
+    flex: 1,
+    fontWeight: "800",
+    color: Colors.text,
+  },
 
   resultRow: {
     width: "100%",
@@ -481,8 +629,15 @@ const s = StyleSheet.create({
     gap: 10,
   },
 
-  itemNameStrong: { fontWeight: "900", color: Colors.text, fontSize: 15 },
-  itemMeta: { color: Colors.sub, fontWeight: "800" },
+  itemNameStrong: {
+    fontWeight: "900",
+    color: Colors.text,
+    fontSize: 15,
+  },
+  itemMeta: {
+    color: Colors.sub,
+    fontWeight: "800",
+  },
 
   addBtn: {
     paddingVertical: 10,
@@ -494,7 +649,10 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  addBtnText: { fontWeight: "900", color: Colors.text },
+  addBtnText: {
+    fontWeight: "900",
+    color: Colors.text,
+  },
 
   addedRow: {
     width: "100%",
@@ -524,7 +682,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  qtyBtnText: { fontWeight: "900", color: Colors.text, fontSize: 18 },
+  qtyBtnText: {
+    fontWeight: "900",
+    color: Colors.text,
+    fontSize: 18,
+  },
 
   qtyPill: {
     minWidth: 52,
@@ -535,7 +697,10 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  qtyPillText: { fontWeight: "900", color: Colors.text },
+  qtyPillText: {
+    fontWeight: "900",
+    color: Colors.text,
+  },
 
   smallDangerBtn: {
     width: 34,
@@ -545,5 +710,27 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  smallDangerText: { fontWeight: "900", color: Colors.dangerText },
+  smallDangerText: {
+    fontWeight: "900",
+    color: Colors.dangerText,
+  },
+
+  footerWrap: {
+    paddingVertical: 12,
+    alignItems: "center",
+    gap: 8,
+  },
+  footerRetryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+  },
+  footerRetryText: {
+    color: Colors.text,
+    fontWeight: "700",
+    textAlign: "center",
+  },
 });
