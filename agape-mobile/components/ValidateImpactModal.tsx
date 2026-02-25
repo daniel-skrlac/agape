@@ -25,23 +25,20 @@ type Props = {
   bulkHint?: string | null;
 };
 
-type Status = "ok" | "warn" | "bad";
+type Status = "ok" | "warn";
 
 function badgeTone(kind: Status) {
-  if (kind === "bad") return { bg: Colors.status.badBg, bd: Colors.status.badBd, tx: Colors.dangerText };
   if (kind === "warn") return { bg: Colors.status.warnBg, bd: Colors.status.warnBd, tx: Colors.text };
   return { bg: Colors.status.okBg, bd: Colors.status.okBd, tx: Colors.text };
 }
 
 function statusOfItem(it: any): Status {
-  if (!!it?.missingInWarehouse) return "bad";
   const after = toFiniteNumber(it?.afterEffectiveQty);
   if (after != null && after < 0) return "warn";
   return "ok";
 }
 
 function statusLabel(st: Status) {
-  if (st === "bad") return "NEMA U SKLADIŠTU";
   if (st === "warn") return "IDE U MINUS";
   return "OK";
 }
@@ -93,19 +90,17 @@ export default function ValidateImpactModal(props: Props) {
 
   const counts = useMemo(() => {
     let ok = 0,
-      warn = 0,
-      bad = 0;
+      warn = 0;
 
     for (const it of items as any[]) {
       const st = statusOfItem(it);
       if (st === "ok") ok++;
-      else if (st === "warn") warn++;
-      else bad++;
+      else warn++;
     }
-    return { ok, warn, bad, total: items.length };
+    return { ok, warn, total: items.length };
   }, [items]);
 
-  const canConfirm = showConfirm && !disableClose && !loading && !error && !!data && counts.bad === 0;
+  const canConfirm = showConfirm && !disableClose && !loading && !error && !!data;
 
   return (
     <Modal
@@ -191,9 +186,6 @@ export default function ValidateImpactModal(props: Props) {
                     </View>
                     <View style={[s.kpiPill, { backgroundColor: Colors.status.warnBg, borderColor: Colors.status.warnBd }]}>
                       <Text style={s.kpiText}>U minus: {counts.warn}</Text>
-                    </View>
-                    <View style={[s.kpiPill, { backgroundColor: Colors.status.badBg, borderColor: Colors.status.badBd }]}>
-                      <Text style={s.kpiText}>Nema u skladištu: {counts.bad}</Text>
                     </View>
                   </View>
 
@@ -287,7 +279,7 @@ export default function ValidateImpactModal(props: Props) {
                 <View style={{ gap: 10, marginTop: 6 }}>
                   {showConfirm ? (
                     <Pressable style={[s.primary, !canConfirm && { opacity: 0.5 }]} onPress={onConfirm} disabled={!canConfirm}>
-                      <Text style={s.primaryText}>{counts.bad > 0 ? "Ne mogu kreirati" : confirmText ?? "Kreiraj"}</Text>
+                      <Text style={s.primaryText}>{confirmText ?? "Kreiraj"}</Text>
                     </Pressable>
                   ) : null}
 

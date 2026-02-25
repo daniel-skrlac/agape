@@ -1,14 +1,13 @@
-// app/(tabs)/sessions/[id]/entry.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/constants/Colors";
-import { Banner } from "@/components/Banner";
 import NavigationHeader from "@/components/NavigationHeader";
 import { CenterSheet } from "@/components/CenterSheet";
+import { ErrorCard } from "@/components/ErrorCard";
 
 import type {
   BookingSessionEntryResponseDTO,
@@ -18,77 +17,75 @@ import type {
   TemplateBookDocPatchDTO,
   TemplateBookItemDTO,
   TemplateDocResponseDTO,
+  TemplateItemResponseDTO,
   TemplateResponseDTO,
 } from "@/app/models/generated";
 
-import { dispatchTemplateService } from "@/app/api/services/dispatchTemplateService";
+import { toUserMessage } from "@/app/api/apiClient";
 import { partnerService } from "@/app/api/services/partnerService";
 import { useBookingSession, useUpsertBookingSessionEntry } from "@/app/api/hooks/sessions/useBookingSessions";
-import { useItemsPage } from "@/app/api/hooks/useItemDirectory";
+import { useTemplateDetail } from "@/app/api/hooks/templates/useDispatchTemplates";
+import { useItemDirectoryPickerPage } from "@/app/api/hooks/documents/useItemDirectoryPickerPage";
 
-import { QtyMap, useEntryDraft, getDraft, setDraft, clearDraft, patchDraft, ensureDraft } from "../_entryDraftStore";
+import {
+  QtyMap,
+  StandaloneMetaMap,
+  useEntryDraft,
+  getDraft,
+  setDraft,
+  clearDraft,
+  patchDraft,
+  ensureDraft,
+} from "../_entryDraftStore";
 
 const MAX_W = 560;
-const ITEMS_PAGE_SIZE = 10;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
 
-function cleanText(v: any) {
+function cleanText(v: unknown) {
   const s = String(v ?? "").trim();
   if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) return s.slice(1, -1);
   return s;
 }
 
-// robust number parse (handles "1,395" etc.)
-function num(v: any): number {
+function num(v: unknown): number {
   if (v == null) return 0;
   const s = String(v).replace(/[\s,]/g, "");
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
 
-function isBlankNote(v: any): boolean {
+function isBlankNote(v: unknown): boolean {
   if (v == null) return true;
-  if (Array.isArray(v) && v.length === 0) return true; // backend bug: note=[]
+  if (Array.isArray(v) && v.length === 0) return true;
   const s = cleanText(v);
   if (!s) return true;
-  if (s.replace(/\s/g, "") === "[]") return true; // backend bug: note="[]"
-  return false;
+  return s.replace(/\s/g, "") === "[]";
 }
 
 function sanitizeNote(v: string) {
-  return (v ?? "").toString().replace(/\r\n/g, "\n").trim();
+  return (v ?? "").replace(/\r\n/g, "\n").trim();
 }
+
 function shorten(s: string, max = 90) {
   const x = (s ?? "").trim();
   if (!x) return "";
   if (x.length <= max) return x;
-  return x.slice(0, max - 1) + "…";
+  return `${x.slice(0, max - 1)}…`;
 }
+
 function countLines(s: string) {
   const x = (s ?? "").trim();
   if (!x) return 0;
   return x.split("\n").length;
 }
+
 function firstLine(s: string) {
   const x = (s ?? "").trim();
   if (!x) return "";
   return x.split("\n")[0] ?? "";
 }
 
-function safeJsonArray(v: any): any[] {
-  if (v == null) return [];
-  if (Array.isArray(v)) return v;
-  const s = String(v).trim();
-  if (!s) return [];
-  try {
-    const parsed = JSON.parse(s);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function safeJsonAny(v: any): any {
+function safeJsonAny(v: unknown): any {
   if (v == null) return null;
   if (typeof v !== "string") return v;
   const s = v.trim();
@@ -100,81 +97,33 @@ function safeJsonAny(v: any): any {
   }
 }
 
-// hydrate qty-map from extraItems so extra items persist after reload
-function itemsToQtyMap(items: any): QtyMap {
-  const arr = safeJsonArray(items);
-  const out: QtyMap = {};
-  for (const it of arr) {
-    const id = num(it?.itemId ?? it?.item_id ?? it?.id ?? it?.item?.id ?? 0);
-    const q = Number(it?.quantity ?? it?.qty ?? 0);
-    if (!id || q <= 0) continue;
-    out[String(id)] = (out[String(id)] ?? 0) + q;
-  }
-  return out;
+function safeJsonArray(v: unknown): any[] {
+  if (v == null) return [];
+  if (Array.isArray(v)) return v;
+  const parsed = safeJsonAny(v);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
-// ---- Robust ID normalizers ----
 function normDocDocumentId(d: any): number {
   return num(d?.documentId ?? d?.document_id ?? d?.document?.id ?? d?.document?.documentId ?? 0);
 }
+
 function normTemplateDocId(d: any): number {
   return num(d?.id ?? d?.templateDocId ?? d?.template_doc_id ?? 0);
 }
+
 function normItemId(x: any): number {
   return num(x?.itemId ?? x?.item_id ?? x?.id ?? x?.item?.id ?? 0);
-}
-
-function upsertMetaMap(prev: Map<number, ItemDescriptorResponseDTO>, items: any[] | null | undefined) {
-  const next = new Map(prev);
-  (items ?? []).forEach((it: any) => {
-    const id = normItemId(it);
-    if (!id) return;
-    next.set(id, it);
-  });
-  return next;
-}
-
-function itemName(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
-  return metaById.get(Number(itemId))?.name?.trim() ?? `Item #${Number(itemId)}`;
-}
-function itemMeta(itemId: number, metaById: Map<number, ItemDescriptorResponseDTO>) {
-  const m: any = metaById.get(Number(itemId));
-  if (!m) return "";
-  const parts = [m.code ? `Šifra: ${m.code}` : null, m.unit ? `JMJ: ${m.unit}` : null, m.barcode ? `BC: ${m.barcode}` : null].filter(Boolean);
-  return parts.join(" • ");
 }
 
 function qtyToItems(qty: QtyMap): TemplateBookItemDTO[] {
   return Object.entries(qty ?? {})
     .map(([k, v]) => ({ itemId: num(k), quantity: Number(v) }))
     .filter((x) => x.itemId && x.quantity > 0)
-    .sort((a, b) => Number(a.itemId) - Number(b.itemId));
+    .sort((a, b) => a.itemId - b.itemId);
 }
 
-function normTemplateDocItems(d: any): Array<{ itemId: number; quantity: number; sortOrder?: number }> {
-  const raw = (d?.items ?? d?.docItems ?? d?.documentItems ?? d?.lines ?? []) as any[];
-  return (raw ?? [])
-    .map((x: any) => ({
-      itemId: normItemId(x),
-      quantity: Number(x?.quantity ?? x?.qty ?? 0),
-      sortOrder: num(x?.sortOrder ?? x?.sort_order ?? 0) || undefined,
-    }))
-    .filter((x) => x.itemId && x.quantity > 0)
-    .sort((a, b) => (Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)) || (a.itemId - b.itemId));
-}
-
-/**
- * Accept docPatches in MANY shapes and normalize to backend DTO:
- *   TemplateBookDocPatchDTO { documentId: Long, addItems: List<TemplateBookItemDTO> }
- *
- * Supported raw shapes:
- *  - Array<patch>
- *  - JSON string of array
- *  - Single patch object
- *  - Record<docId, QtyMap | items[] | {addItems/items/lines: ...}>
- *  - Nested document: { document: { id } }
- */
-function normalizeDocPatches(raw: any): TemplateBookDocPatchDTO[] {
+function normalizeDocPatches(raw: unknown): TemplateBookDocPatchDTO[] {
   if (raw == null) return [];
 
   let arr: any[] = [];
@@ -185,10 +134,16 @@ function normalizeDocPatches(raw: any): TemplateBookDocPatchDTO[] {
     const parsed = safeJsonAny(raw);
     if (Array.isArray(parsed)) arr = parsed;
     else if (parsed && typeof parsed === "object") arr = [parsed];
-    else arr = [];
   } else if (typeof raw === "object") {
-    const maybeDocId =
-      num((raw as any)?.documentId ?? (raw as any)?.document_id ?? (raw as any)?.docId ?? (raw as any)?.doc_id ?? (raw as any)?.document?.id ?? 0);
+    const maybeDocId = num(
+      (raw as any)?.documentId ??
+        (raw as any)?.document_id ??
+        (raw as any)?.docId ??
+        (raw as any)?.doc_id ??
+        (raw as any)?.document?.id ??
+        0
+    );
+
     if (maybeDocId) {
       arr = [raw];
     } else {
@@ -196,9 +151,7 @@ function normalizeDocPatches(raw: any): TemplateBookDocPatchDTO[] {
     }
   }
 
-  if (!arr.length) return [];
-
-  const docMap = new Map<number, Map<number, number>>(); // docId -> itemId -> qty
+  const docMap = new Map<number, Map<number, number>>();
 
   for (const p of arr) {
     const documentId = num(p?.documentId ?? p?.document_id ?? p?.docId ?? p?.doc_id ?? p?.document?.id ?? 0);
@@ -206,23 +159,16 @@ function normalizeDocPatches(raw: any): TemplateBookDocPatchDTO[] {
 
     let addItemsRaw = p?.addItems ?? p?.add_items ?? p?.items ?? p?.lines ?? [];
 
-    // allow nested json string
     if (typeof addItemsRaw === "string") addItemsRaw = safeJsonAny(addItemsRaw) ?? [];
 
-    // map/object => could be wrapper object or QtyMap
     if (addItemsRaw && typeof addItemsRaw === "object" && !Array.isArray(addItemsRaw)) {
       const w: any = addItemsRaw;
       if (w.addItems || w.items || w.lines) {
         addItemsRaw = w.addItems ?? w.items ?? w.lines ?? [];
       } else {
-        // treat as QtyMap
-        const tmp: any[] = [];
-        for (const [ik, iv] of Object.entries(w)) {
-          const itemId = num(ik);
-          const quantity = Number(iv ?? 0);
-          if (itemId && quantity > 0) tmp.push({ itemId, quantity });
-        }
-        addItemsRaw = tmp;
+        addItemsRaw = Object.entries(w)
+          .map(([k, v]) => ({ itemId: num(k), quantity: Number(v ?? 0) }))
+          .filter((x) => x.itemId && x.quantity > 0);
       }
     }
 
@@ -239,41 +185,128 @@ function normalizeDocPatches(raw: any): TemplateBookDocPatchDTO[] {
     }
   }
 
-  const out: any[] = [];
-  for (const [documentId, itemMap] of docMap.entries()) {
-    const addItems = Array.from(itemMap.entries())
-      .map(([itemId, quantity]) => ({ itemId, quantity }))
-      .filter((x) => x.itemId && x.quantity > 0)
-      .sort((a, b) => a.itemId - b.itemId);
-
-    out.push({ documentId, addItems });
-  }
-
-  out.sort((a, b) => Number(a.documentId) - Number(b.documentId));
-  return out as TemplateBookDocPatchDTO[];
+  return Array.from(docMap.entries())
+    .map(([documentId, itemMap]) => ({
+      documentId,
+      addItems: Array.from(itemMap.entries())
+        .map(([itemId, quantity]) => ({ itemId, quantity }))
+        .sort((a, b) => a.itemId - b.itemId),
+    }))
+    .sort((a, b) => a.documentId - b.documentId);
 }
 
-/**
- * ✅ THE REAL FIX:
- * Build docPatches from the selected template documents + their items
- * so backend never gets [] (unless template truly has no items).
- */
-function buildDocPatchesFromTemplateDocs(docs: any[]): TemplateBookDocPatchDTO[] {
-  const out: any[] = [];
+function templateDocRows(doc: TemplateDocResponseDTO) {
+  const items = ((doc as any)?.items ?? []) as TemplateItemResponseDTO[];
 
-  for (const d of docs ?? []) {
-    const documentId = normDocDocumentId(d) || normTemplateDocId(d);
-    if (!documentId) continue;
+  return (items ?? [])
+    .map((row: any) => ({
+      itemId: num(row?.itemId),
+      quantity: Number(row?.quantity ?? 0),
+      sortOrder: num(row?.sortOrder ?? 0) || 0,
+      name: cleanText(row?.itemName ?? row?.name ?? ""),
+      code: cleanText(row?.itemCode ?? row?.code ?? ""),
+      unit: cleanText(row?.unit ?? ""),
+      barcode: cleanText(row?.barcode ?? ""),
+    }))
+    .filter((x) => x.itemId && x.quantity > 0)
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || (a.itemId - b.itemId));
+}
 
-    const addItems = normTemplateDocItems(d)
-      .map((x) => ({ itemId: x.itemId, quantity: x.quantity }))
-      .filter((x) => x.itemId && x.quantity > 0);
+function buildDocPatchesFromTemplateDocs(docs: TemplateDocResponseDTO[]): TemplateBookDocPatchDTO[] {
+  return (docs ?? [])
+    .map((d: any) => {
+      const documentId = normDocDocumentId(d) || normTemplateDocId(d);
+      const addItems = templateDocRows(d).map((x) => ({ itemId: x.itemId, quantity: x.quantity }));
+      return { documentId, addItems };
+    })
+    .filter((x) => x.documentId)
+    .sort((a, b) => a.documentId - b.documentId);
+}
 
-    out.push({ documentId, addItems });
+function extraItemsToState(items: unknown): { qty: QtyMap; metaById: StandaloneMetaMap } {
+  const arr = safeJsonArray(items);
+  const qty: QtyMap = {};
+  const metaById: StandaloneMetaMap = {};
+
+  for (const it of arr) {
+    const itemId = normItemId(it);
+    const quantity = Number(it?.quantity ?? it?.qty ?? 0);
+    if (!itemId || quantity <= 0) continue;
+
+    const k = String(itemId);
+    qty[k] = (qty[k] ?? 0) + quantity;
+
+    const name = cleanText(it?.name ?? it?.itemName ?? "");
+    const code = cleanText(it?.code ?? it?.itemCode ?? "");
+    const unit = cleanText(it?.unit ?? "");
+    const barcode = cleanText(it?.barcode ?? "");
+
+    if (name || code || unit || barcode) {
+      metaById[k] = { itemId, name, code, unit, barcode };
+    }
   }
 
-  out.sort((a, b) => Number(a.documentId) - Number(b.documentId));
-  return out as TemplateBookDocPatchDTO[];
+  return { qty, metaById };
+}
+
+function hasKeys(v: Record<string, any> | null | undefined) {
+  return !!v && Object.keys(v).length > 0;
+}
+
+function buildTemplateMetaMap(docs: TemplateDocResponseDTO[]) {
+  const out: StandaloneMetaMap = {};
+  for (const d of docs ?? []) {
+    for (const r of templateDocRows(d)) {
+      const k = String(r.itemId);
+      if (!k || k === "0") continue;
+      if (out[k]) continue;
+      if (!r.name && !r.code && !r.unit && !r.barcode) continue;
+      out[k] = { itemId: r.itemId, name: r.name, code: r.code, unit: r.unit, barcode: r.barcode };
+    }
+  }
+  return out;
+}
+
+function metaToStandaloneMeta(it: ItemDescriptorResponseDTO | any) {
+  const itemId = num(it?.itemId ?? it?.id ?? 0);
+  if (!itemId) return null;
+
+  const name = cleanText(it?.name ?? it?.itemName ?? "");
+  const code = cleanText(it?.code ?? it?.itemCode ?? "");
+  const unit = cleanText(it?.unit ?? "");
+  const barcode = cleanText(it?.barcode ?? "");
+
+  return { itemId, name, code, unit, barcode };
+}
+
+function mergeStandaloneMetaMaps(...maps: Array<StandaloneMetaMap | null | undefined>) {
+  const out: StandaloneMetaMap = {};
+  for (const m of maps) {
+    if (!m) continue;
+    for (const [k, v] of Object.entries(m)) {
+      if (!v) continue;
+      if (!out[k]) out[k] = v;
+    }
+  }
+  return out;
+}
+
+function displayFromMeta(itemId: number, mergedMeta: StandaloneMetaMap) {
+  const m = mergedMeta?.[String(itemId)];
+  const name = cleanText(m?.name ?? "") || `Artikl #${itemId}`;
+  const code = cleanText(m?.code ?? "");
+  const unit = cleanText(m?.unit ?? "");
+  const barcode = cleanText(m?.barcode ?? "");
+
+  const meta = [
+    code ? `Šifra: ${code}` : null,
+    unit ? `JMJ: ${unit}` : null,
+    barcode ? `BC: ${barcode}` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
+  return { name, meta };
 }
 
 export default function SessionEntryEditor() {
@@ -281,18 +314,24 @@ export default function SessionEntryEditor() {
   const sessionId = num(params.id);
   const partnerId = num(params.partnerId);
 
-  // reset local UI state on param change
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateResponseDTO | null>(null);
-  const hydratedKeyRef = useRef<string>("");
-  const builtKeyRef = useRef<string>("");
+  const [partnerName, setPartnerName] = useState("");
+  const [screenError, setScreenError] = useState<string | null>(null);
+
+  const [noteSheetOpen, setNoteSheetOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+
+  const hydratedKeyRef = useRef("");
+  const builtKeyRef = useRef("");
 
   useEffect(() => {
-    setSelectedTemplate(null);
+    setPartnerName("");
+    setScreenError(null);
+    setNoteSheetOpen(false);
+    setNoteDraft("");
     hydratedKeyRef.current = "";
     builtKeyRef.current = "";
   }, [sessionId, partnerId]);
 
-  // ensure draft exists immediately
   useEffect(() => {
     if (!sessionId || !partnerId) return;
     ensureDraft(sessionId, partnerId);
@@ -300,71 +339,130 @@ export default function SessionEntryEditor() {
 
   const sQ = useBookingSession(sessionId);
   const session = sQ.data as BookingSessionResponseDTO | undefined;
-  const warehouseId = num((session as any)?.warehouseId ?? 0) || null;
 
   const upsertM = useUpsertBookingSessionEntry(sessionId);
   const draft = useEntryDraft(sessionId, partnerId);
 
-  // partner name
-  const [partnerName, setPartnerName] = useState<string>("");
+  const isSessionDraft = String((session as any)?.status ?? "") === "DRAFT";
+  const canEdit = !session || isSessionDraft;
 
-  // NOTE sheet
-  const [noteSheetOpen, setNoteSheetOpen] = useState(false);
-  const [noteDraft, setNoteDraft] = useState("");
+  const warehouseId = num((session as any)?.warehouseId ?? 0) || null;
 
-  const openNote = () => {
-    const cur = isBlankNote((draft as any)?.note) ? "" : String((draft as any)?.note ?? "");
-    setNoteDraft(cur);
-    setNoteSheetOpen(true);
-  };
+  const tplId = num((draft as any)?.templateId ?? 0) || null;
+  const tplQ = useTemplateDetail(tplId, { includeItemMeta: true });
+  const selectedTemplate = (tplQ.data ?? null) as TemplateResponseDTO | null;
 
-  const applyNote = () => {
-    const cleaned = sanitizeNote(noteDraft);
-    patchDraft(sessionId, partnerId, { note: cleaned ? cleaned : null } as any);
-    setNoteSheetOpen(false);
-    setNoteDraft("");
-  };
+  const templateDocs: TemplateDocResponseDTO[] = useMemo(
+    () => ((selectedTemplate?.documents ?? []) as any),
+    [selectedTemplate]
+  );
 
-  const clearNote = () => setNoteDraft("");
+  const templateMetaById = useMemo(() => buildTemplateMetaMap(templateDocs), [templateDocs]);
 
-  // item directory paging (best-effort names)
-  const [metaById, setMetaById] = useState<Map<number, ItemDescriptorResponseDTO>>(new Map());
-  const [namesLoading, setNamesLoading] = useState(false);
-  const [metaPage, setMetaPage] = useState(0);
-
-  const itemsQ = useItemsPage({
-    warehouseId: warehouseId ? num(warehouseId) : null,
-    page: metaPage,
-    size: ITEMS_PAGE_SIZE,
-    q: undefined,
+  const { fetchItemsPage } = useItemDirectoryPickerPage({
+    warehouseId: warehouseId ? Number(warehouseId) : null,
+    enabled: !!warehouseId,
   });
 
-  useEffect(() => {
-    if (itemsQ.data?.items?.length) setMetaById((prev) => upsertMetaMap(prev, itemsQ.data!.items as any));
-  }, [itemsQ.data?.items]);
+  // Local cache for meta of extra items (so extra items show name/code/unit/barcode)
+  const [extraHydratedMetaById, setExtraHydratedMetaById] = useState<StandaloneMetaMap>({});
 
-  // prefill partner name
+  const standaloneItems = useMemo(() => qtyToItems((draft as any)?.standaloneQty ?? {}), [draft?.standaloneQty]);
+  const standaloneMetaById = ((draft as any)?.standaloneMetaById ?? {}) as StandaloneMetaMap;
+
+  // Hydrate meta for extra items that are not in draft.standaloneMetaById and not in template meta
   useEffect(() => {
     let alive = true;
+
+    if (!warehouseId) return;
+    if (!standaloneItems.length) return;
+
+    const mergedAlready = mergeStandaloneMetaMaps(standaloneMetaById, extraHydratedMetaById, templateMetaById);
+
+    const missingIds = standaloneItems
+      .map((x) => num((x as any)?.itemId))
+      .filter((id) => id > 0)
+      .filter((id) => !mergedAlready[String(id)]);
+
+    if (!missingIds.length) return;
+
+    (async () => {
+      // avoid spamming if someone adds 200 items
+      const ids = missingIds.slice(0, 40);
+
+      const nextPatch: StandaloneMetaMap = {};
+
+      for (const id of ids) {
+        if (!alive) return;
+
+        try {
+          const res = await fetchItemsPage({
+            page: 0,
+            size: 25,
+            q: String(id),
+          });
+
+          const rows = (res?.items ?? []) as ItemDescriptorResponseDTO[];
+          const hit = rows.find((r: any) => num((r as any)?.itemId) === id) ?? rows[0];
+
+          const meta = metaToStandaloneMeta(hit);
+          if (meta) nextPatch[String(id)] = meta;
+        } catch {
+          // ignore single-item fetch failures
+        }
+      }
+
+      if (!alive) return;
+      if (Object.keys(nextPatch).length) {
+        setExtraHydratedMetaById((prev) => ({ ...prev, ...nextPatch }));
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouseId, standaloneItems, fetchItemsPage, templateMetaById, standaloneMetaById, extraHydratedMetaById]);
+
+  const mergedExtraMetaById = useMemo(
+    () => mergeStandaloneMetaMaps(standaloneMetaById, extraHydratedMetaById, templateMetaById),
+    [standaloneMetaById, extraHydratedMetaById, templateMetaById]
+  );
+
+  const topError = useMemo(() => {
+    if (screenError) return screenError;
+    if (sQ.error) return toUserMessage(sQ.error, "Greška pri učitavanju sesije.");
+    if (tplQ.error) return toUserMessage(tplQ.error, "Greška pri učitavanju predloška.");
+    if (upsertM.error) return toUserMessage(upsertM.error, "Greška pri spremanju unosa.");
+    return null;
+  }, [screenError, sQ.error, tplQ.error, upsertM.error]);
+
+  const retryTopError = useCallback(async () => {
+    setScreenError(null);
+    await Promise.allSettled([sQ.refetch(), tplQ.refetch()]);
+  }, [sQ, tplQ]);
+
+  useEffect(() => {
+    let alive = true;
+
     (async () => {
       try {
-        const hitFromSession = ((session as any)?.entries ?? []).find((e: any) => num(e.partnerId) === num(partnerId)) ?? null;
+        const hitFromSession = ((session as any)?.entries ?? []).find((e: any) => num(e.partnerId) === partnerId) ?? null;
         const maybeName = cleanText((hitFromSession as any)?.partnerName) || cleanText((hitFromSession as any)?.partner?.name) || "";
+
         if (maybeName) {
-          if (!alive) return;
-          setPartnerName(maybeName);
+          if (alive) setPartnerName(maybeName);
           return;
         }
 
         const res = await partnerService.pagePartners({ page: 0, size: 50, q: String(partnerId) });
-        const hit = (res.items ?? []).find((p: any) => num(p.id) === num(partnerId)) ?? null;
-        if (!alive) return;
-        setPartnerName(cleanText((hit as any)?.name) || "");
+        const hit = (res.items ?? []).find((p: any) => num(p.id) === partnerId) ?? null;
+        if (alive) setPartnerName(cleanText((hit as any)?.name) || "");
       } catch {
-        if (!alive) return;
-        setPartnerName("");
+        if (alive) setPartnerName("");
       }
     })();
+
     return () => {
       alive = false;
     };
@@ -372,13 +470,8 @@ export default function SessionEntryEditor() {
 
   const headerTitle = partnerName?.trim() ? `Unos • ${partnerName}` : `Unos • Partner #${partnerId}`;
 
-  /**
-   * Hydrate draft from backend entry ONCE per (sessionId, partnerId),
-   * but NEVER overwrite user-touched fields.
-   */
   useEffect(() => {
-    if (!sessionId || !partnerId) return;
-    if (!session) return;
+    if (!sessionId || !partnerId || !session) return;
 
     const key = `${sessionId}:${partnerId}:${(session as any)?.id ?? ""}`;
     if (hydratedKeyRef.current === key) return;
@@ -386,8 +479,9 @@ export default function SessionEntryEditor() {
     const cur = getDraft(sessionId, partnerId) ?? ensureDraft(sessionId, partnerId);
     const touched = (cur as any)._touched ?? {};
 
-    const existing =
-      ((session as any).entries ?? []).find((e: any) => num(e.partnerId) === num(partnerId)) as BookingSessionEntryResponseDTO | undefined;
+    const existing = ((session as any).entries ?? []).find(
+      (e: any) => num(e.partnerId) === partnerId
+    ) as BookingSessionEntryResponseDTO | undefined;
 
     if (!existing) {
       hydratedKeyRef.current = key;
@@ -403,9 +497,10 @@ export default function SessionEntryEditor() {
         (existing as any)?.doc_patches_json ??
         null
     );
+
     const curDocPatches = normalizeDocPatches((cur as any)?.docPatches ?? null);
 
-    const incomingStandalone = itemsToQtyMap(
+    const incomingExtra = extraItemsToState(
       (existing as any)?.extraItems ??
         (existing as any)?.extra_items ??
         (existing as any)?.extraItemsJson ??
@@ -419,82 +514,48 @@ export default function SessionEntryEditor() {
     const merged = {
       ...cur,
       draftMode: ((cur as any)?.draftMode ?? (existing as any)?.draftMode ?? "DRAFT") as any,
-
       templateId: touched.templateId ? cur.templateId : cur.templateId ?? incomingTemplateId,
-
       docPatches: touched.docPatches ? curDocPatches : curDocPatches.length ? curDocPatches : incomingDocPatches,
-
       standaloneQty: touched.standaloneQty
         ? cur.standaloneQty ?? {}
         : cur.standaloneQty && Object.keys(cur.standaloneQty).length > 0
           ? cur.standaloneQty
-          : incomingStandalone,
-
+          : incomingExtra.qty,
+      standaloneMetaById: touched.standaloneMetaById
+        ? (cur as any).standaloneMetaById ?? {}
+        : hasKeys((cur as any).standaloneMetaById)
+          ? (cur as any).standaloneMetaById
+          : incomingExtra.metaById,
       note: touched.note ? cur.note ?? null : cur.note != null ? cur.note : incomingNote,
-
       documentDate: touched.documentDate ? ((cur as any)?.documentDate ?? null) : ((cur as any)?.documentDate ?? incomingDocDate),
     };
 
     setDraft(merged as any);
     hydratedKeyRef.current = key;
-  }, [session?.id, sessionId, partnerId]);
-
-  // load selected template full (from draft.templateId)
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const tplId = num((draft as any)?.templateId ?? 0);
-      if (!tplId) {
-        setSelectedTemplate(null);
-        return;
-      }
-      try {
-        const full = await dispatchTemplateService.getTemplate(tplId);
-        if (!alive) return;
-        setSelectedTemplate(full as any);
-      } catch {
-        if (!alive) return;
-        setSelectedTemplate(null);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [draft?.templateId]);
-
-  const templateDocs: TemplateDocResponseDTO[] = useMemo(
-    () => (((selectedTemplate as any)?.documents ?? (selectedTemplate as any)?.docs ?? []) as any[]),
-    [selectedTemplate]
-  );
+  }, [sessionId, partnerId, session]);
 
   const templateDocsKey = useMemo(() => {
     return (templateDocs ?? [])
       .map((d: any) => {
-        const id = normDocDocumentId(d) || normTemplateDocId(d);
-        const cnt = normTemplateDocItems(d).length;
-        return `${id}:${cnt}`;
+        const docId = normDocDocumentId(d) || normTemplateDocId(d);
+        const rows = templateDocRows(d);
+        const rowsKey = rows.map((r) => `${r.itemId}:${r.quantity}`).join(",");
+        return `${docId}|${rowsKey}`;
       })
-      .join("|");
+      .join(";");
   }, [templateDocs]);
 
-  /**
-   * ✅ FIX: Auto-build docPatches from template docs/items
-   * - only when:
-   *    - template is loaded
-   *    - docPatches is currently empty
-   *    - user did NOT touch docPatches (so we don’t overwrite manual edits)
-   */
   useEffect(() => {
     if (!sessionId || !partnerId) return;
 
     const cur = getDraft(sessionId, partnerId);
     if (!cur) return;
 
-    const tplId = num(cur.templateId ?? 0);
-    if (!tplId) return;
+    const curTplId = num((cur as any).templateId ?? 0);
+    if (!curTplId) return;
 
     const loadedTplId = num((selectedTemplate as any)?.id ?? 0);
-    if (!loadedTplId || loadedTplId !== tplId) return;
+    if (!loadedTplId || loadedTplId !== curTplId) return;
 
     const touched = (cur as any)._touched ?? {};
     if (touched.docPatches) return;
@@ -502,15 +563,13 @@ export default function SessionEntryEditor() {
     const curNorm = normalizeDocPatches((cur as any).docPatches ?? null);
     if (curNorm.length) return;
 
-    const built = buildDocPatchesFromTemplateDocs(templateDocs as any);
-    // IMPORTANT: if template truly has no items, built will be [] (that’s correct)
-    const k = `${sessionId}:${partnerId}:${tplId}:${templateDocsKey}`;
+    const built = buildDocPatchesFromTemplateDocs(templateDocs);
+    const k = `${sessionId}:${partnerId}:${curTplId}:${templateDocsKey}`;
     if (builtKeyRef.current === k) return;
 
-    // use setDraft => do NOT mark as touched
     setDraft({ ...cur, docPatches: built } as any);
     builtKeyRef.current = k;
-  }, [sessionId, partnerId, (draft as any)?.templateId, (selectedTemplate as any)?.id, templateDocsKey]);
+  }, [sessionId, partnerId, selectedTemplate, templateDocsKey, templateDocs]);
 
   const defaultDocId = useMemo(() => {
     const first: any = templateDocs?.[0];
@@ -518,168 +577,110 @@ export default function SessionEntryEditor() {
     return docId || null;
   }, [templateDocs]);
 
-  const defaultRowsByDoc = useMemo(() => {
+  const templateBlocks = useMemo(() => {
     return (templateDocs ?? [])
       .map((d: any) => {
         const docId = normDocDocumentId(d) || normTemplateDocId(d);
-        const rows = normTemplateDocItems(d).map((x) => ({ itemId: x.itemId, quantity: x.quantity }));
+        const rows = templateDocRows(d);
         return { docId, rows, count: rows.length };
       })
       .filter((x) => x.docId);
   }, [templateDocs]);
 
-  const standaloneItems = useMemo(() => qtyToItems((draft as any)?.standaloneQty ?? {}), [draft?.standaloneQty]);
+  const openNote = useCallback(() => {
+    if (!canEdit) return;
+    const cur = isBlankNote((draft as any)?.note) ? "" : String((draft as any)?.note ?? "");
+    setNoteDraft(cur);
+    setNoteSheetOpen(true);
+  }, [canEdit, draft]);
 
-  const requiredItemIds = useMemo(() => {
-    const ids: number[] = [];
-    for (const d of templateDocs ?? []) for (const it of normTemplateDocItems(d)) if (it.itemId) ids.push(it.itemId);
-    for (const it of standaloneItems ?? []) if (num((it as any)?.itemId)) ids.push(num((it as any).itemId));
-    return Array.from(new Set(ids)).sort((a, b) => a - b);
-  }, [templateDocs, standaloneItems]);
+  const closeNoteSheet = useCallback(() => {
+    if (upsertM.isPending) return;
+    setNoteSheetOpen(false);
+    setNoteDraft("");
+  }, [upsertM.isPending]);
 
-  // preload item names
-  const preloadKeyRef = useRef<string>("");
-  useEffect(() => {
-    if (!warehouseId) return;
-    if (!requiredItemIds.length) return;
+  const applyNote = useCallback(() => {
+    const cleaned = sanitizeNote(noteDraft);
+    patchDraft(sessionId, partnerId, { note: cleaned ? cleaned : null } as any);
+    setNoteSheetOpen(false);
+    setNoteDraft("");
+  }, [noteDraft, sessionId, partnerId]);
 
-    const missing = requiredItemIds.filter((id) => !metaById.get(id)?.name?.trim());
-    const key = `${warehouseId}:${missing.join(",")}`;
-
-    if (!missing.length) {
-      setNamesLoading(false);
-      preloadKeyRef.current = "";
-      return;
-    }
-    if (preloadKeyRef.current === key) return;
-
-    preloadKeyRef.current = key;
-    setNamesLoading(true);
-    setMetaPage(0);
-  }, [warehouseId, requiredItemIds, metaById]);
-
-  useEffect(() => {
-    if (!namesLoading) return;
-    if (!warehouseId) return;
-    if (itemsQ.isLoading) return;
-
-    const missing = requiredItemIds.filter((id) => !metaById.get(id)?.name?.trim());
-    if (!missing.length) {
-      setNamesLoading(false);
-      return;
-    }
-
-    const got = itemsQ.data?.items?.length ?? 0;
-    const total = itemsQ.data?.total ?? 0;
-    const size = itemsQ.data?.size ?? ITEMS_PAGE_SIZE;
-    const page = itemsQ.data?.page ?? metaPage;
-    const totalPages = Math.max(1, Math.ceil(total / size));
-
-    if (page + 1 < totalPages && got > 0) {
-      setMetaPage((p) => p + 1);
-      return;
-    }
-
-    setNamesLoading(false);
-  }, [
-    namesLoading,
-    itemsQ.isLoading,
-    itemsQ.data?.items?.length,
-    itemsQ.data?.total,
-    itemsQ.data?.page,
-    itemsQ.data?.size,
-    requiredItemIds,
-    metaById,
-    warehouseId,
-    metaPage,
-  ]);
-
-  const namesReady = useMemo(() => {
-    if (!requiredItemIds.length) return true;
-    for (const id of requiredItemIds) if (!metaById.get(id)?.name?.trim()) return false;
-    return true;
-  }, [requiredItemIds, metaById]);
-
-  const err = (sQ.error as any)?.message || (upsertM.error as any)?.message || null;
-
-  const openTemplatePicker = () => {
+  const openTemplatePicker = useCallback(() => {
+    if (!canEdit) return;
     router.push({
       pathname: "/(tabs)/sessions/[id]/template" as const,
       params: { id: String(sessionId), partnerId: String(partnerId) },
     });
-  };
+  }, [canEdit, sessionId, partnerId]);
 
-  const openStandaloneItems = () => {
+  const openStandaloneItems = useCallback(() => {
+    if (!canEdit) return;
     router.push({
       pathname: "/(tabs)/sessions/[id]/items" as const,
       params: { id: String(sessionId), partnerId: String(partnerId) },
     });
-  };
+  }, [canEdit, sessionId, partnerId]);
 
-  const goBackToSessionEntriesList = () => {
+  const goBackToSessionEntriesList = useCallback(() => {
     router.replace({ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } });
-  };
+  }, [sessionId]);
 
-  const save = async () => {
-    if (!session || (session as any).status !== "DRAFT") return;
+  const clearTemplateSelection = useCallback(() => {
+    if (!canEdit) return;
+
+    patchDraft(sessionId, partnerId, {
+      templateId: null,
+      docPatches: [],
+      standaloneQty: {},
+      standaloneMetaById: {},
+      note: null,
+    } as any);
+  }, [canEdit, sessionId, partnerId]);
+
+  const save = useCallback(async () => {
+    if (!session || !isSessionDraft) return;
 
     const cur = getDraft(sessionId, partnerId);
     if (!cur) return;
 
-    const tplId = num(cur.templateId ?? 0);
-    if (!tplId) return;
+    const curTplId = num((cur as any).templateId ?? 0);
+    if (!curTplId) return;
 
-    // ✅ ALWAYS build docPatches if empty (template defaults must be sent)
-    let docPatchesOut = normalizeDocPatches((cur as any).docPatches ?? null);
+    setScreenError(null);
 
-    if (!docPatchesOut.length) {
-      // try from already loaded template
-      const loadedTplId = num((selectedTemplate as any)?.id ?? 0);
-      if (loadedTplId === tplId) {
-        docPatchesOut = buildDocPatchesFromTemplateDocs(templateDocs as any);
-      } else {
-        // hard fallback: fetch template now
-        try {
-          const tpl = await dispatchTemplateService.getTemplate(tplId);
-          const docs = ((tpl as any)?.documents ?? (tpl as any)?.docs ?? []) as any[];
-          docPatchesOut = buildDocPatchesFromTemplateDocs(docs);
-        } catch {
-          docPatchesOut = [];
+    try {
+      let docPatchesOut = normalizeDocPatches((cur as any).docPatches ?? null);
+
+      if (!docPatchesOut.length) {
+        if (selectedTemplate && num((selectedTemplate as any)?.id ?? 0) === curTplId) {
+          docPatchesOut = buildDocPatchesFromTemplateDocs(templateDocs);
         }
       }
 
-      // keep store consistent if user didn’t touch docPatches
-      const cur2 = getDraft(sessionId, partnerId);
-      if (cur2 && !((cur2 as any)?._touched?.docPatches)) {
-        setDraft({ ...cur2, docPatches: docPatchesOut } as any);
-      }
+      const extraItemsOut = qtyToItems((cur as any).standaloneQty ?? {});
+      const noteOut = isBlankNote((cur as any).note) ? null : sanitizeNote(String((cur as any).note ?? ""));
+
+      const payload: BookingSessionEntryUpsertRequestDTO = {
+        partnerId: num((cur as any).partnerId),
+        templateId: curTplId,
+        draftMode: (((cur as any).draftMode ?? "DRAFT") as any),
+        documentDate: ((cur as any).documentDate ?? null) as any,
+        docPatches: (docPatchesOut ?? []) as any,
+        extraItems: extraItemsOut as any,
+        note: (noteOut ? noteOut : null) as any,
+      };
+
+      await upsertM.mutateAsync(payload);
+
+      clearDraft(sessionId, partnerId);
+      await sQ.refetch();
+      goBackToSessionEntriesList();
+    } catch (e) {
+      setScreenError(toUserMessage(e, "Greška pri spremanju unosa."));
     }
-
-    const extraItemsOut = qtyToItems(cur.standaloneQty ?? {});
-    const noteOut = isBlankNote(cur.note) ? null : sanitizeNote(String(cur.note ?? ""));
-
-    // ✅ SEND docPatches ALWAYS (this is the actual fix)
-    const payload: any = {
-      partnerId: num(cur.partnerId),
-      templateId: tplId,
-      draftMode: (cur.draftMode ?? "DRAFT") as any,
-      documentDate: (cur as any).documentDate ?? null,
-
-      docPatches: docPatchesOut as any,
-      extraItems: extraItemsOut as any,
-
-      // keep if your generated client type expects it
-      extraDocuments: [] as any,
-
-      note: noteOut ? noteOut : null,
-    };
-
-    await upsertM.mutateAsync(payload as BookingSessionEntryUpsertRequestDTO);
-
-    clearDraft(sessionId, partnerId);
-    await sQ.refetch();
-    goBackToSessionEntriesList();
-  };
+  }, [session, isSessionDraft, sessionId, partnerId, selectedTemplate, templateDocs, upsertM, sQ, goBackToSessionEntriesList]);
 
   if (!draft) {
     return (
@@ -699,28 +700,52 @@ export default function SessionEntryEditor() {
   const noteLines = countLines(noteClean);
   const notePreview = shorten(firstLine(noteClean), 72);
 
+  const tplLoading = !!tplId && (tplQ.isLoading || tplQ.isFetching);
+  const saveDisabled = !draft.templateId || upsertM.isPending || !canEdit || tplLoading;
+  const extraItemsDisabled = !draft.templateId || !canEdit;
+
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
       <NavigationHeader title={headerTitle} fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }} />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={st.container} keyboardShouldPersistTaps="handled">
-        {!!err && <Banner type="error" text={String(err)} />}
+        {!!topError && (
+          <ErrorCard
+            title="Greška"
+            message={topError}
+            actionText="Pokušaj ponovno"
+            onAction={retryTopError}
+            titleLines={1}
+            messageLines={3}
+          />
+        )}
+
+        {!!session && !isSessionDraft && (
+          <Text style={st.helper}>Sesija nije u DRAFT statusu. Uređivanje je zaključano.</Text>
+        )}
 
         <Text style={st.label}>Način</Text>
         <View style={st.segmentRow}>
-          <Pressable style={[st.segBtn, draft.draftMode === "DRAFT" && st.segBtnOn]} onPress={() => patchDraft(sessionId, partnerId, { draftMode: "DRAFT" })}>
+          <Pressable
+            style={[st.segBtn, draft.draftMode === "DRAFT" && st.segBtnOn, !canEdit && st.disabled]}
+            onPress={() => canEdit && patchDraft(sessionId, partnerId, { draftMode: "DRAFT" })}
+            disabled={!canEdit}
+          >
             <Text style={[st.segText, draft.draftMode === "DRAFT" && st.segTextOn]}>Draft</Text>
           </Pressable>
 
-          <Pressable style={[st.segBtn, draft.draftMode === "FINAL" && st.segBtnOn]} onPress={() => patchDraft(sessionId, partnerId, { draftMode: "FINAL" })}>
+          <Pressable
+            style={[st.segBtn, draft.draftMode === "FINAL" && st.segBtnOn, !canEdit && st.disabled]}
+            onPress={() => canEdit && patchDraft(sessionId, partnerId, { draftMode: "FINAL" })}
+            disabled={!canEdit}
+          >
             <Text style={[st.segText, draft.draftMode === "FINAL" && st.segTextOn]}>Final</Text>
           </Pressable>
         </View>
 
-        {/* NOTE */}
         <Text style={st.label}>Napomena</Text>
 
-        <Pressable style={[st.noteCard, !hasNote && st.noteCardEmpty]} onPress={openNote}>
+        <Pressable style={[st.noteCard, !hasNote && st.noteCardEmpty, !canEdit && st.disabled]} onPress={openNote} disabled={!canEdit}>
           <View style={st.noteIconBox}>
             <FontAwesome name="sticky-note" size={14} color={Colors.text} />
           </View>
@@ -734,7 +759,7 @@ export default function SessionEntryEditor() {
                   <Text style={st.notePillText}>{noteLines > 1 ? `${noteLines} linije` : "1 linija"}</Text>
                 </View>
               ) : (
-                <View style={[st.notePill, { backgroundColor: "rgba(148,163,184,0.12)", borderColor: "rgba(148,163,184,0.22)" }]}>
+                <View style={[st.notePill, st.notePillOptional]}>
                   <Text style={st.notePillText}>Opcionalno</Text>
                 </View>
               )}
@@ -759,10 +784,12 @@ export default function SessionEntryEditor() {
 
         <View style={st.sectionHeader}>
           <Text style={st.label}>Predložak</Text>
-          <Pressable style={st.smallBtn} onPress={openTemplatePicker}>
-            <Text style={st.smallBtnText}>{draft.templateId ? "Promijeni" : "Odaberi"}</Text>
+          <Pressable style={[st.smallBtn, !canEdit && st.smallBtnDisabled]} onPress={openTemplatePicker} disabled={!canEdit}>
+            <Text style={[st.smallBtnText, !canEdit && st.smallBtnTextDisabled]}>{draft.templateId ? "Promijeni" : "Odaberi"}</Text>
           </Pressable>
         </View>
+
+        {draft.templateId && tplLoading ? <Text style={st.helper}>Učitavam predložak…</Text> : null}
 
         {selectedTemplate ? (
           <View style={[st.pickRow, st.pickRowSelected]}>
@@ -771,13 +798,7 @@ export default function SessionEntryEditor() {
               <Text style={st.pickSub}>#{(selectedTemplate as any).id} • dokumenata: {templateDocs?.length ?? 0}</Text>
             </View>
 
-            <Pressable
-              style={st.iconBtn}
-              onPress={() => {
-                patchDraft(sessionId, partnerId, { templateId: null, docPatches: [], standaloneQty: {}, note: null } as any);
-                setSelectedTemplate(null);
-              }}
-            >
+            <Pressable style={[st.iconBtn, !canEdit && st.disabled]} onPress={clearTemplateSelection} disabled={!canEdit}>
               <FontAwesome name="trash" size={16} color={Colors.text} />
             </Pressable>
           </View>
@@ -789,16 +810,11 @@ export default function SessionEntryEditor() {
           <>
             <Text style={st.label}>Dokumenti (iz predloška)</Text>
 
-            {namesLoading ? (
-              <View style={st.loadingBox}>
-                <ActivityIndicator />
-                <Text style={st.helper}>Učitavam nazive stavki…</Text>
-              </View>
-            ) : defaultRowsByDoc.length === 0 ? (
+            {templateBlocks.length === 0 ? (
               <Text style={st.helper}>Predložak nema dokumenata / stavki.</Text>
             ) : (
               <View style={{ gap: 10 }}>
-                {defaultRowsByDoc.map((block) => (
+                {templateBlocks.map((block) => (
                   <View key={String(block.docId)} style={st.cardCol}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <View style={{ flex: 1 }}>
@@ -818,18 +834,23 @@ export default function SessionEntryEditor() {
                     ) : (
                       <View style={{ gap: 8, marginTop: 10 }}>
                         {block.rows.map((r) => {
-                          const nm = itemName(r.itemId, metaById);
-                          const meta = itemMeta(r.itemId, metaById);
+                          const rowMeta = [
+                            r.code ? `Šifra: ${r.code}` : null,
+                            r.unit ? `JMJ: ${r.unit}` : null,
+                            r.barcode ? `BC: ${r.barcode}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" • ");
 
                           return (
                             <View key={String(r.itemId)} style={st.simpleRow}>
                               <View style={{ flex: 1 }}>
                                 <Text style={st.itemNameStrong} numberOfLines={2}>
-                                  {nm}
+                                  {r.name || `Artikl #${r.itemId}`}
                                 </Text>
-                                {!!meta && (
+                                {!!rowMeta && (
                                   <Text style={st.itemMeta} numberOfLines={1}>
-                                    {meta}
+                                    {rowMeta}
                                   </Text>
                                 )}
                               </View>
@@ -839,8 +860,6 @@ export default function SessionEntryEditor() {
                         })}
                       </View>
                     )}
-
-                    {!namesReady ? <Text style={[st.muted, { marginTop: 6 }]}>Neki artikli nemaju naziv (prikazujem Item #id).</Text> : null}
                   </View>
                 ))}
               </View>
@@ -850,8 +869,14 @@ export default function SessionEntryEditor() {
 
         <View style={st.sectionHeader}>
           <Text style={st.label}>Dodatne stavke (van dokumenta)</Text>
-          <Pressable style={st.smallBtn} onPress={openStandaloneItems} disabled={!draft.templateId}>
-            <Text style={st.smallBtnText}>{standaloneItems.length ? `Uredi (${standaloneItems.length})` : "+ Dodaj"}</Text>
+          <Pressable
+            style={[st.smallBtn, extraItemsDisabled && st.smallBtnDisabled]}
+            onPress={openStandaloneItems}
+            disabled={extraItemsDisabled}
+          >
+            <Text style={[st.smallBtnText, extraItemsDisabled && st.smallBtnTextDisabled]}>
+              {standaloneItems.length ? `Uredi (${standaloneItems.length})` : "+ Dodaj"}
+            </Text>
           </Pressable>
         </View>
 
@@ -862,7 +887,7 @@ export default function SessionEntryEditor() {
             <Text style={st.title}>Dodatne stavke</Text>
             <Text style={st.sub}>
               Stavki: {standaloneItems.length}
-              {!!defaultDocId ? ` • (dokumenti u predlošku: ${defaultRowsByDoc.length})` : ""}
+              {!!warehouseId ? ` • skladište: ${warehouseId}` : ""}
             </Text>
 
             {standaloneItems.length === 0 ? (
@@ -870,40 +895,41 @@ export default function SessionEntryEditor() {
             ) : (
               <View style={{ gap: 8, marginTop: 10 }}>
                 {standaloneItems.map((r) => {
-                  const nm = itemName(num(r.itemId), metaById);
-                  const meta = itemMeta(num(r.itemId), metaById);
+                  const itemId = num((r as any).itemId);
+                  const quantity = Number((r as any).quantity ?? 0);
+                  const display = displayFromMeta(itemId, mergedExtraMetaById);
 
                   return (
-                    <View key={String(r.itemId)} style={st.simpleRow}>
+                    <View key={String(itemId)} style={st.simpleRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={st.itemNameStrong} numberOfLines={2}>
-                          {nm}
+                          {display.name}
                         </Text>
-                        {!!meta && (
+                        {!!display.meta && (
                           <Text style={st.itemMeta} numberOfLines={1}>
-                            {meta}
+                            {display.meta}
                           </Text>
                         )}
                       </View>
-                      <Text style={st.simpleRight}>x{Number(r.quantity ?? 0)}</Text>
+                      <Text style={st.simpleRight}>x{quantity}</Text>
                     </View>
                   );
                 })}
               </View>
             )}
+
+            <Text style={[st.helper, { marginTop: 8 }]}>
+              Ove stavke nisu vezane uz određeni dokument.
+            </Text>
           </View>
         )}
 
-        <Pressable
-          style={[st.primaryBtn, (!draft.templateId || upsertM.isPending || namesLoading) && { opacity: 0.5 }]}
-          disabled={!draft.templateId || upsertM.isPending || namesLoading}
-          onPress={save}
-        >
+        <Pressable style={[st.primaryBtn, saveDisabled && st.disabled]} disabled={saveDisabled} onPress={save}>
           {upsertM.isPending ? <ActivityIndicator /> : <Text style={st.primaryText}>Spremi</Text>}
         </Pressable>
 
         <Pressable
-          style={[st.ghostBtn, upsertM.isPending && { opacity: 0.6 }]}
+          style={[st.ghostBtn, upsertM.isPending && st.disabled]}
           disabled={upsertM.isPending}
           onPress={() => {
             if (upsertM.isPending) return;
@@ -915,15 +941,10 @@ export default function SessionEntryEditor() {
         </Pressable>
       </ScrollView>
 
-      {/* NOTE SHEET */}
       <CenterSheet
         visible={noteSheetOpen}
         title="Napomena"
-        onClose={() => {
-          if (upsertM.isPending) return;
-          setNoteSheetOpen(false);
-          setNoteDraft("");
-        }}
+        onClose={closeNoteSheet}
         closeOnBackdrop={false}
         disableClose={upsertM.isPending}
         width={MAX_W}
@@ -945,27 +966,24 @@ export default function SessionEntryEditor() {
           multiline
           textAlignVertical="top"
           autoCorrect={false}
+          editable={!upsertM.isPending}
         />
 
         <View style={{ gap: 12 }}>
-          <Pressable style={st.primaryBtn} onPress={applyNote} disabled={upsertM.isPending}>
+          <Pressable style={[st.primaryBtn, upsertM.isPending && st.disabled]} onPress={applyNote} disabled={upsertM.isPending}>
             <Text style={st.primaryText}>Spremi napomenu</Text>
           </Pressable>
 
-          <Pressable
-            style={st.ghostBtn}
-            onPress={() => {
-              if (upsertM.isPending) return;
-              setNoteSheetOpen(false);
-              setNoteDraft("");
-            }}
-            disabled={upsertM.isPending}
-          >
+          <Pressable style={[st.ghostBtn, upsertM.isPending && st.disabled]} onPress={closeNoteSheet} disabled={upsertM.isPending}>
             <Text style={st.ghostText}>Zatvori</Text>
           </Pressable>
 
-          <Pressable style={st.smallBtn} onPress={clearNote} disabled={upsertM.isPending}>
-            <Text style={st.smallBtnText}>Obriši unos</Text>
+          <Pressable
+            style={[st.smallBtn, upsertM.isPending && st.smallBtnDisabled]}
+            onPress={() => setNoteDraft("")}
+            disabled={upsertM.isPending}
+          >
+            <Text style={[st.smallBtnText, upsertM.isPending && st.smallBtnTextDisabled]}>Obriši unos</Text>
           </Pressable>
         </View>
       </CenterSheet>
@@ -975,12 +993,20 @@ export default function SessionEntryEditor() {
 
 const st = StyleSheet.create({
   container: { padding: 14, gap: 12, alignSelf: "center", width: "100%", maxWidth: MAX_W },
+
   helper: { color: Colors.sub, fontWeight: "800" },
   label: { fontWeight: "900", color: Colors.text },
 
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 
-  primaryBtn: { paddingVertical: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center", justifyContent: "center", marginTop: 2 },
+  primaryBtn: {
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.orange,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
   primaryText: { color: "#fff", fontWeight: "900" },
 
   ghostBtn: {
@@ -1004,9 +1030,13 @@ const st = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  smallBtnDisabled: {
+    backgroundColor: "rgba(148,163,184,0.16)",
+    borderColor: "rgba(148,163,184,0.28)",
+  },
   smallBtnText: { fontWeight: "900", color: Colors.text },
+  smallBtnTextDisabled: { color: Colors.sub },
 
-  // note card
   noteCard: {
     padding: 12,
     borderRadius: 18,
@@ -1043,6 +1073,10 @@ const st = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(34,197,94,0.25)",
   },
+  notePillOptional: {
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderColor: "rgba(148,163,184,0.22)",
+  },
   notePillText: { fontWeight: "900", color: Colors.text },
 
   noteInput: {
@@ -1074,17 +1108,36 @@ const st = StyleSheet.create({
   pickTitle: { fontWeight: "900", color: Colors.text },
   pickSub: { color: Colors.sub, fontWeight: "800" },
 
-  iconBtn: { width: 40, height: 40, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center", justifyContent: "center" },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-  loadingBox: { width: "100%", borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, backgroundColor: Colors.bg, padding: 16, alignItems: "center", justifyContent: "center", gap: 10 },
-
-  cardCol: { backgroundColor: Colors.bg, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, padding: 14, gap: 10 },
+  cardCol: {
+    backgroundColor: Colors.bg,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    padding: 14,
+    gap: 10,
+  },
 
   title: { fontWeight: "900", color: Colors.text, fontSize: 15 },
   sub: { color: Colors.sub, fontWeight: "800" },
   muted: { color: Colors.sub, fontWeight: "700" },
 
-  pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(34,197,94,0.15)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(34,197,94,0.35)" },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(34,197,94,0.15)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.35)",
+  },
   pillText: { fontWeight: "900", color: Colors.text },
 
   simpleRow: {
@@ -1105,8 +1158,19 @@ const st = StyleSheet.create({
   itemMeta: { color: Colors.sub, fontWeight: "800" },
 
   segmentRow: { flexDirection: "row", gap: 10 },
-  segBtn: { flex: 1, paddingVertical: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.border, backgroundColor: "rgba(148,163,184,0.12)", alignItems: "center", justifyContent: "center" },
+  segBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   segBtnOn: { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.35)" },
   segText: { fontWeight: "900", color: Colors.sub },
   segTextOn: { color: Colors.text },
+
+  disabled: { opacity: 0.5 },
 });
