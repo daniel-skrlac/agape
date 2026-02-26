@@ -387,37 +387,6 @@ export default function SessionsIndex() {
           </View>
         )}
 
-        <View style={s.heroCard}>
-          <View style={s.heroTop}>
-            <View style={s.heroTitleWrap}>
-              <Text style={s.h1}>Evidencije</Text>
-              <Text style={s.h1sub}>{stats.total} ukupno</Text>
-            </View>
-
-            <Pressable style={s.addBtn} onPress={openCreate} hitSlop={10}>
-              <FontAwesome name="plus" size={14} color="#fff" />
-              <Text style={s.addBtnText}>Nova</Text>
-            </Pressable>
-          </View>
-
-          <View style={s.statsRow}>
-            <View style={s.statChip}>
-              <FontAwesome name="clock-o" size={14} color={Colors.sub} />
-              <Text style={s.statChipText}>Draft: {stats.draft}</Text>
-            </View>
-
-            <View style={s.statChip}>
-              <FontAwesome name="check" size={14} color={Colors.sub} />
-              <Text style={s.statChipText}>Final: {stats.fin}</Text>
-            </View>
-
-            <View style={s.statChip}>
-              <FontAwesome name="ban" size={14} color={Colors.sub} />
-              <Text style={s.statChipText}>Canceled: {stats.canceled}</Text>
-            </View>
-          </View>
-        </View>
-
         <View style={s.filterWrap}>
           <View style={s.searchWrap}>
             <FontAwesome name="search" size={14} color={Colors.sub} />

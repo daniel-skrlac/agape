@@ -132,7 +132,7 @@ export default function SessionPartnerPicker() {
 
     clearDraft(sessionId, partnerId);
 
-    router.push({
+    router.replace({
       pathname: "/(tabs)/sessions/[id]/entry" as const,
       params: { id: String(sessionId), partnerId: String(partnerId) },
     });

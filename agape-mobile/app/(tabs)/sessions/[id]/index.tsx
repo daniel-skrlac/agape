@@ -840,18 +840,6 @@ export default function SessionDetailIndex() {
             </View>
           )}
 
-          <View style={st.metaPillsRow}>
-            <View style={st.metaMiniPill}>
-              <Text style={st.metaMiniPillText}>Dok: {meta.docs}</Text>
-            </View>
-            <View style={st.metaMiniPill}>
-              <Text style={st.metaMiniPillText}>Extra: {meta.extras}</Text>
-            </View>
-            <View style={st.metaMiniPill}>
-              <Text style={st.metaMiniPillText}>Stavke: {meta.direct}</Text>
-            </View>
-          </View>
-
           <View style={st.divider} />
 
           <View style={st.rowBtns}>
