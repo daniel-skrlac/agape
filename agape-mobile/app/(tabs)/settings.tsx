@@ -6,7 +6,7 @@ import Screen from "@/components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import Strings from "@/constants/Strings";
+import Strings from "@/src/constants/Strings";
 
 import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";

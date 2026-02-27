@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,22 +10,38 @@ import {
   View,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import Colors from "@/constants/Colors";
+import { useInfiniteQuery } from "@tanstack/react-query";
+
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "./ErrorCard";
 
-type PageResult<T> = { items: T[]; page: number; size: number; total: number };
-type FetchPage<T> = (args: { page: number; size: number; q?: string }) => Promise<PageResult<T>>;
+type PageResult<T> = {
+  items: T[];
+  page: number;
+  size: number;
+  total: number;
+};
+
+type QueryPage<T> = (args: {
+  page: number;
+  size: number;
+  q?: string;
+  signal?: AbortSignal;
+}) => Promise<PageResult<T>>;
 
 type Props<T> = {
   visible: boolean;
   title: string;
   onClose: () => void;
   keyOf: (item: T) => string;
-  fetchPage: FetchPage<T>;
+  queryKeyBase: readonly unknown[];
+  queryPage: QueryPage<T>;
   renderRow: (item: T, close: () => void) => React.ReactElement;
   initialSize?: number;
   searchPlaceholder?: string;
   closeOnBackdropPress?: boolean;
+  staleTime?: number;
+  gcTime?: number;
 };
 
 export function SearchPickerSheet<T>(props: Props<T>) {
@@ -34,27 +50,21 @@ export function SearchPickerSheet<T>(props: Props<T>) {
     title,
     onClose,
     keyOf,
-    fetchPage,
+    queryKeyBase,
+    queryPage,
     renderRow,
     initialSize = 20,
     searchPlaceholder = "Pretraži…",
     closeOnBackdropPress = false,
+    staleTime = 15 * 60 * 1000,
+    gcTime = 24 * 60 * 60 * 1000,
   } = props;
 
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [page, setPage] = useState(0);
-  const [size] = useState(initialSize);
 
-  const [items, setItems] = useState<T[]>([]);
-  const [total, setTotal] = useState(0);
-
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const mountedRef = useRef(true);
-  const requestIdRef = useRef(0);
+  const size = initialSize;
+  const normalizedQ = debouncedQ.trim();
 
   const close = () => onClose();
 
@@ -63,75 +73,42 @@ export function SearchPickerSheet<T>(props: Props<T>) {
     return () => clearTimeout(t);
   }, [q]);
 
-  const canLoadMore = useMemo(() => items.length < total, [items.length, total]);
-
-  const resetAndLoad = async () => {
-    setError(null);
-    setLoading(true);
-    setLoadingMore(false);
-    setItems([]);
-    setTotal(0);
-    setPage(0);
-
-    const rid = ++requestIdRef.current;
-    try {
-      const res = await fetchPage({ page: 0, size, q: debouncedQ || undefined });
-      if (!mountedRef.current || rid !== requestIdRef.current) return;
-
-      setItems(res.items ?? []);
-      setTotal(res.total ?? 0);
-      setPage(res.page ?? 0);
-    } catch (e: any) {
-      if (!mountedRef.current || rid !== requestIdRef.current) return;
-      setError(e?.message ?? "Greška prilikom učitavanja.");
-    } finally {
-      if (!mountedRef.current || rid !== requestIdRef.current) return;
-      setLoading(false);
-    }
-  };
-
-  const loadMore = async () => {
-    if (loading || loadingMore) return;
-    if (!canLoadMore) return;
-
-    setError(null);
-    setLoadingMore(true);
-
-    const nextPage = page + 1;
-    const rid = ++requestIdRef.current;
-
-    try {
-      const res = await fetchPage({ page: nextPage, size, q: debouncedQ || undefined });
-      if (!mountedRef.current || rid !== requestIdRef.current) return;
-
-      setItems((prev) => [...prev, ...(res.items ?? [])]);
-      setTotal(res.total ?? total);
-      setPage(res.page ?? nextPage);
-    } catch (e: any) {
-      if (!mountedRef.current || rid !== requestIdRef.current) return;
-      setError(e?.message ?? "Greška prilikom učitavanja.");
-    } finally {
-      if (!mountedRef.current || rid !== requestIdRef.current) return;
-      setLoadingMore(false);
-    }
-  };
-
   useEffect(() => {
-    mountedRef.current = true;
     if (visible) {
       setQ("");
       setDebouncedQ("");
-      setTimeout(() => resetAndLoad(), 0);
     }
-    return () => {
-      mountedRef.current = false;
-    };
   }, [visible]);
 
-  useEffect(() => {
-    if (!visible) return;
-    resetAndLoad();
-  }, [debouncedQ]);
+  const query = useInfiniteQuery({
+    queryKey: [...queryKeyBase, normalizedQ, size],
+    enabled: visible,
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) =>
+      queryPage({
+        page: Number(pageParam ?? 0),
+        size,
+        q: normalizedQ || undefined,
+        signal,
+      }),
+    getNextPageParam: (lastPage) => {
+      const page = Number(lastPage?.page ?? 0);
+      const pageSize = Number(lastPage?.size ?? size);
+      const total = Number(lastPage?.total ?? 0);
+
+      const loaded = (page + 1) * pageSize;
+      return loaded < total ? page + 1 : undefined;
+    },
+    staleTime,
+    gcTime,
+  });
+
+  const items = useMemo(
+    () => (query.data?.pages ?? []).flatMap((p) => p?.items ?? []),
+    [query.data]
+  );
+
+  const total = Number(query.data?.pages?.[0]?.total ?? 0);
 
   return (
     <Modal
@@ -177,19 +154,19 @@ export function SearchPickerSheet<T>(props: Props<T>) {
             )}
           </View>
 
-          {loading ? (
+          {query.isLoading ? (
             <View style={s.center}>
               <ActivityIndicator />
               <Text style={s.muted}>Učitavam…</Text>
             </View>
-          ) : error ? (
+          ) : query.error ? (
             <View style={s.center}>
               <ErrorCard
                 title="Greška prilikom učitavanja"
-                message={error}
+                message={(query.error as any)?.message ?? "Greška prilikom učitavanja."}
                 actionText="Pokušaj ponovno"
                 onAction={() => {
-                  void resetAndLoad();
+                  void query.refetch();
                 }}
               />
             </View>
@@ -200,14 +177,19 @@ export function SearchPickerSheet<T>(props: Props<T>) {
               contentContainerStyle={s.list}
               keyboardShouldPersistTaps="handled"
               onEndReachedThreshold={0.4}
-              onEndReached={loadMore}
+              onEndReached={() => {
+                if (!query.hasNextPage || query.isFetchingNextPage) return;
+                void query.fetchNextPage();
+              }}
               renderItem={({ item }) => renderRow(item, close)}
               ListEmptyComponent={<Text style={s.empty}>Nema rezultata.</Text>}
               ListFooterComponent={
-                loadingMore ? (
+                query.isFetchingNextPage ? (
                   <View style={{ paddingVertical: 12 }}>
                     <ActivityIndicator />
                   </View>
+                ) : total > 0 ? (
+                  <Text style={[s.empty, { paddingTop: 8 }]}>Ukupno: {total}</Text>
                 ) : null
               }
             />
@@ -266,14 +248,5 @@ const s = StyleSheet.create({
 
   center: { padding: 20, alignItems: "center", gap: 10 },
   muted: { color: Colors.sub, fontWeight: "800" },
-  error: { color: Colors.dangerText ?? "#ef4444", fontWeight: "900", textAlign: "center" },
-  retry: {
-    marginTop: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: Colors.orange,
-  },
-  retryText: { color: "#fff", fontWeight: "900" },
   empty: { textAlign: "center", color: Colors.sub, fontWeight: "800", paddingVertical: 18 },
 });

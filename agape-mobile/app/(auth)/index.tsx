@@ -9,12 +9,12 @@ import PrimaryButton from "@/components/ui/PrimaryButton";
 import FormCard from "@/components/ui/FormCard";
 import TabScroll from "@/components/ui/TabScroll";
 
-import Strings from "@/constants/Strings";
+import Strings from "@/src/constants/Strings";
 
-import { getToken } from "@/app/api/sessionStore";
+import { getToken } from "../../src/api/sessionStore";
 import { ErrorCard } from "@/components/ErrorCard";
 import { styles } from "./styles/LoginScreen.styles";
-import { useLoginForm } from "../api/hooks/auth/useLoginForm";
+import { useLoginForm } from "../../src/api/hooks/auth/useLoginForm";
 
 export default function Index() {
     const router = useRouter();

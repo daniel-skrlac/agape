@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 import {
   isoToDateLocal,
@@ -11,7 +11,7 @@ import {
   todayLocalNoon,
   isoAddDaysFromToday,
   monthStartIsoFromToday,
-} from "@/app/utils/dateIso";
+} from "@/src/utils/dateIso";
 import { DATE_RANGE_PAD, styles } from "./styles/DateRangeSheet.styles";
 
 type Props = {

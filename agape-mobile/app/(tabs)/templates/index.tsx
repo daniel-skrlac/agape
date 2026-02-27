@@ -8,7 +8,7 @@ import Animated, { interpolate, SharedValue, useAnimatedStyle } from "react-nati
 import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { Segmented } from "@/components/Segmented";
 import { CenterSheet } from "@/components/CenterSheet";

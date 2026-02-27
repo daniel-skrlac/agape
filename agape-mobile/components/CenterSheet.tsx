@@ -1,6 +1,6 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 export function CenterSheet({
   visible,

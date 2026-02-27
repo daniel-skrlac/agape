@@ -4,7 +4,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import NavigationHeader from "@/components/NavigationHeader";
 import { CenterSheet } from "@/components/CenterSheet";
 import { ErrorCard } from "@/components/ErrorCard";
@@ -20,13 +20,13 @@ import type {
   TemplateDocResponseDTO,
   TemplateItemResponseDTO,
   TemplateResponseDTO,
-} from "@/app/models/generated";
+} from "@/src/models/generated";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { partnerService } from "@/app/api/services/partnerService";
-import { useBookingSession, useUpsertBookingSessionEntry } from "@/app/api/hooks/sessions/useBookingSessions";
-import { useTemplateDetail } from "@/app/api/hooks/templates/useDispatchTemplates";
-import { useItemDirectoryPickerPage } from "@/app/api/hooks/documents/useItemDirectoryPickerPage";
+import { toUserMessage } from "../../../../src/api//apiClient";
+import { partnerService } from "../../../../src/api//services/partnerService";
+import { useBookingSession, useUpsertBookingSessionEntry } from "../../../../src/api//hooks/sessions/useBookingSessions";
+import { useTemplateDetail } from "../../../../src/api//hooks/templates/useDispatchTemplates";
+import { useItemDirectory } from "../../../../src/api//hooks/documents/useItemDirectory";
 
 import {
   QtyMap,
@@ -310,21 +310,6 @@ function displayFromMeta(itemId: number, mergedMeta: StandaloneMetaMap) {
   return { name: name || "Artikl", meta };
 }
 
-function mergeStandaloneMetaIntoDraft(sessionId: number, partnerId: number, patch: StandaloneMetaMap) {
-  if (!patch || !Object.keys(patch).length) return;
-
-  const cur = getDraft(sessionId, partnerId);
-  if (!cur) return;
-
-  const nextMeta: StandaloneMetaMap = { ...(cur.standaloneMetaById ?? {}), ...patch };
-
-  setDraft({
-    ...cur,
-    standaloneMetaById: nextMeta,
-    _touched: cur._touched ?? {},
-  } as any);
-}
-
 export default function SessionEntryEditor() {
   const params = useLocalSearchParams<{ id: string; partnerId: string }>();
   const sessionId = num(params.id);
@@ -338,6 +323,7 @@ export default function SessionEntryEditor() {
 
   const hydratedKeyRef = useRef("");
   const builtKeyRef = useRef("");
+  const metaHydrateKeyRef = useRef("");
 
   useEffect(() => {
     setPartnerName("");
@@ -346,6 +332,7 @@ export default function SessionEntryEditor() {
     setNoteDraft("");
     hydratedKeyRef.current = "";
     builtKeyRef.current = "";
+    metaHydrateKeyRef.current = "";
   }, [sessionId, partnerId]);
 
   useEffect(() => {
@@ -373,11 +360,14 @@ export default function SessionEntryEditor() {
   const tplQ = useTemplateDetail(tplId, { includeItemMeta: true });
   const selectedTemplate = (tplQ.data ?? null) as TemplateResponseDTO | null;
 
-  const templateDocs: TemplateDocResponseDTO[] = useMemo(() => ((selectedTemplate?.documents ?? []) as any), [selectedTemplate]);
+  const templateDocs: TemplateDocResponseDTO[] = useMemo(
+    () => ((selectedTemplate?.documents ?? []) as any),
+    [selectedTemplate]
+  );
 
   const templateMetaById = useMemo(() => buildTemplateMetaMap(templateDocs), [templateDocs]);
 
-  const { fetchItemsPage } = useItemDirectoryPickerPage({
+  const { fetchItemsPage } = useItemDirectory({
     warehouseId: warehouseId ? Number(warehouseId) : null,
     enabled: !!warehouseId,
   });
@@ -386,6 +376,14 @@ export default function SessionEntryEditor() {
 
   const standaloneItems = useMemo(() => qtyToItems((draft as any)?.standaloneQty ?? {}), [draft?.standaloneQty]);
   const standaloneMetaById = ((draft as any)?.standaloneMetaById ?? {}) as StandaloneMetaMap;
+
+  const standaloneIdsKey = useMemo(() => {
+    return standaloneItems
+      .map((x) => num((x as any)?.itemId))
+      .filter((id) => id > 0)
+      .sort((a, b) => a - b)
+      .join(",");
+  }, [standaloneItems]);
 
   useEffect(() => {
     let alive = true;
@@ -400,7 +398,14 @@ export default function SessionEntryEditor() {
       .filter((id) => id > 0)
       .filter((id) => !mergedAlready[String(id)]);
 
-    if (!missingIds.length) return;
+    if (!missingIds.length) {
+      metaHydrateKeyRef.current = "";
+      return;
+    }
+
+    const runKey = `${warehouseId}|${missingIds.join(",")}`;
+    if (metaHydrateKeyRef.current === runKey) return;
+    metaHydrateKeyRef.current = runKey;
 
     (async () => {
       const ids = missingIds.slice(0, 40);
@@ -424,15 +429,15 @@ export default function SessionEntryEditor() {
 
       if (Object.keys(nextPatch).length) {
         setExtraHydratedMetaById((prev) => ({ ...prev, ...nextPatch }));
-
-        mergeStandaloneMetaIntoDraft(sessionId, partnerId, nextPatch);
+      } else {
+        metaHydrateKeyRef.current = "";
       }
     })();
 
     return () => {
       alive = false;
     };
-  }, [warehouseId, standaloneItems, fetchItemsPage, templateMetaById, standaloneMetaById, extraHydratedMetaById, sessionId, partnerId]);
+  }, [warehouseId, standaloneIdsKey, fetchItemsPage, templateMetaById, standaloneMetaById, standaloneItems]);
 
   const mergedExtraMetaById = useMemo(
     () => mergeStandaloneMetaMaps(standaloneMetaById, extraHydratedMetaById, templateMetaById),
@@ -489,7 +494,9 @@ export default function SessionEntryEditor() {
     const cur = getDraft(sessionId, partnerId) ?? ensureDraft(sessionId, partnerId);
     const touched = (cur as any)._touched ?? {};
 
-    const existing = ((session as any).entries ?? []).find((e: any) => num(e.partnerId) === partnerId) as BookingSessionEntryResponseDTO | undefined;
+    const existing = ((session as any).entries ?? []).find(
+      (e: any) => num(e.partnerId) === partnerId
+    ) as BookingSessionEntryResponseDTO | undefined;
 
     if (!existing) {
       hydratedKeyRef.current = key;
@@ -811,7 +818,7 @@ export default function SessionEntryEditor() {
         {selectedTemplate ? (
           <View style={[st.pickRow, st.pickRowSelected]}>
             <View style={{ flex: 1 }}>
-              <Text style={st.pickTitle}>{(selectedTemplate as any).name}</Text>
+              <Text style={st.pickTitle}>{(selectedTemplate as any).name || "Predložak"}</Text>
               <Text style={st.pickSub}>dokumenata: {templateDocs?.length ?? 0}</Text>
             </View>
 

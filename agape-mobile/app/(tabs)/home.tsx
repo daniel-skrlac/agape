@@ -5,20 +5,20 @@ import { useFocusEffect, useRouter } from "expo-router";
 
 import Screen from "../../components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
-import Strings from "../../constants/Strings";
+import Strings from "../../src/constants/Strings";
 
-import { useCurrentUser } from "../api/hooks/common/useCurrentUser";
-import { usePullToRefresh } from "../api/hooks/common/usePullToRefresh";
-import { formatQtyHR, formatTimeHR } from "../utils/format";
+import { useCurrentUser } from "../../src/api/hooks/common/useCurrentUser";
+import { usePullToRefresh } from "../../src/api/hooks/common/usePullToRefresh";
+import { formatQtyHR, formatTimeHR } from "../../src/utils/format";
 
 import { styles, RIPPLE, T } from "./styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import { useWarehouses } from "../api/hooks/dashboard/useWarehouses";
-import { useStockStatistics } from "../api/hooks/dashboard/useStockStatistics";
+import { useWarehouses } from "../../src/api/hooks/dashboard/useWarehouses";
+import { useStockStatistics } from "../../src/api/hooks/dashboard/useStockStatistics";
 
 import WarehousePickerCard from "@/components/WarehousePickerCard";
-import { toUserMessage } from "../api/apiClient";
+import { toUserMessage } from "../../src/api/apiClient";
 
 type SectionKey = "missing" | "needsFill" | "most";
 

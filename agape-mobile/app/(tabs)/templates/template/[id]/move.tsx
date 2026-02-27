@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import NavigationHeader from "../../../../../components/NavigationHeader";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 import { ErrorCard } from "@/components/ErrorCard";
 import { FolderPicker } from "@/components/FolderPicker";

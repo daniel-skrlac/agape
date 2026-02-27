@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { CenterSheet } from "@/components/CenterSheet";
 
 export function CenterConfirmSheet({

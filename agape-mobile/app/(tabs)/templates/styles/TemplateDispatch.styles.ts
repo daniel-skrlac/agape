@@ -1,5 +1,5 @@
 import { StyleSheet } from "react-native";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 export const MAX_W = 560;
 export const PLACEHOLDER = "rgba(148,163,184,0.85)";

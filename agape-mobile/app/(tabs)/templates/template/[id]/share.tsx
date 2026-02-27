@@ -1,21 +1,27 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import NavigationHeader from "../../../../../components/NavigationHeader";
 
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { userDirectoryService, UserDirectoryItem } from "@/app/api/services/userDirectoryService";
-import type { DispatchTemplateSharePermission, TemplateShareResponseDTO } from "@/app/models/generated";
-import { useTemplateShares, useShareTemplate, useRevokeTemplateShare } from "@/app/api/hooks/templates/useDispatchTemplates";
-
+import { toUserMessage } from "../../../../../src/api/apiClient";
+import { userDirectoryService, UserDirectoryItem } from "../../../../../src/api/services/userDirectoryService";
+import type {
+  DispatchTemplateSharePermission,
+  TemplateShareResponseDTO,
+} from "@/src/models/generated";
+import {
+  useTemplateShares,
+  useShareTemplate,
+  useRevokeTemplateShare,
+} from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 
 type Perm = DispatchTemplateSharePermission;
 
@@ -45,14 +51,14 @@ export default function DijeliPredlozak() {
   const [screenError, setScreenError] = useState<string | null>(null);
   const [dismissedTopError, setDismissedTopError] = useState<string | null>(null);
 
-  const resetTransientErrors = () => {
+  const resetTransientErrors = useCallback(() => {
     setScreenError(null);
     setDismissedTopError(null);
     shareM.reset();
     revokeM.reset();
-  };
+  }, [shareM, revokeM]);
 
-  const closeTopError = () => {
+  const closeTopError = useCallback(() => {
     const currentRaw =
       screenError ||
       sharesQ.errorMessage ||
@@ -64,7 +70,7 @@ export default function DijeliPredlozak() {
     shareM.reset();
     revokeM.reset();
     setDismissedTopError(currentRaw ?? null);
-  };
+  }, [screenError, sharesQ.errorMessage, shareM, revokeM, templateId]);
 
   const list = useMemo<TemplateShareResponseDTO[]>(() => {
     const raw: any = sharesQ.data;
@@ -85,6 +91,42 @@ export default function DijeliPredlozak() {
     (!templateId ? "Neispravan ID predloška." : null);
 
   const topError = rawTopError && rawTopError !== dismissedTopError ? rawTopError : null;
+
+  const userPickerKey = useMemo(
+    () => ["template-share", "user-picker", templateId ?? "NO_TEMPLATE"] as const,
+    [templateId]
+  );
+
+  const queryUsersPage = useCallback(
+    async ({
+      page,
+      size,
+      q,
+      signal,
+    }: {
+      page: number;
+      size: number;
+      q?: string;
+      signal?: AbortSignal;
+    }) => {
+      const res = await userDirectoryService.pageUsers(
+        {
+          page,
+          size,
+          q,
+        },
+        signal
+      );
+
+      return {
+        items: res.items ?? [],
+        page: res.page ?? page,
+        size: res.size ?? size,
+        total: res.total ?? 0,
+      };
+    },
+    []
+  );
 
   return (
     <Screen>
@@ -197,7 +239,9 @@ export default function DijeliPredlozak() {
             </View>
           )}
           ListEmptyComponent={
-            <Text style={s.empty}>{sharesQ.isLoading ? "Učitavam…" : "Nema dijeljenja."}</Text>
+            <Text style={s.empty}>
+              {sharesQ.isLoading ? "Učitavam…" : "Nema dijeljenja."}
+            </Text>
           }
         />
 
@@ -206,15 +250,10 @@ export default function DijeliPredlozak() {
           title="Odaberi korisnika"
           onClose={() => setPickerOpen(false)}
           keyOf={(u) => String(u.id)}
-          fetchPage={async ({ page, size, q }) => {
-            const res = await userDirectoryService.pageUsers({ page, size, q });
-            return {
-              items: res.items ?? [],
-              page: res.page ?? page,
-              size: res.size ?? size,
-              total: res.total ?? 0,
-            };
-          }}
+          queryKeyBase={userPickerKey}
+          queryPage={queryUsersPage}
+          staleTime={16 * 60 * 60 * 1000}
+          gcTime={24 * 60 * 60 * 1000}
           renderRow={(u, close) => (
             <Pressable
               style={s.pickRow}
@@ -233,7 +272,11 @@ export default function DijeliPredlozak() {
         <CenterConfirmSheet
           visible={!!confirmShare}
           title="Ukloniti dijeljenje?"
-          description={confirmShare?.username ? `@${confirmShare.username}` : "Ova akcija se ne može poništiti."}
+          description={
+            confirmShare?.username
+              ? `@${confirmShare.username}`
+              : "Ova akcija se ne može poništiti."
+          }
           confirmText="Ukloni"
           danger
           loading={revokeM.isPending}
@@ -244,7 +287,10 @@ export default function DijeliPredlozak() {
 
               resetTransientErrors();
 
-              await revokeM.mutateAsync({ templateId, shareId: confirmShare.id });
+              await revokeM.mutateAsync({
+                templateId,
+                shareId: confirmShare.id,
+              });
 
               setConfirmShare(null);
               await sharesQ.refetch();

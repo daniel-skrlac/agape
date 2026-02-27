@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View, ViewStyle } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 type FolderLike = {
   id: number;

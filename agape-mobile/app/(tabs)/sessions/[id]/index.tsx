@@ -4,7 +4,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import NavigationHeader from "@/components/NavigationHeader";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
@@ -19,17 +19,17 @@ import type {
   TemplateBookDocPatchDTO,
   TemplateBookItemDTO,
   WarehouseBookingImpactDTO,
-} from "@/app/models/generated";
+} from "@/src/models/generated";
 
-import { partnerService } from "@/app/api/services/partnerService";
+import { partnerService } from "../../../../src/api//services/partnerService";
 import {
   useBookingSession,
   useDeleteBookingSessionEntry,
   useFinalizeBookingSession,
-} from "@/app/api/hooks/sessions/useBookingSessions";
-import { useDispatchValidate } from "@/app/api/hooks/sessions/useDispatchValidate";
-import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
-import { toUserMessage } from "@/app/api/apiClient";
+} from "../../../../src/api//hooks/sessions/useBookingSessions";
+import { useDispatchValidate } from "../../../../src/api//hooks/sessions/useDispatchValidate";
+import { usePullToRefresh } from "../../../../src/api//hooks/common/usePullToRefresh";
+import { toUserMessage } from "../../../../src/api//apiClient";
 
 import {
   clearDraft,
@@ -129,104 +129,7 @@ function entryMode(entry: any): DraftMode {
   return ((entry?.draftMode as any) || (entry?.draft ? ("DRAFT" as any) : ("FINAL" as any)) || ("DRAFT" as any)) as any;
 }
 
-function entryMetaCounts(entry: any) {
-  const docs = Array.isArray(entry?.docPatches)
-    ? entry.docPatches.length
-    : Array.isArray(entry?.documentPatches)
-      ? entry.documentPatches.length
-      : Array.isArray(entry?.patches)
-        ? entry.patches.length
-        : 0;
-
-  const extras = Array.isArray(entry?.extraItems) ? entry.extraItems.length : Array.isArray(entry?.extras) ? entry.extras.length : 0;
-  const direct = Array.isArray(entry?.items)
-    ? entry.items.length
-    : Array.isArray(entry?.validationItems)
-      ? entry.validationItems.length
-      : Array.isArray(entry?.standaloneItems)
-        ? entry.standaloneItems.length
-        : 0;
-
-  return { docs, extras, direct };
-}
-
-function usePartnerNameMap(entries: BookingSessionEntryResponseDTO[], enabled: boolean) {
-  const [fetchedMap, setFetchedMap] = useState<Record<string, PartnerResponseDTO>>({});
-  const [loading, setLoading] = useState(false);
-  const runRef = useRef(0);
-
-  const directMap = useMemo(() => {
-    const map: Record<string, PartnerResponseDTO> = {};
-    for (const e of entries as any[]) {
-      const pid = Number(e?.partnerId);
-      const name = entryNameHint(e);
-      if (!pid || !name) continue;
-      map[String(pid)] = { id: pid, name } as any;
-    }
-    return map;
-  }, [entries]);
-
-  const ids = useMemo(() => {
-    const raw = entries.map((e: any) => Number(e?.partnerId)).filter((x) => Number.isFinite(x) && x > 0);
-    return Array.from(new Set(raw));
-  }, [entries]);
-
-  const missingIds = useMemo(
-    () => ids.filter((id) => !directMap[String(id)] && !fetchedMap[String(id)]),
-    [ids, directMap, fetchedMap]
-  );
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (!missingIds.length) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const runId = ++runRef.current;
-    setLoading(true);
-
-    (async () => {
-      try {
-        const results = await mapConcurrent(missingIds, 3, async (id) => {
-          try {
-            const res = await partnerService.pagePartners({ page: 0, size: 10, q: String(id) });
-            const hit = (res.items ?? []).find((p: any) => Number(p?.id) === Number(id)) ?? null;
-            return { id, hit } as { id: number; hit: PartnerResponseDTO | null };
-          } catch {
-            return { id, hit: null } as { id: number; hit: PartnerResponseDTO | null };
-          }
-        });
-
-        if (cancelled || runRef.current !== runId) return;
-
-        setFetchedMap((prev) => {
-          const next = { ...prev };
-          for (const r of results) {
-            if (r.hit) next[String((r.hit as any).id)] = r.hit;
-          }
-          return next;
-        });
-      } finally {
-        if (cancelled || runRef.current !== runId) return;
-        setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, missingIds]);
-
-  const partnerById = useMemo(() => ({ ...fetchedMap, ...directMap }), [fetchedMap, directMap]);
-
-  return { partnerById, loading };
-}
-
-type QtyMap = Record<string, number>;
-
-function addQtyToMap(qty: QtyMap, itemId: any, q: any) {
+function addQtyToMap(qty: Record<string, number>, itemId: any, q: any) {
   const id = Number(itemId);
   const n = Number(q ?? 0);
   if (!id || !Number.isFinite(n) || n === 0) return;
@@ -234,7 +137,7 @@ function addQtyToMap(qty: QtyMap, itemId: any, q: any) {
   qty[k] = Number(qty[k] ?? 0) + n;
 }
 
-function sumToItems(qty: QtyMap): TemplateBookItemDTO[] {
+function sumToItems(qty: Record<string, number>): TemplateBookItemDTO[] {
   return Object.entries(qty)
     .map(([k, v]) => ({ itemId: Number(k), quantity: Number(v) }))
     .filter((x) => x.itemId && x.quantity > 0)
@@ -281,7 +184,7 @@ function buildValidatePayloadFromEntry(args: {
   const extraItems: TemplateBookItemDTO[] = (entry?.extraItems as any) || (entry?.extras as any) || [];
   const directItems: TemplateBookItemDTO[] = (entry?.items as any) || (entry?.validationItems as any) || (entry?.standaloneItems as any) || [];
 
-  const qty: QtyMap = {};
+  const qty: Record<string, number> = {};
   let warning: string | null = null;
 
   const standaloneQty = pickTouchedAware<any>(draft, "standaloneQty", null);
@@ -340,6 +243,79 @@ function classifyImpact(data: any) {
   }
 
   return { ok, warn, bad, total: items.length };
+}
+
+function usePartnerNameMap(entries: BookingSessionEntryResponseDTO[], enabled: boolean) {
+  const [fetchedMap, setFetchedMap] = useState<Record<string, PartnerResponseDTO>>({});
+  const [loading, setLoading] = useState(false);
+  const requestedIdsRef = useRef<Set<number>>(new Set());
+
+  const directMap = useMemo(() => {
+    const map: Record<string, PartnerResponseDTO> = {};
+    for (const e of entries as any[]) {
+      const pid = Number(e?.partnerId);
+      const name = entryNameHint(e);
+      if (!pid || !name) continue;
+      map[String(pid)] = { id: pid, name } as any;
+    }
+    return map;
+  }, [entries]);
+
+  const ids = useMemo(() => {
+    const raw = entries.map((e: any) => Number(e?.partnerId)).filter((x) => Number.isFinite(x) && x > 0);
+    return Array.from(new Set(raw));
+  }, [entries]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const missingIds = ids.filter(
+      (id) =>
+        !directMap[String(id)] &&
+        !fetchedMap[String(id)] &&
+        !requestedIdsRef.current.has(id)
+    );
+
+    if (!missingIds.length) return;
+
+    let cancelled = false;
+    setLoading(true);
+    missingIds.forEach((id) => requestedIdsRef.current.add(id));
+
+    (async () => {
+      try {
+        const results = await mapConcurrent(missingIds, 3, async (id) => {
+          try {
+            const res = await partnerService.pagePartners({ page: 0, size: 10, q: String(id) });
+            const hit = (res.items ?? []).find((p: any) => Number(p?.id) === Number(id)) ?? null;
+            return { id, hit } as { id: number; hit: PartnerResponseDTO | null };
+          } catch {
+            return { id, hit: null } as { id: number; hit: PartnerResponseDTO | null };
+          }
+        });
+
+        if (cancelled) return;
+
+        setFetchedMap((prev) => {
+          const next = { ...prev };
+          for (const r of results) {
+            if (r.hit) next[String((r.hit as any).id)] = r.hit;
+          }
+          return next;
+        });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, ids, directMap, fetchedMap]);
+
+  const partnerById = useMemo(() => ({ ...fetchedMap, ...directMap }), [fetchedMap, directMap]);
+
+  return { partnerById, loading };
 }
 
 function ValidateManyModal(props: {
@@ -479,7 +455,7 @@ function ValidateManyModal(props: {
                               {r.partnerName}
                             </Text>
                             <Text style={vm.rowSub}>
-                              Partner #{r.partnerId} • Stavki: {r.total}
+                              Stavki: {r.total}
                               {!!r.warning ? " • ⚠️" : ""}
                             </Text>
                           </View>
@@ -588,7 +564,9 @@ export default function SessionDetailIndex() {
     (partnerId: number, entry?: any) => {
       const hint = entryNameHint(entry);
       if (hint) return hint;
-      return cleanText(partnerById[String(partnerId)]?.name || "") || `Partner #${partnerId}`;
+
+      const resolved = cleanText(partnerById[String(partnerId)]?.name || "");
+      return resolved || "Partner";
     },
     [partnerById]
   );
@@ -622,7 +600,7 @@ export default function SessionDetailIndex() {
     (pid: number, entry?: any) => {
       const nm = partnerName(pid, entry);
       setDeletePid(pid);
-      setDeleteLbl(`${nm} (#${pid})`);
+      setDeleteLbl(nm);
       setDeleteOpen(true);
     },
     [partnerName]
@@ -787,8 +765,6 @@ export default function SessionDetailIndex() {
     setValidateOpen(true);
   }, []);
 
-  const readyToRender = !!session && !partnersLoading;
-
   const sessionStats = useMemo(() => {
     const total = entries.length;
     const draft = entries.filter((e: any) => entryMode(e) === "DRAFT").length;
@@ -806,7 +782,6 @@ export default function SessionDetailIndex() {
       const pillLabel = dm === "FINAL" ? "FINAL" : "DRAFT";
       const b = badgeStyle(dm === "FINAL" ? "FINALIZED" : "DRAFT");
       const note = cleanDescription(e?.note);
-      const meta = entryMetaCounts(e);
 
       return (
         <View style={st.card}>
@@ -821,7 +796,7 @@ export default function SessionDetailIndex() {
                   {nm}
                 </Text>
                 <Text style={st.sub} numberOfLines={1}>
-                  Partner #{pid}
+                  Partner
                 </Text>
               </View>
             </View>
@@ -889,15 +864,13 @@ export default function SessionDetailIndex() {
             {sQ.isLoading ? <ActivityIndicator /> : null}
             <Text style={st.helper}>{sQ.isLoading ? "Učitavam…" : "Nije pronađeno."}</Text>
           </View>
-        ) : !readyToRender ? (
-          <View style={st.center}>
-            <ActivityIndicator />
-            <Text style={st.helper}>Učitavam partnere…</Text>
-          </View>
         ) : (
           <FlatList
             data={entries}
-            keyExtractor={(item: any, idx) => String(item?.id ?? `${item?.partnerId}-${idx}`)}
+            keyExtractor={(item: any, idx) => {
+              const partnerId = Number(item?.partnerId ?? 0);
+              return partnerId > 0 ? `partner-${partnerId}` : `entry-${idx}`;
+            }}
             renderItem={renderEntry}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ gap: 10, paddingBottom: 28 }}
@@ -934,6 +907,10 @@ export default function SessionDetailIndex() {
                         <Text style={st.statValue}>{sessionStats.fin}</Text>
                       </View>
                     </View>
+
+                    {partnersLoading ? (
+                      <Text style={st.inlineLoading}>Dohvaćam nazive partnera…</Text>
+                    ) : null}
 
                     {status === "DRAFT" ? (
                       <View style={st.heroBtns}>
@@ -1041,6 +1018,7 @@ const st = StyleSheet.create({
 
   center: { padding: 20, alignItems: "center", justifyContent: "center", gap: 10 },
   helper: { color: Colors.sub, fontWeight: "800", textAlign: "center" },
+  inlineLoading: { color: Colors.sub, fontWeight: "800" },
 
   heroCard: {
     backgroundColor: "rgba(249,115,22,0.08)",
@@ -1176,17 +1154,6 @@ const st = StyleSheet.create({
     borderColor: "rgba(2, 6, 23, 0.08)",
   },
   noteText: { flex: 1, color: Colors.text, fontWeight: "700", fontSize: 12, lineHeight: 16 },
-
-  metaPillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  metaMiniPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(148,163,184,0.12)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(2, 6, 23, 0.08)",
-  },
-  metaMiniPillText: { color: Colors.sub, fontWeight: "900", fontSize: 11 },
 
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(2, 6, 23, 0.10)" },
 

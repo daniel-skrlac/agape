@@ -8,7 +8,7 @@ import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeabl
 
 import Screen from "@/components/ui/Screen";
 import NavigationHeader from "../../../../components/NavigationHeader";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { CenterSheet } from "@/components/CenterSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";

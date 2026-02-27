@@ -12,27 +12,27 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { CenterSheet } from "@/components/CenterSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import { Segmented } from "@/components/Segmented";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { toLocalDateString, fmtHrFromIso } from "@/app/utils/dateIso";
-import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
-import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
+import { toUserMessage } from "../../../src/api/apiClient";
+import { toLocalDateString, fmtHrFromIso } from "@/src/utils/dateIso";
+import { useCurrentUser } from "../../../src/api/hooks/common/useCurrentUser";
+import { usePullToRefresh } from "../../../src/api/hooks/common/usePullToRefresh";
 import type {
   BookingSessionCreateRequestDTO,
   BookingSessionResponseDTO,
-} from "@/app/models/generated";
+} from "@/src/models/generated";
 import {
   useBookingSessions,
   useCancelBookingSession,
   useCreateBookingSession,
   useDeleteBookingSession,
-} from "@/app/api/hooks/sessions/useBookingSessions";
+} from "../../../src/api/hooks/sessions/useBookingSessions";
 
 import { clearDraftsForSession } from "./_entryDraftStore";
 import { MAX_W, s } from "./styles/SessionsIndex.styles";

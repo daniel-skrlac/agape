@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from "
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Tabs, useRouter } from "expo-router";
 
-import { getToken } from "../api/sessionStore";
+import { getToken } from "../../src/api/sessionStore";
 import AuthBackground from "@/components/auth/AuthBackground";
 import TopBar from "@/components/ui/TopBar";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";

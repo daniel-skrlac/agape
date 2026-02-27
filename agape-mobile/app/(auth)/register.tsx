@@ -10,8 +10,8 @@ import PrimaryButton from "@/components/ui/PrimaryButton";
 import TextField from "@/components/ui/TextField";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import Strings from "@/constants/Strings";
-import { useRegisterForm } from "../api/hooks/auth/useRegisterForm";
+import Strings from "@/src/constants/Strings";
+import { useRegisterForm } from "../../src/api/hooks/auth/useRegisterForm";
 import { styles } from "./styles/RegisterScreen.styles";
 
 export default function RegisterScreen() {

@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { CenterSheet } from "@/components/CenterSheet";
 
 type Variant = "success" | "error" | "info";

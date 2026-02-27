@@ -10,15 +10,15 @@ import {
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
-import { toUserMessage } from "@/app/api/apiClient";
+import { toUserMessage } from "@/src/api/apiClient";
 
 import type {
   ItemDescriptorResponseDTO,
   TemplateItemResponseDTO,
   TemplateItemUpsertRequestDTO,
-} from "@/app/models/generated";
+} from "@/src/models/generated";
 
 import { styles as s } from "@/components/styles/TemplateDocItemsEditorModal.styles";
 
@@ -64,7 +64,6 @@ function LockedCenterModal(props: {
       onRequestClose={disableClose ? undefined : onClose}
     >
       <View style={s.modalWrap}>
-        {/* Not clickable on purpose -> prevents outside close */}
         <View style={s.backdrop} />
 
         <View style={s.modalCard}>

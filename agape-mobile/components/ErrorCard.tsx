@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { styles as s } from "./styles/ErrorCard.styles";
 
 type Props = {

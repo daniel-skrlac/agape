@@ -2,7 +2,7 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
-import { queryClient } from "./query/queryClient";
+import { queryClient } from "../src/query/queryClient";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 export default function RootLayout() {

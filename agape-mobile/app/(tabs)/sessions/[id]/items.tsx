@@ -5,15 +5,15 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import NavigationHeader from "@/components/NavigationHeader";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import type { BookingSessionResponseDTO, ItemDescriptorResponseDTO, TemplateBookItemDTO } from "@/app/models/generated";
+import type { BookingSessionResponseDTO, ItemDescriptorResponseDTO, TemplateBookItemDTO } from "@/src/models/generated";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { useBookingSession } from "@/app/api/hooks/sessions/useBookingSessions";
-import { useItemDirectoryPickerPage } from "@/app/api/hooks/documents/useItemDirectoryPickerPage";
+import { toUserMessage } from "../../../../src/api//apiClient";
+import { useBookingSession } from "../../../../src/api//hooks/sessions/useBookingSessions";
+import { useItemDirectory } from "../../../../src/api//hooks/documents/useItemDirectory";
 
 import { QtyMap, StandaloneMetaMap, useEntryDraft, patchDraft } from "../_entryDraftStore";
 
@@ -149,7 +149,7 @@ export default function SessionEntryStandaloneItems() {
   const session = sessionQ.data as BookingSessionResponseDTO | undefined;
   const warehouseId = Number((session as any)?.warehouseId ?? 0) || null;
 
-  const { fetchItemsPage } = useItemDirectoryPickerPage({
+  const { fetchItemsPage } = useItemDirectory({
     warehouseId: warehouseId ? Number(warehouseId) : null,
     enabled: !!warehouseId,
   });

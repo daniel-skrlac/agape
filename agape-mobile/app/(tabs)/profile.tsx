@@ -6,8 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
-import Colors from "@/constants/Colors";
-import Strings from "@/constants/Strings";
+import Colors from "@/src/constants/Colors";
+import Strings from "@/src/constants/Strings";
 import { ErrorCard } from "@/components/ErrorCard";
 
 import { clearSession } from "@/app/api/sessionStore";

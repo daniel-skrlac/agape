@@ -1,25 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
 import InfoResultPopup from "@/components/InfoResultPopup";
 
-import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
-import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
-import { useDispatchBookings } from "@/app/api/hooks/dispatch-bookings/useDispatchBookings";
-import { useWarehouses } from "@/app/api/hooks/dashboard/useWarehouses";
-import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
-import { toUserMessage } from "@/app/api/apiClient";
+import { useCurrentUser } from "../../../src/api//hooks/common/useCurrentUser";
+import { usePullToRefresh } from "../../../src/api//hooks/common/usePullToRefresh";
+import { useDispatchBookings } from "../../../src/api//hooks/dispatch-bookings/useDispatchBookings";
+import { useWarehouses } from "../../../src/api//hooks/dashboard/useWarehouses";
+import { documentDirectoryService } from "../../../src/api//services/documentDirectoryService";
+import { toUserMessage } from "../../../src/api//apiClient";
 
-import type { DocumentDescriptorResponseDTO, DispatchBookingListItemDTO } from "@/app/models/generated";
+import type {
+  DocumentDescriptorResponseDTO,
+  DispatchBookingListItemDTO,
+} from "@/src/models/generated";
 import { styles as s } from "./styles/DispatchBookingsIndex.styles";
-import { fmtHrFromIso } from "@/app/utils/dateIso";
+import { fmtHrFromIso } from "@/src/utils/dateIso";
 
 type DispatchBookingStatusFilter = "ALL" | "FINAL" | "DRAFT" | "CANCELLED";
 type WarehousePick = { id: number | null; label: string };
@@ -37,14 +48,17 @@ const STATUS_KEYS: DispatchBookingStatusFilter[] = ["ALL", "FINAL", "DRAFT", "CA
 function parseStatusParam(v: string | string[] | undefined): DispatchBookingStatusFilter | null {
   const raw = Array.isArray(v) ? v[0] : v;
   if (!raw) return null;
+
   const x = String(raw).toUpperCase().trim();
   if (x === "ALL" || x === "FINAL" || x === "DRAFT" || x === "CANCELLED") return x;
+
   return null;
 }
 
 function parseResultParam(v: string | string[] | undefined): "STORNO_OK" | null {
   const raw = Array.isArray(v) ? v[0] : v;
   if (!raw) return null;
+
   const x = String(raw).toUpperCase().trim();
   return x === "STORNO_OK" ? "STORNO_OK" : null;
 }
@@ -52,6 +66,7 @@ function parseResultParam(v: string | string[] | undefined): "STORNO_OK" | null 
 function parseIntParam(v: string | string[] | undefined): number | null {
   const raw = Array.isArray(v) ? v[0] : v;
   if (!raw) return null;
+
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
 }
@@ -64,12 +79,26 @@ function statusOfRow(d: any): "DRAFT" | "FINAL" | "CANCELLED" {
 
 function statusPillStyle(st: ReturnType<typeof statusOfRow>) {
   if (st === "CANCELLED") {
-    return { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.28)", tx: Colors.dangerText ?? "#ef4444" };
+    return {
+      bg: "rgba(239,68,68,0.12)",
+      bd: "rgba(239,68,68,0.28)",
+      tx: Colors.dangerText ?? "#ef4444",
+    };
   }
+
   if (st === "FINAL") {
-    return { bg: "rgba(34,197,94,0.14)", bd: "rgba(34,197,94,0.30)", tx: Colors.text };
+    return {
+      bg: "rgba(34,197,94,0.14)",
+      bd: "rgba(34,197,94,0.30)",
+      tx: Colors.text,
+    };
   }
-  return { bg: "rgba(59,130,246,0.10)", bd: "rgba(59,130,246,0.22)", tx: Colors.text };
+
+  return {
+    bg: "rgba(59,130,246,0.10)",
+    bd: "rgba(59,130,246,0.22)",
+    tx: Colors.text,
+  };
 }
 
 function statusLabel(k: DispatchBookingStatusFilter) {
@@ -88,7 +117,9 @@ function buildRowSubLines(item: any): string[] {
   const partnerName = String(item?.partnerName ?? "").trim();
   const partnerId = item?.partnerId != null ? String(item.partnerId).trim() : "";
 
-  const line1 = [code ? `Šifra: ${code}` : null, dt ? `Datum: ${dt}` : null].filter(Boolean).join(" • ");
+  const line1 = [code ? `Šifra: ${code}` : null, dt ? `Datum: ${dt}` : null]
+    .filter(Boolean)
+    .join(" • ");
   const line2 = br ? `Dokument Br: ${br}` : "";
   const line3 = partnerName
     ? `Partner: ${partnerName}${partnerId ? ` (#${partnerId})` : ""}`
@@ -113,7 +144,8 @@ export default function DispatchBookingsIndex() {
   const routeResultHeaderId = parseIntParam(routeParams.resultHeaderId);
 
   const { session, ready } = useCurrentUser();
-  const defaultWhId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
+  const defaultWhId =
+    session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
 
   const whQ = useWarehouses() as any;
   const warehouses: number[] = (whQ?.data ?? []) as any;
@@ -165,8 +197,10 @@ export default function DispatchBookingsIndex() {
         } as any);
       } catch {
         try {
-          (router as any).push?.(`/(tabs)/dispatch-bookings/${id}?_rf=${encodeURIComponent(token)}`);
-        } catch {}
+          (router as any).push?.(
+            `/(tabs)/dispatch-bookings/${id}?_rf=${encodeURIComponent(token)}`
+          );
+        } catch { }
       }
     });
   }, [resultPopup.linkHeaderId, closeResultPopup]);
@@ -217,7 +251,10 @@ export default function DispatchBookingsIndex() {
     return toUserMessage(whError, "Greška prilikom učitavanja skladišta.");
   }, [whError, warehouses?.length]);
 
-  const topError = useMemo(() => listErrorMessage || whErrorMessage || null, [listErrorMessage, whErrorMessage]);
+  const topError = useMemo(
+    () => listErrorMessage || whErrorMessage || null,
+    [listErrorMessage, whErrorMessage]
+  );
 
   const closePickers = useCallback(() => {
     setWarehouseOpen(false);
@@ -246,7 +283,7 @@ export default function DispatchBookingsIndex() {
 
     closePickers();
     listQ?.clearStatus?.();
-    refreshList().catch(() => {});
+    refreshList().catch(() => { });
 
     if (routeResult === "STORNO_OK") {
       setResultPopup({
@@ -257,7 +294,16 @@ export default function DispatchBookingsIndex() {
         linkHeaderId: routeResultHeaderId,
       });
     }
-  }, [routeRefreshToken, routeStatus, routeResult, routeResultHeaderId, status, closePickers, listQ, refreshList]);
+  }, [
+    routeRefreshToken,
+    routeStatus,
+    routeResult,
+    routeResultHeaderId,
+    status,
+    closePickers,
+    listQ,
+    refreshList,
+  ]);
 
   const onTopErrorAction = useCallback(() => {
     if (!topError) return;
@@ -275,7 +321,15 @@ export default function DispatchBookingsIndex() {
     }
 
     return Promise.all(jobs);
-  }, [topError, closePickers, listErrorMessage, whErrorMessage, listQ, refetchWarehouses, refreshList]);
+  }, [
+    topError,
+    closePickers,
+    listErrorMessage,
+    whErrorMessage,
+    listQ,
+    refetchWarehouses,
+    refreshList,
+  ]);
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
@@ -302,52 +356,114 @@ export default function DispatchBookingsIndex() {
   const showInlineLoading = listHasData && !!listQ?.loading && !refreshing;
   const showEmpty = !isBusy && !topError && !listErrorMessage && listData.length === 0;
 
-  const fetchWarehousesPage = async ({ page, size, q }: { page: number; size: number; q?: string }) => {
-    const needle = (q ?? "").trim().toLowerCase();
-    const base: WarehousePick[] = [{ id: null, label: "Sva skladišta" }];
+  const warehousePickerKey = useMemo(
+    () => ["dispatch-bookings", "warehouse-picker", (warehouses ?? []).join(",")] as const,
+    [warehouses]
+  );
 
-    const list: WarehousePick[] = (warehouses ?? []).map((id) => ({
-      id: Number(id),
-      label: `Skladište #${Number(id)}`,
-    }));
+  const documentPickerKey = useMemo(
+    () =>
+      [
+        "dispatch-bookings",
+        "document-picker",
+        warehouseId ?? defaultWhId ?? "NO_WAREHOUSE",
+        documentCode,
+      ] as const,
+    [warehouseId, defaultWhId, documentCode]
+  );
 
-    const filtered = !needle
-      ? list
-      : list.filter((w) => w.label.toLowerCase().includes(needle) || String(w.id ?? "").includes(needle));
+  const queryWarehousesPage = useCallback(
+    async ({ page, size, q }: { page: number; size: number; q?: string; signal?: AbortSignal }) => {
+      const needle = (q ?? "").trim().toLowerCase();
+      const base: WarehousePick[] = [{ id: null, label: "Sva skladišta" }];
 
-    const items = base.concat(filtered);
-    const start = page * size;
-    const end = start + size;
+      const list: WarehousePick[] = (warehouses ?? []).map((id) => ({
+        id: Number(id),
+        label: `Skladište #${Number(id)}`,
+      }));
 
-    return { items: items.slice(start, end), page, size, total: items.length };
-  };
+      const filtered = !needle
+        ? list
+        : list.filter(
+          (w) =>
+            w.label.toLowerCase().includes(needle) ||
+            String(w.id ?? "").includes(needle)
+        );
 
-  const fetchDocTypesPage = async ({ page, size, q }: { page: number; size: number; q?: string }) => {
-    const whForDocs = warehouseId ?? defaultWhId;
-    if (!whForDocs) return { items: [] as DocumentDescriptorResponseDTO[], page, size, total: 0 };
+      const items = base.concat(filtered);
+      const start = page * size;
+      const end = start + size;
 
-    const all = await documentDirectoryService.listDocTypesByCode(
-      { warehouseId: Number(whForDocs), documentCode: "OTPREMNICA", q: q ?? undefined },
-      undefined
-    );
+      return {
+        items: items.slice(start, end),
+        page,
+        size,
+        total: items.length,
+      };
+    },
+    [warehouses]
+  );
 
-    const needle = (q ?? "").trim().toLowerCase();
-    const filtered = !needle
-      ? all
-      : all.filter((d) => {
+  const queryDocTypesPage = useCallback(
+    async ({
+      page,
+      size,
+      q,
+      signal,
+    }: {
+      page: number;
+      size: number;
+      q?: string;
+      signal?: AbortSignal;
+    }) => {
+      const whForDocs = warehouseId ?? defaultWhId;
+      if (!whForDocs) {
+        return {
+          items: [] as DocumentDescriptorResponseDTO[],
+          page,
+          size,
+          total: 0,
+        };
+      }
+
+      const all = await documentDirectoryService.listDocTypesByCode(
+        {
+          warehouseId: Number(whForDocs),
+          documentCode: "OTPREMNICA",
+          q: q ?? undefined,
+        },
+        signal
+      );
+
+      const needle = (q ?? "").trim().toLowerCase();
+
+      const filtered = !needle
+        ? all
+        : all.filter((d) => {
           const a = (d.displayName ?? "").toLowerCase();
           const b = (d.documentCode ?? "").toLowerCase();
           const c = String(d.documentId ?? "");
           return a.includes(needle) || b.includes(needle) || c.includes(needle);
         });
 
-    filtered.sort((a, b) => (a.displayName ?? "").localeCompare(b.displayName ?? "", "hr", { sensitivity: "base" }));
+      filtered.sort((a, b) =>
+        (a.displayName ?? "").localeCompare(b.displayName ?? "", "hr", {
+          sensitivity: "base",
+        })
+      );
 
-    const start = page * size;
-    const end = start + size;
+      const start = page * size;
+      const end = start + size;
 
-    return { items: filtered.slice(start, end), page, size, total: filtered.length };
-  };
+      return {
+        items: filtered.slice(start, end),
+        page,
+        size,
+        total: filtered.length,
+      };
+    },
+    [warehouseId, defaultWhId]
+  );
 
   if (!ready) {
     return (
@@ -398,7 +514,10 @@ export default function DispatchBookingsIndex() {
             <FontAwesome name="chevron-down" size={12} color={Colors.sub} />
           </Pressable>
 
-          <Pressable style={[s.filterPill, dateActive && s.filterPillActive]} onPress={() => setDateOpen(true)}>
+          <Pressable
+            style={[s.filterPill, dateActive && s.filterPillActive]}
+            onPress={() => setDateOpen(true)}
+          >
             <FontAwesome name="calendar" size={14} color={Colors.text} />
             <Text style={s.filterText} numberOfLines={1}>
               {dateLabel}
@@ -425,7 +544,11 @@ export default function DispatchBookingsIndex() {
           {STATUS_KEYS.map((k) => {
             const active = status === k;
             return (
-              <Pressable key={k} style={[s.segBtn, active && s.segBtnActive]} onPress={() => setStatus(k)}>
+              <Pressable
+                key={k}
+                style={[s.segBtn, active && s.segBtnActive]}
+                onPress={() => setStatus(k)}
+              >
                 <Text style={[s.segText, active && s.segTextActive]}>{statusLabel(k)}</Text>
               </Pressable>
             );
@@ -472,7 +595,9 @@ export default function DispatchBookingsIndex() {
           renderItem={({ item }) => {
             const st = statusOfRow(item as any);
             const tone = statusPillStyle(st);
-            const title = String((item as any)?.documentName ?? (item as any)?.documentCode ?? "Dokument");
+            const title = String(
+              (item as any)?.documentName ?? (item as any)?.documentCode ?? "Dokument"
+            );
             const subLines = buildRowSubLines(item);
 
             return (
@@ -481,7 +606,11 @@ export default function DispatchBookingsIndex() {
                 onPress={() => {
                   const id = Number((item as any)?.headerId ?? (item as any)?.id);
                   if (!Number.isFinite(id)) return;
-                  router.push({ pathname: "/(tabs)/dispatch-bookings/[id]", params: { id: String(id) } } as any);
+
+                  router.push({
+                    pathname: "/(tabs)/dispatch-bookings/[id]",
+                    params: { id: String(id) },
+                  } as any);
                 }}
               >
                 <View style={{ flex: 1 }}>
@@ -501,7 +630,9 @@ export default function DispatchBookingsIndex() {
                 </View>
 
                 <View style={[s.badge, { backgroundColor: tone.bg, borderColor: tone.bd }]}>
-                  <Text style={[s.badgeText, { color: tone.tx }]}>{st === "CANCELLED" ? "STORNO" : st}</Text>
+                  <Text style={[s.badgeText, { color: tone.tx }]}>
+                    {st === "CANCELLED" ? "STORNO" : st}
+                  </Text>
                 </View>
               </Pressable>
             );
@@ -522,7 +653,8 @@ export default function DispatchBookingsIndex() {
         title="Skladište"
         onClose={() => setWarehouseOpen(false)}
         keyOf={(x) => String(x.id ?? "ALL")}
-        fetchPage={fetchWarehousesPage}
+        queryKeyBase={warehousePickerKey}
+        queryPage={queryWarehousesPage}
         renderRow={(w, close) => (
           <Pressable
             style={s.pickRow}
@@ -532,7 +664,9 @@ export default function DispatchBookingsIndex() {
             }}
           >
             <Text style={s.pickTitle}>{w.label}</Text>
-            <Text style={s.pickSub}>{w.id == null ? "Prikaz svih skladišta" : `ID: ${w.id}`}</Text>
+            <Text style={s.pickSub}>
+              {w.id == null ? "Prikaz svih skladišta" : `ID: ${w.id}`}
+            </Text>
           </Pressable>
         )}
       />
@@ -542,7 +676,8 @@ export default function DispatchBookingsIndex() {
         title="Odaberi dokument"
         onClose={() => setDocPickerOpen(false)}
         keyOf={(x) => String(x.documentId)}
-        fetchPage={fetchDocTypesPage}
+        queryKeyBase={documentPickerKey}
+        queryPage={queryDocTypesPage}
         renderRow={(d, close) => (
           <Pressable
             style={s.pickRow}
@@ -576,8 +711,16 @@ export default function DispatchBookingsIndex() {
         variant={resultPopup.kind}
         title={resultPopup.title}
         message={resultPopup.message}
-        subtitle={resultPopup.kind === "success" ? "Možeš otvoriti dokument i provjeriti status." : undefined}
-        linkText={resultPopup.linkHeaderId ? `Otvori Dispatch #${resultPopup.linkHeaderId}` : undefined}
+        subtitle={
+          resultPopup.kind === "success"
+            ? "Možeš otvoriti dokument i provjeriti status."
+            : undefined
+        }
+        linkText={
+          resultPopup.linkHeaderId
+            ? `Otvori Dispatch #${resultPopup.linkHeaderId}`
+            : undefined
+        }
         onLinkPress={resultPopup.linkHeaderId ? openResultDetails : undefined}
         buttonText="U redu"
         onClose={closeResultPopup}

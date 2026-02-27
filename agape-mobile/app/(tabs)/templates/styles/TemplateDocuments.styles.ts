@@ -1,5 +1,5 @@
 import { StyleSheet } from "react-native";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 export const MAX_W = 560;
 

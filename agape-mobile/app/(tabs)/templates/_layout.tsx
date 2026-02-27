@@ -15,11 +15,11 @@ export default function TemplatesLayout() {
       >
         <Stack.Screen name="index" options={{ title: "Predlošci" }} />
         <Stack.Screen name="template/[id]" options={{ title: "Predložak" }} />
-        <Stack.Screen name="template/[id]/uredi" options={{ title: "Uredi predložak" }} />
-        <Stack.Screen name="template/[id]/dokumenti" options={{ title: "Dokumenti" }} />
-        <Stack.Screen name="template/[id]/dijeli" options={{ title: "Dijeljenje" }} />
-        <Stack.Screen name="template/[id]/otpremi" options={{ title: "Kreiraj otpremu" }} />
-        <Stack.Screen name="template/novi" options={{ title: "Novi predložak" }} />
+        <Stack.Screen name="template/[id]/edit" options={{ title: "Uredi predložak" }} />
+        <Stack.Screen name="template/[id]/documents" options={{ title: "Dokumenti" }} />
+        <Stack.Screen name="template/[id]/share" options={{ title: "Dijeljenje" }} />
+        <Stack.Screen name="template/[id]/dispatch" options={{ title: "Kreiraj otpremu" }} />
+        <Stack.Screen name="template/new" options={{ title: "Novi predložak" }} />
       </Stack>
     </RequireMainWarehouse>
   );

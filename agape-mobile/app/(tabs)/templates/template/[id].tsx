@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import { Banner } from "@/components/Banner";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import NavigationHeader from "../../../../components/NavigationHeader";
 import { useTemplateDetail, useDeleteTemplate } from "@/app/api/hooks/templates/useDispatchTemplates";

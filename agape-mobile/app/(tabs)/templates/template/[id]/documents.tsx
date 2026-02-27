@@ -9,26 +9,26 @@ import { ErrorCard } from "@/components/ErrorCard";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
-import { documentDirectoryService } from "@/app/api/services/documentDirectoryService";
+import { toUserMessage } from "../../../../../src/api/apiClient";
+import { useCurrentUser } from "../../../../../src/api/hooks/common/useCurrentUser";
+import { documentDirectoryService } from "../../../../../src/api/services/documentDirectoryService";
 
 import type {
   DocumentDescriptorResponseDTO,
   TemplateDocResponseDTO,
   TemplateItemUpsertRequestDTO,
-} from "@/app/models/generated";
+} from "@/src/models/generated";
 
 import {
   useDeleteTemplateDoc,
   useReplaceTemplateDocItems,
   useTemplateDetail,
   useUpsertTemplateDoc,
-} from "@/app/api/hooks/templates/useDispatchTemplates";
+} from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 
 import { styles as s } from "../../styles/TemplateDocuments.styles";
 import { TemplateDocItemsEditorModal } from "@/components/TemplateDocItemsEditorModal";
-import { useItemDirectoryPickerPage } from "@/app/api/hooks/documents/useItemDirectoryPickerPage";
+import { useItemDirectory } from "../../../../../src/api/hooks/documents/useItemDirectory";
 
 type LockedCenterModalProps = {
   visible: boolean;
@@ -75,10 +75,12 @@ function LockedCenterModal(props: LockedCenterModalProps) {
 
 function buildExcludeDocumentIds(templateDocs?: TemplateDocResponseDTO[] | null): number[] {
   const set = new Set<number>();
+
   for (const d of templateDocs ?? []) {
     const id = Number(d?.documentId);
     if (Number.isFinite(id) && id > 0) set.add(id);
   }
+
   return Array.from(set);
 }
 
@@ -98,7 +100,7 @@ export default function TemplateDocumentsScreen() {
   const replaceItemsM = useReplaceTemplateDocItems();
   const deleteDocM = useDeleteTemplateDoc();
 
-  const { fetchItemsPage } = useItemDirectoryPickerPage({
+  const { fetchItemsPage } = useItemDirectory({
     warehouseId: warehouseId ? Number(warehouseId) : null,
     enabled: true,
   });
@@ -242,18 +244,48 @@ export default function TemplateDocumentsScreen() {
     [templateId, itemsDoc, replaceItemsM]
   );
 
-  const fetchDocTypesPage = useCallback(
-    async ({ page, size, q }: { page: number; size: number; q?: string }) => {
+  const docPickerKey = useMemo(
+    () =>
+      [
+        "template-documents",
+        "document-picker",
+        warehouseId ?? "NO_WAREHOUSE",
+        templateId ?? "NO_TEMPLATE",
+        excludeDocumentIds.join(","),
+      ] as const,
+    [warehouseId, templateId, excludeDocumentIds]
+  );
+
+  const queryDocTypesPage = useCallback(
+    async ({
+      page,
+      size,
+      q,
+      signal,
+    }: {
+      page: number;
+      size: number;
+      q?: string;
+      signal?: AbortSignal;
+    }) => {
       if (!warehouseId) {
-        return { items: [] as DocumentDescriptorResponseDTO[], page, size, total: 0 };
+        return {
+          items: [] as DocumentDescriptorResponseDTO[],
+          page,
+          size,
+          total: 0,
+        };
       }
 
-      const all = await documentDirectoryService.listDocTypesByCode({
-        warehouseId,
-        documentCode: "OTPREMNICA",
-        q: q ?? undefined,
-        excludeDocumentIds,
-      });
+      const all = await documentDirectoryService.listDocTypesByCode(
+        {
+          warehouseId,
+          documentCode: "OTPREMNICA",
+          q: q ?? undefined,
+          excludeDocumentIds,
+        },
+        signal
+      );
 
       const needle = (q ?? "").trim().toLowerCase();
 
@@ -267,7 +299,9 @@ export default function TemplateDocumentsScreen() {
         });
 
       filtered.sort((a, b) =>
-        (a.displayName ?? "").localeCompare(b.displayName ?? "", "hr", { sensitivity: "base" })
+        (a.displayName ?? "").localeCompare(b.displayName ?? "", "hr", {
+          sensitivity: "base",
+        })
       );
 
       const start = page * size;
@@ -390,7 +424,10 @@ export default function TemplateDocumentsScreen() {
               title="Odaberi dokument"
               onClose={() => setDocPickerOpen(false)}
               keyOf={(x) => String(x.documentId)}
-              fetchPage={fetchDocTypesPage}
+              queryKeyBase={docPickerKey}
+              queryPage={queryDocTypesPage}
+              staleTime={16 * 60 * 60 * 1000}
+              gcTime={24 * 60 * 60 * 1000}
               renderRow={(docType, close) => (
                 <Pressable
                   style={s.pickRow}

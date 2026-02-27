@@ -1,12 +1,12 @@
 import React, { useMemo } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
-import type { BookingImpactItemDTO, WarehouseBookingImpactDTO } from "@/app/models/generated";
+import type { BookingImpactItemDTO, WarehouseBookingImpactDTO } from "@/src/models/generated";
 import { styles as s } from "./styles/ValidateImpactModal.styles";
 import { ErrorCard } from "./ErrorCard";
-import { toFiniteNumber, formatQtyHRNullable } from "@/app/utils/format";
+import { toFiniteNumber, formatQtyHRNullable } from "@/src/utils/format";
 
 type Props = {
   visible: boolean;

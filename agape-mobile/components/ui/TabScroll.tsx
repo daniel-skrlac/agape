@@ -1,7 +1,7 @@
 import React from "react";
 import { RefreshControl, ScrollView, ScrollViewProps } from "react-native";
 import Screen from "./Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 type Props = ScrollViewProps & {
     refreshing?: boolean;

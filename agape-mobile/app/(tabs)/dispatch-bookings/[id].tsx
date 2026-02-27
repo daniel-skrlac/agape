@@ -11,8 +11,8 @@ import ValidateImpactModal from "@/components/ValidateImpactModal";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import InfoResultPopup from "@/components/InfoResultPopup";
 
-import Colors from "@/constants/Colors";
-import Strings from "@/constants/Strings";
+import Colors from "@/src/constants/Colors";
+import Strings from "@/src/constants/Strings";
 
 import { styles as s } from "./styles/DispatchBookingsDetails.styles";
 
@@ -20,20 +20,20 @@ import type {
   DispatchBookingDetailDTO,
   DispatchBookingItemDTO,
   DispatchRequestValidationDTO,
-} from "@/app/models/generated";
+} from "@/src/models/generated";
 
-import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
-import { toUserMessage } from "@/app/api/apiClient";
+import { usePullToRefresh } from "../../../src/api/hooks/common/usePullToRefresh";
+import { toUserMessage } from "../../../src/api/apiClient";
 
 import {
   useCancelDispatchBooking,
   useDispatchBookingDetail,
   useDispatchBookingValidate,
   usePostDispatchBooking,
-} from "@/app/api/hooks/dispatch-bookings/useDispatchBookings";
+} from "../../../src/api/hooks/dispatch-bookings/useDispatchBookings";
 
-import { formatQtyHR } from "@/app/utils/format";
-import { fmtHrDateTime } from "@/app/utils/dateIso";
+import { formatQtyHR } from "@/src/utils/format";
+import { fmtHrDateTime } from "@/src/utils/dateIso";
 
 function statusOf(dto: DispatchBookingDetailDTO): "DRAFT" | "FINAL" | "CANCELLED" {
   if ((dto as any)?.cancelled) return "CANCELLED";

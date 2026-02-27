@@ -5,14 +5,14 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import NavigationHeader from "@/components/NavigationHeader";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
-import { useTemplateFolders, useTemplateList } from "@/app/api/hooks/templates/useDispatchTemplates";
-import type { FolderResponseDTO, TemplateResponseDTO } from "@/app/models/generated";
+import { toUserMessage } from "../../../../src/api//apiClient";
+import { usePullToRefresh } from "../../../../src/api//hooks/common/usePullToRefresh";
+import { useTemplateFolders, useTemplateList } from "../../../../src/api//hooks/templates/useDispatchTemplates";
+import type { FolderResponseDTO, TemplateResponseDTO } from "@/src/models/generated";
 import { patchDraft } from "../_entryDraftStore";
 
 const MAX_W = 560;

@@ -5,10 +5,10 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import Screen from "@/components/ui/Screen";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 import NavigationHeader from "@/components/NavigationHeader";
-import type { PartnerResponseDTO } from "@/app/models/generated";
-import { partnerService } from "@/app/api/services/partnerService";
+import type { PartnerResponseDTO } from "@/src/models/generated";
+import { partnerService } from "../../../../src/api//services/partnerService";
 
 import { clearDraft } from "../_entryDraftStore";
 

@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Href, useRouter } from "expo-router";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 type Props = {
     title: string;

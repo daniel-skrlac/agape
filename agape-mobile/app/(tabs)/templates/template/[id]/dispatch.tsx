@@ -13,7 +13,7 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import NavigationHeader from "../../../../../components/NavigationHeader";
-import Colors from "@/constants/Colors";
+import Colors from "@/src/constants/Colors";
 
 import { ErrorCard } from "@/components/ErrorCard";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
@@ -33,17 +33,17 @@ import type {
   TemplateDocResponseDTO,
   TemplateItemResponseDTO,
   TemplateItemUpsertRequestDTO,
-} from "@/app/models/generated";
+} from "@/src/models/generated";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { partnerService } from "@/app/api/services/partnerService";
-import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
-import { useDispatchValidate } from "@/app/api/hooks/sessions/useDispatchValidate";
-import { toLocalDateString } from "@/app/utils/dateIso";
-import { useBookTemplateOne, useTemplateDetail } from "@/app/api/hooks/templates/useDispatchTemplates";
-import { useItemDirectoryPickerPage } from "@/app/api/hooks/documents/useItemDirectoryPickerPage";
+import { partnerService } from "../../../../../src/api/services/partnerService";
+import { useCurrentUser } from "../../../../../src/api/hooks/common/useCurrentUser";
+import { useDispatchValidate } from "../../../../../src/api/hooks/sessions/useDispatchValidate";
+import { toLocalDateString } from "@/src/utils/dateIso";
+import { useBookTemplateOne, useTemplateDetail } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
+import { useItemDirectory } from "../../../../../src/api/hooks/documents/useItemDirectory";
 
 import { MAX_W, s } from "../../styles/TemplateDispatch.styles";
+import { toUserMessage } from "@/src/api/apiClient";
 
 type PartnerNoteMap = Record<string, string>;
 
@@ -262,7 +262,7 @@ export default function TemplateDispatchScreen() {
   const bookOneMutation = useBookTemplateOne();
   const validateMutation = useDispatchValidate();
 
-  const { fetchItemsPage: fetchItemsPageBase } = useItemDirectoryPickerPage({
+  const { fetchItemsPage: fetchItemsPageBase } = useItemDirectory({
     warehouseId: warehouseId ? Number(warehouseId) : null,
     enabled: true,
   });
@@ -273,7 +273,7 @@ export default function TemplateDispatchScreen() {
   const rawTopError =
     screenError ||
     templateQuery.errorMessage ||
-    (bookOneMutation.error ? toUserMessage(bookOneMutation.error, "Greška pri kreiranju.") : null);
+    (bookOneMutation.error ? String(bookOneMutation.error?.message ?? "Greška pri kreiranju.") : null);
 
   const topError = rawTopError && rawTopError !== dismissedTopError ? rawTopError : null;
 
@@ -912,15 +912,20 @@ export default function TemplateDispatchScreen() {
           title="Odaberi partnere"
           onClose={() => setIsPartnerPickerOpen(false)}
           keyOf={(partner) => String((partner as any)?.id)}
-          fetchPage={async ({ page, size, q }) => {
-            const response = await partnerService.pagePartners({ page, size, q: q ?? "" });
-            return {
-              items: response.items,
-              page: response.page,
-              size: response.size,
-              total: response.total,
-            };
-          }}
+          queryKeyBase={["partners", "picker"]}
+          queryPage={({ page, size, q, signal }) =>
+            partnerService.pagePartners(
+              { page, size, q: q ?? "" },
+              signal
+            ).then((response) => ({
+              items: response.items ?? [],
+              page: Number(response.page ?? page),
+              size: Number(response.size ?? size),
+              total: Number(response.total ?? 0),
+            }))
+          }
+          staleTime={16 * 60 * 60 * 1000}
+          gcTime={24 * 60 * 60 * 1000}
           renderRow={(partner) => {
             const partnerId = Number((partner as any)?.id);
             const isSelected = selectedPartnerIds.has(partnerId);

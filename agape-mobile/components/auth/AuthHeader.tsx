@@ -1,7 +1,7 @@
 import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
-import Strings from "../../constants/Strings";
-import Colors from "../../constants/Colors";
+import Strings from "../../src/constants/Strings";
+import Colors from "../../src/constants/Colors";
 
 const AuthHeader: React.FC = () => {
   return (
