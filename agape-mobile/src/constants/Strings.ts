@@ -1,5 +1,5 @@
 const Strings = {
-  appName: "Socijalna samoposluga",
+  appName: "Agape",
 
   settings: {
     title: "Postavke",

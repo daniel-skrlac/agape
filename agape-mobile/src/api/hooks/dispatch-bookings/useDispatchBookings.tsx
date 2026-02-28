@@ -28,8 +28,7 @@ type Args = {
 const paths = {
   detail: (id: number) => `/api/v1/dispatch/bookings/${id}`,
   validate: `/api/v1/dispatch/validate`,
-  post: (id: number) => `/api/v1/dispatch-bookings/${id}/post`,
-  cancel: (id: number) => `/api/v1/dispatch-note/${id}`,
+  update: (id: number) => `/api/v1/dispatch-note/${id}`,
 };
 
 const qk = {
@@ -270,21 +269,29 @@ export function usePostDispatchBooking() {
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: ({ headerId }: { headerId: number; invalidateDetail: boolean }) =>
-      api.request<any>(paths.post(headerId), { method: "POST" } as any),
+    mutationFn: (v: { headerId: number; invalidateDetail: boolean }) => {
+      const payload: DispatchUpdateRequestDTO = {
+        postNow: true,
+        cancel: false,
+        cancelReason: undefined,
+        overrideNote: undefined,
+        partnerId: undefined as any,
+        items: undefined as any,
+      } as any;
+
+      return api.request<DispatchResponseDTO>(paths.update(v.headerId), {
+        method: "PUT",
+        body: payload,
+      } as any);
+    },
     onSuccess: async (_data, vars) => {
       if (!vars.invalidateDetail) return;
       await qc.invalidateQueries({ queryKey: qk.detail(vars.headerId) });
     },
   });
 
-  const errorMessage = useMemo(() => {
-    if (!mutation.error) return null;
-    return toUserMessage(mutation.error, Strings.settings.errors.generic);
-  }, [mutation.error]);
-
   return {
-    post: (headerId: number, options?: PostDispatchOptions) =>
+    post: (headerId: number, options?: { invalidateDetail?: boolean }) =>
       mutation.mutateAsync({
         headerId,
         invalidateDetail: options?.invalidateDetail !== false,
@@ -292,7 +299,7 @@ export function usePostDispatchBooking() {
     reset: mutation.reset,
     data: mutation.data ?? null,
     loading: mutation.isPending,
-    errorMessage,
+    errorMessage: mutation.error ? toUserMessage(mutation.error, Strings.settings.errors.generic) : null,
   };
 }
 
@@ -310,7 +317,7 @@ export function useCancelDispatchBooking() {
         cancelReason: v.cancelReason?.trim() || undefined,
       } as any;
 
-      return api.request<DispatchResponseDTO>(paths.cancel(v.headerId), {
+      return api.request<DispatchResponseDTO>(paths.update(v.headerId), {
         method: "PUT",
         body: payload,
       } as any);

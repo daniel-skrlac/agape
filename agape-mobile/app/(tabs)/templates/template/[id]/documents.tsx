@@ -26,7 +26,7 @@ import {
   useUpsertTemplateDoc,
 } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 
-import { styles as s } from "../../styles/TemplateDocuments.styles";
+import { styles as s } from "../../../../../src/styles/TemplateDocuments.styles";
 import { TemplateDocItemsEditorModal } from "@/components/TemplateDocItemsEditorModal";
 import { useItemDirectory } from "../../../../../src/api/hooks/documents/useItemDirectory";
 
@@ -104,6 +104,17 @@ export default function TemplateDocumentsScreen() {
     warehouseId: warehouseId ? Number(warehouseId) : null,
     enabled: true,
   });
+
+  const backHref = useMemo(() => {
+    if (!templateId) {
+      return "/(tabs)/templates" as const;
+    }
+
+    return {
+      pathname: "/(tabs)/templates/template/[id]" as const,
+      params: { id: String(templateId) },
+    };
+  }, [templateId]);
 
   const template = templateQ.data;
   const docs = useMemo(() => template?.documents ?? [], [template?.documents]);
@@ -323,7 +334,7 @@ export default function TemplateDocumentsScreen() {
         <NavigationHeader
           title="Dokumenti"
           subtitle={templateId ? `Predložak #${templateId}` : "Predložak"}
-          fallbackHref="/(tabs)/templates"
+          fallbackHref={backHref}
         />
 
         <View style={s.container}>
@@ -345,7 +356,7 @@ export default function TemplateDocumentsScreen() {
       <NavigationHeader
         title="Dokumenti"
         subtitle={templateId ? `Predložak #${templateId}` : "Predložak"}
-        fallbackHref="/(tabs)/templates"
+        fallbackHref={backHref}
       />
 
       <View style={s.container}>

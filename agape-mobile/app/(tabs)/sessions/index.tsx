@@ -34,8 +34,8 @@ import {
   useDeleteBookingSession,
 } from "../../../src/api/hooks/sessions/useBookingSessions";
 
-import { clearDraftsForSession } from "./_entryDraftStore";
-import { MAX_W, s } from "./styles/SessionsIndex.styles";
+import { clearDraftsForSession } from "../../../src/stores/entryDraftStore";
+import { MAX_W, s } from "../../../src/styles/SessionsIndex.styles";
 
 type SessionFilter = "ALL" | "DRAFT" | "FINALIZED" | "CANCELLED";
 

@@ -14,7 +14,7 @@ import InfoResultPopup from "@/components/InfoResultPopup";
 import Colors from "@/src/constants/Colors";
 import Strings from "@/src/constants/Strings";
 
-import { styles as s } from "./styles/DispatchBookingsDetails.styles";
+import { styles as s } from "../../../src/styles/DispatchBookingsDetails.styles";
 
 import type {
   DispatchBookingDetailDTO,
@@ -243,6 +243,73 @@ export default function DispatchBookingDetails() {
     });
   }, [headerId]);
 
+  const goToAllIndex = useCallback(() => {
+    const token = `${Date.now()}_${headerId ?? "x"}`;
+
+    requestAnimationFrame(() => {
+      try {
+        router.replace({
+          pathname: "/dispatch-bookings" as const,
+          params: {
+            status: "ALL",
+            _r: token,
+            result: "DRAFT_DELETED",
+            resultHeaderId: headerId != null ? String(headerId) : undefined,
+          },
+        } as any);
+      } catch {
+        try {
+          const q = [
+            `status=ALL`,
+            `_r=${encodeURIComponent(token)}`,
+            `result=DRAFT_DELETED`,
+            headerId != null ? `resultHeaderId=${encodeURIComponent(String(headerId))}` : null,
+          ]
+            .filter(Boolean)
+            .join("&");
+
+          (router as any).replace?.(`/dispatch-bookings?${q}`);
+        } catch { }
+      }
+    });
+  }, [headerId]);
+
+  const goToFinalIndex = useCallback(
+    (message?: string) => {
+      const token = `${Date.now()}_${headerId ?? "x"}`;
+
+      requestAnimationFrame(() => {
+        try {
+          router.replace({
+            pathname: "/dispatch-bookings" as const,
+            params: {
+              status: "FINAL",
+              _r: token,
+              result: "POST_OK",
+              resultHeaderId: headerId != null ? String(headerId) : undefined,
+              resultMessage: message ? String(message) : undefined,
+            },
+          } as any);
+        } catch {
+          try {
+            const q = [
+              `status=FINAL`,
+              `_r=${encodeURIComponent(token)}`,
+              `result=POST_OK`,
+              headerId != null ? `resultHeaderId=${encodeURIComponent(String(headerId))}` : null,
+              message ? `resultMessage=${encodeURIComponent(String(message))}` : null,
+            ]
+              .filter(Boolean)
+              .join("&");
+
+            (router as any).replace?.(`/dispatch-bookings?${q}`);
+          } catch { }
+        }
+      });
+    },
+    [headerId]
+  );
+
   const retryDetail = useCallback(async () => {
     setHideTopError(true);
     setRetryingDetail(true);
@@ -313,8 +380,7 @@ export default function DispatchBookingDetails() {
 
     try {
       await validateM.validate(payload);
-    } catch {
-    }
+    } catch { }
   }, [dto, headerId, canPost, validateM, postM]);
 
   const confirmValidateAndPost = useCallback(async () => {
@@ -329,16 +395,20 @@ export default function DispatchBookingDetails() {
 
     try {
       const res: any = await postM.post(headerId, { invalidateDetail: false });
-      const nextDto = tryExtractDetailDto(res);
-
-      if (nextDto) detailsQ.setBooking(nextDto as any);
-      else await Promise.resolve(detailsQ.refetch());
 
       setValidateOpen(false);
+
+      const docCode = String((dto as any)?.documentCode ?? "").trim();
+      const msg = docCode ? `Dokument ${docCode} je uspješno knjižen.` : "Dokument je uspješno knjižen.";
+
+      goToFinalIndex(msg);
+
+      const nextDto = tryExtractDetailDto(res);
+      if (nextDto) detailsQ.setBooking(nextDto as any);
     } catch (e) {
       setLocalError(toUserMessage(e, Strings.settings.errors.generic));
     }
-  }, [dto, headerId, canPost, postM, detailsQ]);
+  }, [dto, headerId, canPost, postM, detailsQ, goToFinalIndex]);
 
   const onDeleteDraft = useCallback(async () => {
     setLocalError(null);
@@ -352,18 +422,16 @@ export default function DispatchBookingDetails() {
     }
 
     try {
-      const res: any = await cancelM.cancel(headerId, "", { invalidateDetail: false });
-      const nextDto = tryExtractDetailDto(res);
-
-      if (nextDto) detailsQ.setBooking(nextDto as any);
-      else await Promise.resolve(detailsQ.refetch());
+      await cancelM.cancel(headerId, "", { invalidateDetail: false });
 
       setValidateOpen(false);
       setStornoConfirmOpen(false);
+
+      goToAllIndex();
     } catch (e) {
       setLocalError(toUserMessage(e, Strings.settings.errors.generic));
     }
-  }, [headerId, dto, cancelM, detailsQ]);
+  }, [headerId, dto, cancelM, goToAllIndex]);
 
   const openStornoConfirm = useCallback(() => {
     if (stornoSubmittingRef.current || cancelM.loading) return;
@@ -659,7 +727,11 @@ export default function DispatchBookingDetails() {
               disabled={cancelM.loading || stornoSubmitting}
               onPress={onDeleteDraft}
             >
-              {cancelM.loading || stornoSubmitting ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Obriši draft</Text>}
+              {cancelM.loading || stornoSubmitting ? (
+                <ActivityIndicator />
+              ) : (
+                <Text style={s.dangerTextBtn}>Obriši draft</Text>
+              )}
             </Pressable>
           </View>
         ) : null}
@@ -686,7 +758,11 @@ export default function DispatchBookingDetails() {
               disabled={cancelM.loading || stornoSubmitting}
               onPress={openStornoConfirm}
             >
-              {cancelM.loading || stornoSubmitting ? <ActivityIndicator /> : <Text style={s.dangerTextBtn}>Storniraj dokument</Text>}
+              {cancelM.loading || stornoSubmitting ? (
+                <ActivityIndicator />
+              ) : (
+                <Text style={s.dangerTextBtn}>Storniraj dokument</Text>
+              )}
             </Pressable>
           </View>
         ) : null}

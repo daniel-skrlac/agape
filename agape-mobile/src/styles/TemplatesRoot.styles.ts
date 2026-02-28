@@ -6,6 +6,7 @@ export const styles = StyleSheet.create({
         flex: 1,
         padding: 14,
         gap: 12,
+        backgroundColor: Colors.bg,
     },
 
     topErrorWrap: {
@@ -44,13 +45,43 @@ export const styles = StyleSheet.create({
         opacity: 0.85,
     },
 
-    search: {
-        backgroundColor: Colors.bg,
-        borderRadius: 14,
+
+    filterWrap: {
+        gap: 10,
+    },
+
+    searchWrap: {
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderRadius: 16,
+        backgroundColor: "rgba(148,163,184,0.14)",
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: Colors.border,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+    },
+
+    searchInput: {
+        flex: 1,
+        height: 25,
+        paddingVertical: 0,
+        fontWeight: "800",
+        color: Colors.text,
+        fontSize: 14,
+    },
+
+    searchClearBtn: {
+        padding: 2,
+    },
+
+    search: {
+        borderRadius: 16,
+        backgroundColor: "rgba(148,163,184,0.14)",
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: Colors.border,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
         fontWeight: "800",
         color: Colors.text,
     },
@@ -76,7 +107,7 @@ export const styles = StyleSheet.create({
     },
 
     card: {
-        backgroundColor: Colors.bg,
+        backgroundColor: "rgba(148,163,184,0.08)",
         borderRadius: 18,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: Colors.border,
@@ -102,7 +133,7 @@ export const styles = StyleSheet.create({
         width: 36,
         height: 36,
         borderRadius: 14,
-        backgroundColor: Colors.neutralBg,
+        backgroundColor: "rgba(148,163,184,0.18)",
         alignItems: "center",
         justifyContent: "center",
     },
@@ -144,7 +175,7 @@ export const styles = StyleSheet.create({
     },
 
     badgeView: {
-        backgroundColor: Colors.neutralBg,
+        backgroundColor: "rgba(148,163,184,0.12)",
         color: Colors.text,
     },
 
@@ -178,7 +209,7 @@ export const styles = StyleSheet.create({
         paddingVertical: 14,
         paddingHorizontal: 14,
         borderRadius: 16,
-        backgroundColor: Colors.neutralBg,
+        backgroundColor: "rgba(148,163,184,0.18)",
     },
 
     addItemText: {
@@ -229,7 +260,7 @@ export const styles = StyleSheet.create({
         paddingVertical: 14,
         paddingHorizontal: 14,
         borderRadius: 16,
-        backgroundColor: Colors.neutralBg,
+        backgroundColor: "rgba(148,163,184,0.18)",
     },
 
     moreItemDanger: {
@@ -274,7 +305,7 @@ export const swipeStyles = StyleSheet.create({
     },
 
     edit: {
-        backgroundColor: Colors.neutralBg,
+        backgroundColor: "rgba(148,163,184,0.18)",
     },
 
     delete: {

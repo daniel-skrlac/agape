@@ -10,7 +10,7 @@ import NavigationHeader from "@/components/NavigationHeader";
 import type { PartnerResponseDTO } from "@/src/models/generated";
 import { partnerService } from "../../../../src/api//services/partnerService";
 
-import { clearDraft } from "../_entryDraftStore";
+import { clearDraft } from "../../../../src/stores/entryDraftStore";
 
 const MAX_W = 560;
 const PAGE_SIZE = 20;

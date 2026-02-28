@@ -7,19 +7,27 @@ import Colors from "@/src/constants/Colors";
 type Props = {
     title: string;
     subtitle?: string;
-
     fallbackHref?: Href;
-
     right?: React.ReactNode;
+    onBackPress?: () => void;
 };
 
-export default function NavigationHeader({ title, subtitle, fallbackHref = "/(tabs)/templates", right }: Props) {
+export default function NavigationHeader({
+    title,
+    subtitle,
+    fallbackHref = "/(tabs)/templates",
+    right,
+    onBackPress,
+}: Props) {
     const router = useRouter();
 
     const goBack = () => {
-        const canGoBack = (router as any)?.canGoBack?.() ?? false;
-        if (canGoBack) router.back();
-        else router.replace(fallbackHref);
+        if (onBackPress) {
+            onBackPress();
+            return;
+        }
+
+        router.replace(fallbackHref);
     };
 
     return (

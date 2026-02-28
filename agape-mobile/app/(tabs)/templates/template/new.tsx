@@ -8,8 +8,8 @@ import Colors from "@/src/constants/Colors";
 import NavigationHeader from "../../../../components/NavigationHeader";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { useCreateTemplate } from "@/app/api/hooks/templates/useDispatchTemplates";
+import { toUserMessage } from "../../../../src/api/apiClient";
+import { useCreateTemplate } from "../../../../src/api/hooks/templates/useDispatchTemplates";
 
 type Touched = {
   name: boolean;

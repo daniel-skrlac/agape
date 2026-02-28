@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -9,14 +9,16 @@ import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { FolderPicker } from "@/components/FolderPicker";
 
-import { toUserMessage } from "@/app/api/apiClient";
+import { toUserMessage } from "../../../../../src/api/apiClient";
 import {
     useMoveTemplate,
     useTemplateDetail,
     useTemplateFolderTree,
-} from "@/app/api/hooks/templates/useDispatchTemplates";
+} from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
+
+type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
 function readNumberParam(params: any, keys: string[]): number {
     for (const key of keys) {
@@ -32,11 +34,61 @@ function readNumberParam(params: any, keys: string[]): number {
     return NaN;
 }
 
+function readStringParam(v: unknown): string | null {
+    const raw = Array.isArray(v) ? v[0] : v;
+    const s = String(raw ?? "").trim();
+    return s ? s : null;
+}
+
+function readNullableNumberParam(v: unknown): number | null {
+    const raw = Array.isArray(v) ? v[0] : v;
+    if (raw == null) return null;
+
+    const s = String(raw).trim();
+    if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+}
+
+function readModeParam(v: unknown): Mode {
+    const raw = Array.isArray(v) ? v[0] : v;
+    const s = String(raw ?? "").trim().toUpperCase();
+    if (s === "MOJI" || s === "DIJELJENI") return s;
+    return "SVE";
+}
+
 export default function MoveTemplateScreen() {
-    const params = useLocalSearchParams<{ id?: string | string[]; templateId?: string | string[] }>();
+    const params = useLocalSearchParams<{
+        id?: string | string[];
+        templateId?: string | string[];
+        folderId?: string | string[];
+        folderName?: string | string[];
+        mode?: string | string[];
+    }>();
 
     const templateId = readNumberParam(params, ["id", "templateId"]);
     const hasValidId = Number.isFinite(templateId) && templateId > 0;
+
+    const routeFolderId = readNullableNumberParam(params.folderId);
+    const routeFolderName = readStringParam(params.folderName) ?? "Mapa";
+    const routeMode = readModeParam(params.mode);
+
+    const backHref = useMemo(() => {
+        if (hasValidId) {
+            return {
+                pathname: "/(tabs)/templates/template/[id]" as const,
+                params: {
+                    id: String(templateId),
+                    folderId: routeFolderId == null ? "null" : String(routeFolderId),
+                    folderName: routeFolderName,
+                    mode: routeMode,
+                },
+            };
+        }
+
+        return "/(tabs)/templates" as const;
+    }, [hasValidId, templateId, routeFolderId, routeFolderName, routeMode]);
 
     const templateQuery = useTemplateDetail(hasValidId ? templateId : null);
     const folderTreeQuery = useTemplateFolderTree({ enabled: hasValidId });
@@ -91,8 +143,12 @@ export default function MoveTemplateScreen() {
 
     const sameTarget = useMemo(() => {
         if (!template) return false;
+
         const currentId = template.folderId == null ? null : Number(template.folderId);
-        return (currentId == null ? null : Number(currentId)) === (targetFolderId == null ? null : Number(targetFolderId));
+        const a = currentId == null ? null : Number(currentId);
+        const b = targetFolderId == null ? null : Number(targetFolderId);
+
+        return a === b;
     }, [template, targetFolderId]);
 
     const canSubmit = useMemo(() => {
@@ -118,10 +174,7 @@ export default function MoveTemplateScreen() {
 
         if (!hasValidId) return;
 
-        await Promise.all([
-            Promise.resolve(templateQuery.refetch()),
-            Promise.resolve(folderTreeQuery.refetch()),
-        ]);
+        await Promise.allSettled([Promise.resolve(templateQuery.refetch()), Promise.resolve(folderTreeQuery.refetch())]);
     };
 
     const handleMove = async () => {
@@ -133,7 +186,15 @@ export default function MoveTemplateScreen() {
                 payload: { targetFolderId: targetFolderId as any },
             });
 
-            router.back();
+            router.replace({
+                pathname: "/(tabs)/templates/template/[id]" as const,
+                params: {
+                    id: String(templateId),
+                    folderId: routeFolderId == null ? "null" : String(routeFolderId),
+                    folderName: routeFolderName,
+                    mode: routeMode,
+                },
+            });
         } catch {
         }
     };
@@ -149,7 +210,7 @@ export default function MoveTemplateScreen() {
             <NavigationHeader
                 title="Premjesti predložak"
                 subtitle={hasValidId ? `#${templateId}` : "—"}
-                fallbackHref="/(tabs)/templates"
+                fallbackHref={backHref}
             />
 
             <View style={s.page}>
@@ -172,9 +233,7 @@ export default function MoveTemplateScreen() {
                         <Text style={s.loading}>Učitavam…</Text>
                     </View>
                 ) : !template ? (
-                    <Text style={s.loading}>
-                        {templateQuery.isFetching ? "Učitavam…" : "Predložak nije pronađen."}
-                    </Text>
+                    <Text style={s.loading}>{templateQuery.isFetching ? "Učitavam…" : "Predložak nije pronađen."}</Text>
                 ) : (
                     <>
                         <View style={s.card}>
@@ -210,9 +269,7 @@ export default function MoveTemplateScreen() {
                                 disabled={!canSubmit || moveMutation.isPending}
                                 onPress={handleMove}
                             >
-                                <Text style={s.primaryText}>
-                                    {moveMutation.isPending ? "Premještam…" : "Premjesti"}
-                                </Text>
+                                <Text style={s.primaryText}>{moveMutation.isPending ? "Premještam…" : "Premjesti"}</Text>
                             </Pressable>
 
                             <Pressable

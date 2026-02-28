@@ -42,7 +42,7 @@ import { toLocalDateString } from "@/src/utils/dateIso";
 import { useBookTemplateOne, useTemplateDetail } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 import { useItemDirectory } from "../../../../../src/api/hooks/documents/useItemDirectory";
 
-import { MAX_W, s } from "../../styles/TemplateDispatch.styles";
+import { MAX_W, s } from "../../../../../src/styles/TemplateDispatch.styles";
 import { toUserMessage } from "@/src/api/apiClient";
 
 type PartnerNoteMap = Record<string, string>;

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -8,10 +8,12 @@ import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { FolderPicker } from "@/components/FolderPicker";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { useMoveFolder, useTemplateFolderTree } from "@/app/api/hooks/templates/useDispatchTemplates";
+import { toUserMessage } from "../../../../src/api/apiClient";
+import { useMoveFolder, useTemplateFolderTree } from "../../../../src/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
+
+type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
 type FolderLike = {
   id: number;
@@ -31,6 +33,30 @@ function readNumberParam(params: any, keys: string[]): number {
   }
 
   return NaN;
+}
+
+function readNullableNumberParam(v: unknown): number | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw == null) return null;
+
+  const s = String(raw).trim();
+  if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readStringParam(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim();
+  return s ? s : null;
+}
+
+function readModeParam(v: unknown): Mode {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (s === "MOJI" || s === "DIJELJENI") return s;
+  return "SVE";
 }
 
 function buildChildrenIndex(folders: FolderLike[]) {
@@ -70,10 +96,31 @@ function computeDescendants(rootFolderId: number, childrenIndex: Map<number, num
 }
 
 export default function MoveFolderScreen() {
-  const params = useLocalSearchParams<{ folderId?: string; id?: string }>();
+  const params = useLocalSearchParams<{
+    folderId?: string;
+    id?: string;
+
+    parentFolderId?: string;
+    parentFolderName?: string;
+    mode?: string;
+  }>();
 
   const folderId = readNumberParam(params, ["folderId", "id"]);
   const hasValidId = Number.isFinite(folderId) && folderId > 0;
+
+  const parentFolderId = readNullableNumberParam(params.parentFolderId);
+  const parentFolderName = readStringParam(params.parentFolderName) ?? "Mapa";
+  const mode = readModeParam(params.mode);
+
+  const backHref = useMemo(() => {
+    if (parentFolderId != null && Number.isFinite(parentFolderId) && parentFolderId > 0) {
+      return {
+        pathname: "/(tabs)/templates/folder/[folderId]" as const,
+        params: { folderId: String(parentFolderId), folderName: parentFolderName, mode },
+      };
+    }
+    return "/(tabs)/templates" as const;
+  }, [parentFolderId, parentFolderName, mode]);
 
   const folderTreeQuery = useTemplateFolderTree({ enabled: hasValidId });
   const moveMutation = useMoveFolder();
@@ -102,28 +149,37 @@ export default function MoveFolderScreen() {
 
     const childrenIndex = buildChildrenIndex(folders);
     const descendants = computeDescendants(folderId, childrenIndex);
-
     for (const id of descendants) set.add(id);
 
     return set;
   }, [folders, folderId, hasValidId]);
 
+  const currentParentId = useMemo(() => {
+    if (!folder) return null;
+    const id = folder.parentId == null ? null : Number(folder.parentId);
+    return Number.isFinite(id as any) ? (id as number) : null;
+  }, [folder?.parentId]);
+
+  const sameTarget = useMemo(() => {
+    const a = currentParentId == null ? null : Number(currentParentId);
+    const b = targetParentId == null ? null : Number(targetParentId);
+    return a === b;
+  }, [currentParentId, targetParentId]);
+
   const currentLabel = useMemo(() => {
     if (!folder) return "—";
-
-    const currentParentId = folder.parentId == null ? null : Number(folder.parentId);
     if (currentParentId == null) return "Root (bez mape)";
 
     const parentFolder = folders.find((x) => Number(x.id) === currentParentId);
-    return (parentFolder?.name ?? `Mapa #${currentParentId}`) as string;
-  }, [folder, folders]);
+    return String(parentFolder?.name ?? `Mapa #${currentParentId}`);
+  }, [folder, folders, currentParentId]);
 
   const targetLabel = useMemo(() => {
     const id = targetParentId == null ? null : Number(targetParentId);
     if (id == null) return "Root (bez mape)";
 
     const targetFolder = folders.find((x) => Number(x.id) === id);
-    return (targetFolder?.name ?? `Mapa #${id}`) as string;
+    return String(targetFolder?.name ?? `Mapa #${id}`);
   }, [targetParentId, folders]);
 
   const topError = useMemo(() => {
@@ -141,45 +197,49 @@ export default function MoveFolderScreen() {
   }, [hasValidId, folderTreeQuery.error, moveMutation.error]);
 
   const canSubmit = useMemo(() => {
-    return hasValidId && !!folder && !folderTreeQuery.isLoading && !moveMutation.isPending;
-  }, [hasValidId, folder, folderTreeQuery.isLoading, moveMutation.isPending]);
+    return (
+      hasValidId &&
+      !!folder &&
+      !folderTreeQuery.isLoading &&
+      !moveMutation.isPending &&
+      !sameTarget
+    );
+  }, [hasValidId, folder, folderTreeQuery.isLoading, moveMutation.isPending, sameTarget]);
 
   const handleRetry = async () => {
     moveMutation.reset();
-
     if (!hasValidId) return;
-
     await Promise.resolve(folderTreeQuery.refetch());
   };
 
+  const goBack = useCallback(() => {
+    if (typeof backHref === "string") router.replace(backHref);
+    else router.replace(backHref);
+  }, [backHref]);
+
   const handleMove = async () => {
-    if (!hasValidId || !folder) return;
+    if (!canSubmit || !hasValidId || !folder) return;
 
     try {
       await moveMutation.mutateAsync({
         folderId,
-        payload: {
-          targetParentId: targetParentId == null ? null : Number(targetParentId),
-        },
+        payload: { targetParentId: targetParentId == null ? null : Number(targetParentId) },
       });
 
-      router.back();
+      goBack();
     } catch {
     }
   };
 
   const showLoading =
-    hasValidId &&
-    folderTreeQuery.isLoading &&
-    !folder &&
-    (folders?.length ?? 0) === 0;
+    hasValidId && folderTreeQuery.isLoading && !folder && (folders?.length ?? 0) === 0;
 
   return (
     <Screen>
       <NavigationHeader
         title="Premjesti mapu"
         subtitle={hasValidId ? `#${folderId}` : "—"}
-        fallbackHref="/(tabs)/templates"
+        fallbackHref={backHref}
       />
 
       <View style={s.page}>
@@ -213,6 +273,10 @@ export default function MoveFolderScreen() {
               </Text>
               <Text style={s.sub}>Trenutno: {currentLabel}</Text>
               <Text style={s.sub}>Odredište: {targetLabel}</Text>
+
+              {sameTarget ? (
+                <Text style={s.helper}>Mapa je već u odabranom parentu. Odaberi drugi ili Root.</Text>
+              ) : null}
             </View>
 
             <View style={s.pickerWrap}>
@@ -242,7 +306,7 @@ export default function MoveFolderScreen() {
               <Pressable
                 style={[s.secondary, moveMutation.isPending && s.disabled]}
                 disabled={moveMutation.isPending}
-                onPress={() => router.back()}
+                onPress={goBack}
               >
                 <Text style={s.secondaryText}>Odustani</Text>
               </Pressable>
@@ -300,6 +364,13 @@ const s = StyleSheet.create({
   sub: {
     color: Colors.sub,
     fontWeight: "800",
+  },
+
+  helper: {
+    marginTop: 4,
+    color: Colors.sub,
+    fontWeight: "700",
+    fontSize: 12,
   },
 
   pickerWrap: {

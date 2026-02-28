@@ -20,7 +20,6 @@ import type {
 
 export type TemplateListScope = "ALL" | "OWNED" | "SHARED";
 
-
 export type TemplateHeaderListParams = {
   folderId?: number | null;
   q?: string;
@@ -32,22 +31,44 @@ export type TemplateHeaderListParams = {
 
 export const dispatchTemplateService = {
   listFoldersPage(
-    params?: { parentId?: number | null; page?: number; size?: number },
+    params?: { parentId?: number | null; q?: string; page?: number; size?: number },
     signal?: AbortSignal
   ) {
-    const q = new URLSearchParams();
+    const search = new URLSearchParams();
 
     if (params?.parentId !== undefined && params.parentId !== null) {
-      q.set("parentId", String(params.parentId));
+      search.set("parentId", String(params.parentId));
     }
 
-    q.set("page", String(params?.page ?? 0));
-    q.set("size", String(params?.size ?? 20));
+    if (params?.q?.trim()) {
+      search.set("q", params.q.trim());
+    }
 
-    const qs = q.toString();
+    search.set("page", String(params?.page ?? 0));
+    search.set("size", String(params?.size ?? 20));
+
+    const qs = search.toString();
 
     return api.request<PagedResultDTO<FolderResponseDTO>>(
       `/api/v1/dispatch-template-folders${qs ? `?${qs}` : ""}`,
+      { method: "GET", signal }
+    );
+  },
+
+  listRootFolders(
+    params?: { q?: string },
+    signal?: AbortSignal
+  ) {
+    const search = new URLSearchParams();
+
+    if (params?.q?.trim()) {
+      search.set("q", params.q.trim());
+    }
+
+    const qs = search.toString();
+
+    return api.request<FolderResponseDTO[]>(
+      `/api/v1/dispatch-template-folders/root${qs ? `?${qs}` : ""}`,
       { method: "GET", signal }
     );
   },
@@ -83,17 +104,25 @@ export const dispatchTemplateService = {
   },
 
   listTemplates(
-    params: { folderId?: number | null; name?: string; includeShared?: boolean; rootOnly?: boolean },
+    params: { folderId?: number | null; q?: string; includeShared?: boolean; rootOnly?: boolean },
     signal?: AbortSignal
   ) {
-    const q = new URLSearchParams();
+    const search = new URLSearchParams();
 
-    if (params.folderId !== undefined && params.folderId !== null) q.set("folderId", String(params.folderId));
-    if (params.name) q.set("name", params.name);
-    if (params.includeShared !== undefined) q.set("includeShared", String(params.includeShared));
-    if (params.rootOnly === true) q.set("rootOnly", "true");
+    if (params.folderId !== undefined && params.folderId !== null) {
+      search.set("folderId", String(params.folderId));
+    }
+    if (params.q?.trim()) {
+      search.set("q", params.q.trim());
+    }
+    if (params.includeShared !== undefined) {
+      search.set("includeShared", String(params.includeShared));
+    }
+    if (params.rootOnly === true) {
+      search.set("rootOnly", "true");
+    }
 
-    const qs = q.toString();
+    const qs = search.toString();
 
     return api.request<TemplateResponseDTO[]>(
       `/api/v1/dispatch-templates${qs ? `?${qs}` : ""}`,
@@ -107,7 +136,6 @@ export const dispatchTemplateService = {
     options?: { includeItemMeta?: boolean }
   ) {
     const includeItemMeta = options?.includeItemMeta ?? false;
-
     const qs = includeItemMeta ? "?includeItemMeta=true" : "";
 
     return api.request<TemplateResponseDTO>(`/api/v1/dispatch-templates/${id}${qs}`, {
@@ -242,8 +270,12 @@ export const dispatchTemplateService = {
   ): Promise<PagedResultDTO<TemplateResponseDTO>> {
     const search = new URLSearchParams();
 
-    if (params.folderId != null) search.set("folderId", String(params.folderId));
-    if (params.q?.trim()) search.set("name", params.q.trim());
+    if (params.folderId != null) {
+      search.set("folderId", String(params.folderId));
+    }
+    if (params.q?.trim()) {
+      search.set("q", params.q.trim());
+    }
 
     search.set("scope", params.scope ?? "ALL");
     search.set("rootOnly", String(!!params.rootOnly));

@@ -1,5 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -13,7 +23,6 @@ import ValidateImpactModal from "@/components/ValidateImpactModal";
 import type {
   BookingSessionEntryResponseDTO,
   BookingSessionResponseDTO,
-  PartnerResponseDTO,
   DraftMode,
   DispatchRequestValidationDTO,
   TemplateBookDocPatchDTO,
@@ -21,26 +30,31 @@ import type {
   WarehouseBookingImpactDTO,
 } from "@/src/models/generated";
 
-import { partnerService } from "../../../../src/api//services/partnerService";
 import {
   useBookingSession,
   useDeleteBookingSessionEntry,
   useFinalizeBookingSession,
-} from "../../../../src/api//hooks/sessions/useBookingSessions";
-import { useDispatchValidate } from "../../../../src/api//hooks/sessions/useDispatchValidate";
-import { usePullToRefresh } from "../../../../src/api//hooks/common/usePullToRefresh";
-import { toUserMessage } from "../../../../src/api//apiClient";
+} from "../../../../src/api/hooks/sessions/useBookingSessions";
+import { useDispatchValidateBulk } from "../../../../src/api/hooks/sessions/useDispatchValidate";
+import { usePullToRefresh } from "../../../../src/api/hooks/common/usePullToRefresh";
+import { toUserMessage } from "../../../../src/api/apiClient";
 
 import {
   clearDraft,
   clearDraftsForSession,
   getDraft,
   type EntryDraft,
-} from "../_entryDraftStore";
+} from "../../../../src/stores/entryDraftStore";
+import { DispatchBulkValidationRequestDTO } from "@/src/models/generated";
 
 function cleanText(v: any) {
   const s = String(v ?? "").trim();
-  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) return s.slice(1, -1);
+  if (
+    s.length >= 2 &&
+    ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))
+  ) {
+    return s.slice(1, -1);
+  }
   return s;
 }
 
@@ -69,7 +83,11 @@ function statusHr(status: any) {
   return String(status ?? "");
 }
 
-function badgeStyle(kind: any): { backgroundColor: string; borderColor: string; textColor: string } {
+function badgeStyle(kind: any): {
+  backgroundColor: string;
+  borderColor: string;
+  textColor: string;
+} {
   if (kind === "FINALIZED" || kind === "FINAL") {
     return {
       backgroundColor: "rgba(34,197,94,0.14)",
@@ -101,21 +119,6 @@ function badgeStyle(kind: any): { backgroundColor: string; borderColor: string; 
   };
 }
 
-async function mapConcurrent<T, R>(items: T[], concurrency: number, fn: (t: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let i = 0;
-
-  const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
-    while (i < items.length) {
-      const idx = i++;
-      out[idx] = await fn(items[idx]);
-    }
-  });
-
-  await Promise.all(workers);
-  return out;
-}
-
 function entryNameHint(entry: any): string | null {
   const candidates = [entry?.partnerName, entry?.partner?.name, entry?.name];
   for (const c of candidates) {
@@ -126,7 +129,9 @@ function entryNameHint(entry: any): string | null {
 }
 
 function entryMode(entry: any): DraftMode {
-  return ((entry?.draftMode as any) || (entry?.draft ? ("DRAFT" as any) : ("FINAL" as any)) || ("DRAFT" as any)) as any;
+  return (((entry?.draftMode as any) ||
+    (entry?.draft ? ("DRAFT" as any) : ("FINAL" as any)) ||
+    ("DRAFT" as any)) as any);
 }
 
 function addQtyToMap(qty: Record<string, number>, itemId: any, q: any) {
@@ -144,7 +149,11 @@ function sumToItems(qty: Record<string, number>): TemplateBookItemDTO[] {
     .sort((a, b) => Number(a.itemId) - Number(b.itemId));
 }
 
-function pickTouchedAware<T = any>(draft: EntryDraft | null, key: keyof EntryDraft, fallback: T): T {
+function pickTouchedAware<T = any>(
+  draft: EntryDraft | null,
+  key: keyof EntryDraft,
+  fallback: T
+): T {
   if (!draft) return fallback;
   if (draft._touched?.[key]) {
     return (draft as any)[key] as T;
@@ -181,8 +190,13 @@ function buildValidatePayloadFromEntry(args: {
     (entry?.patches as any) ||
     [];
 
-  const extraItems: TemplateBookItemDTO[] = (entry?.extraItems as any) || (entry?.extras as any) || [];
-  const directItems: TemplateBookItemDTO[] = (entry?.items as any) || (entry?.validationItems as any) || (entry?.standaloneItems as any) || [];
+  const extraItems: TemplateBookItemDTO[] =
+    (entry?.extraItems as any) || (entry?.extras as any) || [];
+  const directItems: TemplateBookItemDTO[] =
+    (entry?.items as any) ||
+    (entry?.validationItems as any) ||
+    (entry?.standaloneItems as any) ||
+    [];
 
   const qty: Record<string, number> = {};
   let warning: string | null = null;
@@ -192,7 +206,9 @@ function buildValidatePayloadFromEntry(args: {
     Object.entries(standaloneQty).forEach(([k, v]) => addQtyToMap(qty, k, v));
   }
 
-  (docPatches ?? []).forEach((p: any) => ((p?.addItems ?? []) as any[]).forEach((it) => addQtyToMap(qty, it?.itemId, it?.quantity)));
+  (docPatches ?? []).forEach((p: any) =>
+    ((p?.addItems ?? []) as any[]).forEach((it) => addQtyToMap(qty, it?.itemId, it?.quantity))
+  );
   (extraItems ?? []).forEach((it: any) => addQtyToMap(qty, it?.itemId, it?.quantity));
 
   if (Object.keys(qty).length === 0 && Array.isArray(directItems) && directItems.length > 0) {
@@ -204,7 +220,6 @@ function buildValidatePayloadFromEntry(args: {
 
   const payload: DispatchRequestValidationDTO = {
     warehouseId: Number(warehouseId),
-    partnerId: Number(partnerId),
     documentDate: documentDate as any,
     draft: draftMode === "DRAFT",
     note,
@@ -245,77 +260,63 @@ function classifyImpact(data: any) {
   return { ok, warn, bad, total: items.length };
 }
 
-function usePartnerNameMap(entries: BookingSessionEntryResponseDTO[], enabled: boolean) {
-  const [fetchedMap, setFetchedMap] = useState<Record<string, PartnerResponseDTO>>({});
-  const [loading, setLoading] = useState(false);
-  const requestedIdsRef = useRef<Set<number>>(new Set());
+function buildBulkValidateRequest(args: {
+  sessionId: number;
+  warehouseId: number;
+  entries: BookingSessionEntryResponseDTO[];
+}) {
+  const { sessionId, warehouseId, entries } = args;
 
-  const directMap = useMemo(() => {
-    const map: Record<string, PartnerResponseDTO> = {};
-    for (const e of entries as any[]) {
-      const pid = Number(e?.partnerId);
-      const name = entryNameHint(e);
-      if (!pid || !name) continue;
-      map[String(pid)] = { id: pid, name } as any;
-    }
-    return map;
-  }, [entries]);
+  const items: DispatchBulkValidationRequestDTO["items"] = [];
+  const warningByPartnerId: Record<string, string | null> = {};
+  const partnerNameById: Record<string, string> = {};
 
-  const ids = useMemo(() => {
-    const raw = entries.map((e: any) => Number(e?.partnerId)).filter((x) => Number.isFinite(x) && x > 0);
-    return Array.from(new Set(raw));
-  }, [entries]);
+  for (const entry of entries as any[]) {
+    const partnerId = Number(entry?.partnerId);
+    if (!partnerId) continue;
 
-  useEffect(() => {
-    if (!enabled) return;
+    const partnerName = entryNameHint(entry) || `Partner #${partnerId}`;
+    const { payload, warning } = buildValidatePayloadFromEntry({
+      sessionId,
+      warehouseId,
+      partnerId,
+      entry,
+    });
 
-    const missingIds = ids.filter(
-      (id) =>
-        !directMap[String(id)] &&
-        !fetchedMap[String(id)] &&
-        !requestedIdsRef.current.has(id)
-    );
+    items.push({
+      partnerId,
+      request: payload,
+    });
 
-    if (!missingIds.length) return;
+    partnerNameById[String(partnerId)] = partnerName;
+    warningByPartnerId[String(partnerId)] = warning;
+  }
 
-    let cancelled = false;
-    setLoading(true);
-    missingIds.forEach((id) => requestedIdsRef.current.add(id));
+  return {
+    request: { items },
+    warningByPartnerId,
+    partnerNameById,
+  };
+}
 
-    (async () => {
-      try {
-        const results = await mapConcurrent(missingIds, 3, async (id) => {
-          try {
-            const res = await partnerService.pagePartners({ page: 0, size: 10, q: String(id) });
-            const hit = (res.items ?? []).find((p: any) => Number(p?.id) === Number(id)) ?? null;
-            return { id, hit } as { id: number; hit: PartnerResponseDTO | null };
-          } catch {
-            return { id, hit: null } as { id: number; hit: PartnerResponseDTO | null };
-          }
-        });
+function toValidateRow(args: {
+  partnerId: number;
+  partnerName: string;
+  data: WarehouseBookingImpactDTO | null;
+  error: string | null;
+  warning: string | null;
+}): ValidateRow {
+  const { partnerId, partnerName, data, error, warning } = args;
+  const stats = data ? classifyImpact(data) : { ok: 0, warn: 0, bad: 0, total: 0 };
 
-        if (cancelled) return;
-
-        setFetchedMap((prev) => {
-          const next = { ...prev };
-          for (const r of results) {
-            if (r.hit) next[String((r.hit as any).id)] = r.hit;
-          }
-          return next;
-        });
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, ids, directMap, fetchedMap]);
-
-  const partnerById = useMemo(() => ({ ...fetchedMap, ...directMap }), [fetchedMap, directMap]);
-
-  return { partnerById, loading };
+  return {
+    partnerId,
+    partnerName,
+    ...stats,
+    data,
+    error,
+    warning,
+  };
 }
 
 function ValidateManyModal(props: {
@@ -345,7 +346,12 @@ function ValidateManyModal(props: {
   const canConfirm = !loading && !summary.anyError && !summary.anyBad;
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={disableClose ? undefined : onClose}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={disableClose ? undefined : onClose}
+    >
       <View style={vm.wrap}>
         <Pressable style={vm.backdrop} onPress={disableClose ? undefined : onClose} />
 
@@ -356,7 +362,11 @@ function ValidateManyModal(props: {
               <Text style={vm.sub}>Provjera po partneru prije finalnog knjiženja sesije.</Text>
             </View>
 
-            <Pressable style={[vm.iconBtn, disableClose && { opacity: 0.5 }]} onPress={disableClose ? undefined : onClose} disabled={disableClose}>
+            <Pressable
+              style={[vm.iconBtn, disableClose && { opacity: 0.5 }]}
+              onPress={disableClose ? undefined : onClose}
+              disabled={disableClose}
+            >
               <FontAwesome name="close" size={18} color={Colors.text} />
             </Pressable>
           </View>
@@ -395,14 +405,20 @@ function ValidateManyModal(props: {
                       <FontAwesome name="warning" size={14} color={Colors.text} />
                       <Text style={vm.warnTitle}>Napomena</Text>
                     </View>
-                    <Text style={vm.warnText}>Neki unosi koriste draft/store fallback za stavke.</Text>
+                    <Text style={vm.warnText}>
+                      Neki unosi koriste draft/store fallback za stavke.
+                    </Text>
                   </View>
                 )}
 
                 {!!summary.anyError && (
                   <View style={vm.errBox}>
                     <View style={vm.errHeader}>
-                      <FontAwesome name="exclamation-triangle" size={14} color={Colors.dangerText} />
+                      <FontAwesome
+                        name="exclamation-triangle"
+                        size={14}
+                        color={Colors.dangerText}
+                      />
                       <Text style={vm.errTitle}>Validacija nije uspjela za neke partnere</Text>
                     </View>
                     {rows
@@ -422,33 +438,49 @@ function ValidateManyModal(props: {
                       <FontAwesome name="ban" size={14} color={Colors.dangerText} />
                       <Text style={vm.badTitle}>Nedostaju stavke u skladištu</Text>
                     </View>
-                    <Text style={vm.badText}>Knjiženje je blokirano dok nedostaci nisu riješeni.</Text>
+                    <Text style={vm.badText}>
+                      Knjiženje je blokirano dok nedostaci nisu riješeni.
+                    </Text>
                   </View>
                 ) : null}
 
                 <View style={{ gap: 10 }}>
                   {rows.map((r) => {
+                    const errorTone = badgeStyle("ERROR");
+                    const badTone = badgeStyle("BAD");
+                    const warnTone = badgeStyle("WARN");
+                    const okTone = badgeStyle("FINAL");
+
                     const pill =
                       !!r.error ? (
-                        <View style={[vm.pill, badgeStyle("ERROR")]}>
-                          <Text style={[vm.pillText, { color: badgeStyle("ERROR").textColor }]}>ERROR</Text>
+                        <View style={[vm.pill, errorTone]}>
+                          <Text style={[vm.pillText, { color: errorTone.textColor }]}>ERROR</Text>
                         </View>
                       ) : r.bad > 0 ? (
-                        <View style={[vm.pill, badgeStyle("BAD")]}>
-                          <Text style={[vm.pillText, { color: badgeStyle("BAD").textColor }]}>NEMA {r.bad}</Text>
+                        <View style={[vm.pill, badTone]}>
+                          <Text style={[vm.pillText, { color: badTone.textColor }]}>
+                            NEMA {r.bad}
+                          </Text>
                         </View>
                       ) : r.warn > 0 ? (
-                        <View style={[vm.pill, badgeStyle("WARN")]}>
-                          <Text style={[vm.pillText, { color: badgeStyle("WARN").textColor }]}>MINUS {r.warn}</Text>
+                        <View style={[vm.pill, warnTone]}>
+                          <Text style={[vm.pillText, { color: warnTone.textColor }]}>
+                            MINUS {r.warn}
+                          </Text>
                         </View>
                       ) : (
-                        <View style={[vm.pill, badgeStyle("FINAL")]}>
-                          <Text style={[vm.pillText, { color: badgeStyle("FINAL").textColor }]}>OK</Text>
+                        <View style={[vm.pill, okTone]}>
+                          <Text style={[vm.pillText, { color: okTone.textColor }]}>OK</Text>
                         </View>
                       );
 
                     return (
-                      <Pressable key={`r-${r.partnerId}`} style={vm.rowCard} onPress={() => onOpenDetail(r)} android_disableSound>
+                      <Pressable
+                        key={`r-${r.partnerId}`}
+                        style={vm.rowCard}
+                        onPress={() => onOpenDetail(r)}
+                        android_disableSound
+                      >
                         <View style={vm.rowTop}>
                           <View style={{ flex: 1 }}>
                             <Text style={vm.rowName} numberOfLines={1}>
@@ -486,8 +518,18 @@ function ValidateManyModal(props: {
                 </View>
 
                 <View style={{ gap: 10, marginTop: 6 }}>
-                  <Pressable style={[vm.primary, !canConfirm && { opacity: 0.5 }]} onPress={onConfirm} disabled={!canConfirm}>
-                    <Text style={vm.primaryText}>{canConfirm ? "Knjiži sesiju" : summary.anyBad ? "Ne mogu knjižiti" : "Ne mogu nastaviti"}</Text>
+                  <Pressable
+                    style={[vm.primary, !canConfirm && { opacity: 0.5 }]}
+                    onPress={onConfirm}
+                    disabled={!canConfirm}
+                  >
+                    <Text style={vm.primaryText}>
+                      {canConfirm
+                        ? "Knjiži sesiju"
+                        : summary.anyBad
+                          ? "Ne mogu knjižiti"
+                          : "Ne mogu nastaviti"}
+                    </Text>
                   </Pressable>
 
                   <Pressable style={vm.secondary} onPress={onClose} disabled={disableClose}>
@@ -512,7 +554,7 @@ export default function SessionDetailIndex() {
 
   const delEntryM = useDeleteBookingSessionEntry(sessionId);
   const finalizeM = useFinalizeBookingSession(sessionId);
-  const validateM = useDispatchValidate();
+  const validateBulkM = useDispatchValidateBulk();
 
   const [screenError, setScreenError] = useState<string | null>(null);
   const [suppressTopError, setSuppressTopError] = useState(false);
@@ -520,8 +562,8 @@ export default function SessionDetailIndex() {
   const resetMutationErrors = useCallback(() => {
     delEntryM.reset();
     finalizeM.reset();
-    validateM.reset();
-  }, [delEntryM, finalizeM, validateM]);
+    validateBulkM.reset();
+  }, [delEntryM, finalizeM, validateBulkM]);
 
   const rawTopError =
     screenError ||
@@ -543,36 +585,35 @@ export default function SessionDetailIndex() {
     }
   }, [resetMutationErrors, sQ]);
 
-  const { refreshing, onRefresh } = usePullToRefresh([
-    async () => {
-      setSuppressTopError(false);
-      setScreenError(null);
-      resetMutationErrors();
-      await sQ.refetch();
-    },
-  ]);
+  const onRefreshSession = useCallback(async () => {
+    setSuppressTopError(false);
+    setScreenError(null);
+    resetMutationErrors();
+    await sQ.refetch();
+  }, [resetMutationErrors, sQ]);
+
+  const { refreshing, onRefresh } = usePullToRefresh([onRefreshSession]);
 
   const headerTitle = cleanText((session as any)?.title) || "Evidencija";
   const status = (session as any)?.status;
   const warehouseId = Number((session as any)?.warehouseId ?? 0) || null;
   const canEdit = status === "DRAFT";
 
-  const entries = useMemo(() => (((session as any)?.entries ?? []) as BookingSessionEntryResponseDTO[]), [session]);
-  const { partnerById, loading: partnersLoading } = usePartnerNameMap(entries, !!session);
-
-  const partnerName = useCallback(
-    (partnerId: number, entry?: any) => {
-      const hint = entryNameHint(entry);
-      if (hint) return hint;
-
-      const resolved = cleanText(partnerById[String(partnerId)]?.name || "");
-      return resolved || "Partner";
-    },
-    [partnerById]
+  const entries = useMemo(
+    () => (((session as any)?.entries ?? []) as BookingSessionEntryResponseDTO[]),
+    [session]
   );
 
+  const partnerName = useCallback((partnerId: number, entry?: any) => {
+    const hint = entryNameHint(entry);
+    return hint || (partnerId > 0 ? `Partner #${partnerId}` : "Partner");
+  }, []);
+
   const openPartnerPicker = useCallback(() => {
-    router.push({ pathname: "/(tabs)/sessions/[id]/partner" as const, params: { id: String(sessionId) } });
+    router.push({
+      pathname: "/(tabs)/sessions/[id]/partner" as const,
+      params: { id: String(sessionId) },
+    });
   }, [sessionId]);
 
   const openEntry = useCallback(
@@ -635,39 +676,6 @@ export default function SessionDetailIndex() {
 
   const [detailFromMany, setDetailFromMany] = useState(false);
 
-  const validateOneEntry = useCallback(
-    async (e: any): Promise<ValidateRow> => {
-      const pid = Number(e?.partnerId);
-      const nm = partnerName(pid, e);
-
-      const { payload, warning } = buildValidatePayloadFromEntry({
-        sessionId,
-        warehouseId: Number(warehouseId),
-        partnerId: pid,
-        entry: e,
-      });
-
-      try {
-        const data = (await validateM.mutateAsync(payload as any)) as any;
-        const c = classifyImpact(data);
-        return { partnerId: pid, partnerName: nm, ...c, data: data as any, error: null, warning };
-      } catch (ex) {
-        return {
-          partnerId: pid,
-          partnerName: nm,
-          ok: 0,
-          warn: 0,
-          bad: 0,
-          total: 0,
-          data: null,
-          error: toUserMessage(ex, "Greška pri validaciji partnera."),
-          warning,
-        };
-      }
-    },
-    [partnerName, sessionId, warehouseId, validateM]
-  );
-
   const startValidateThenConfirm = useCallback(async () => {
     if (!session || status !== "DRAFT") return;
 
@@ -693,50 +701,74 @@ export default function SessionDetailIndex() {
       return;
     }
 
-    validateM.reset();
+    const bulk = buildBulkValidateRequest({
+      sessionId,
+      warehouseId: Number(warehouseId),
+      entries,
+    });
 
-    if (entries.length === 1) {
+    if (!bulk.request.items.length) {
       setDetailFromMany(false);
-      setValidateOpen(true);
-      setValidateBusy(true);
       setValidateOneData(null);
-      setValidateOneError(null);
+      setValidateOneError("Nema valjanih unosa za validaciju.");
       setValidateOneWarning(null);
-
-      try {
-        const row = await validateOneEntry(entries[0] as any);
-        setValidateOneData(row.data);
-        setValidateOneError(row.error);
-        setValidateOneWarning(row.warning);
-      } catch (e) {
-        setValidateOneData(null);
-        setValidateOneError(toUserMessage(e, "Greška pri validaciji."));
-        setValidateOneWarning(null);
-      } finally {
-        setValidateBusy(false);
-      }
+      setValidateOpen(true);
       return;
     }
 
-    setDetailFromMany(false);
-    setValidateManyOpen(true);
+    const isSingle = bulk.request.items.length === 1;
+
+    if (isSingle) {
+      setDetailFromMany(false);
+      setValidateOpen(true);
+      setValidateOneData(null);
+      setValidateOneError(null);
+      setValidateOneWarning(null);
+    } else {
+      setDetailFromMany(false);
+      setValidateManyOpen(true);
+      setValidateManyRows([]);
+    }
+
     setValidateBusy(true);
-    setValidateManyRows([]);
 
     try {
-      const rows: ValidateRow[] = [];
-      for (const e of entries as any[]) {
-        rows.push(await validateOneEntry(e));
+      const res = await validateBulkM.mutateAsync(bulk.request);
+
+      const rows: ValidateRow[] = (res.results ?? []).map((row) =>
+        toValidateRow({
+          partnerId: Number(row.partnerId),
+          partnerName:
+            bulk.partnerNameById[String(row.partnerId)] ||
+            `Partner #${Number(row.partnerId)}`,
+          data: row.data ?? null,
+          error: row.error ?? null,
+          warning: bulk.warningByPartnerId[String(row.partnerId)] ?? null,
+        })
+      );
+
+      if (isSingle) {
+        const row = rows[0];
+        setValidateOneData(row?.data ?? null);
+        setValidateOneError(row?.error ?? null);
+        setValidateOneWarning(row?.warning ?? null);
+      } else {
+        setValidateManyRows(rows);
       }
-      setValidateManyRows(rows);
     } catch (e) {
-      setValidateManyRows([]);
-      setValidateManyOpen(false);
-      setScreenError(toUserMessage(e, "Greška pri validaciji sesije."));
+      if (isSingle) {
+        setValidateOneData(null);
+        setValidateOneError(toUserMessage(e, "Greška pri validaciji."));
+        setValidateOneWarning(null);
+      } else {
+        setValidateManyRows([]);
+        setValidateManyOpen(false);
+        setScreenError(toUserMessage(e, "Greška pri validaciji sesije."));
+      }
     } finally {
       setValidateBusy(false);
     }
-  }, [session, status, warehouseId, entries, validateM, validateOneEntry, resetMutationErrors]);
+  }, [session, status, warehouseId, entries, sessionId, resetMutationErrors, validateBulkM]);
 
   const confirmValidateAndFinalize = useCallback(async () => {
     try {
@@ -801,7 +833,12 @@ export default function SessionDetailIndex() {
               </View>
             </View>
 
-            <View style={[st.badge, { backgroundColor: b.backgroundColor, borderColor: b.borderColor }]}>
+            <View
+              style={[
+                st.badge,
+                { backgroundColor: b.backgroundColor, borderColor: b.borderColor },
+              ]}
+            >
               <Text style={[st.badgeText, { color: b.textColor }]}>{pillLabel}</Text>
             </View>
           </View>
@@ -818,7 +855,11 @@ export default function SessionDetailIndex() {
           <View style={st.divider} />
 
           <View style={st.rowBtns}>
-            <Pressable style={[st.rowBtnPrimary, !canEdit && { opacity: 0.5 }]} disabled={!canEdit} onPress={() => openEntry(pid)}>
+            <Pressable
+              style={[st.rowBtnPrimary, !canEdit && { opacity: 0.5 }]}
+              disabled={!canEdit}
+              onPress={() => openEntry(pid)}
+            >
               <FontAwesome name="folder-open" size={14} color="#fff" />
               <Text style={st.rowBtnPrimaryText}>Otvori</Text>
             </Pressable>
@@ -826,19 +867,32 @@ export default function SessionDetailIndex() {
             <Pressable
               style={[
                 st.rowBtnDanger,
-                (!canEdit || delEntryM.isPending || finalizeM.isPending || validateBusy) && { opacity: 0.5 },
+                (!canEdit || delEntryM.isPending || finalizeM.isPending || validateBusy) && {
+                  opacity: 0.5,
+                },
               ]}
               disabled={!canEdit || delEntryM.isPending || finalizeM.isPending || validateBusy}
               onPress={() => askDelete(pid, e)}
             >
               <FontAwesome name="trash" size={14} color={Colors.dangerText} />
-              <Text style={st.rowBtnDangerText}>{delEntryM.isPending && deletePid === pid ? "…" : "Obriši"}</Text>
+              <Text style={st.rowBtnDangerText}>
+                {delEntryM.isPending && deletePid === pid ? "…" : "Obriši"}
+              </Text>
             </Pressable>
           </View>
         </View>
       );
     },
-    [partnerName, canEdit, openEntry, delEntryM.isPending, finalizeM.isPending, validateBusy, askDelete, deletePid]
+    [
+      partnerName,
+      canEdit,
+      openEntry,
+      delEntryM.isPending,
+      finalizeM.isPending,
+      validateBusy,
+      askDelete,
+      deletePid,
+    ]
   );
 
   return (
@@ -880,7 +934,9 @@ export default function SessionDetailIndex() {
               <View style={{ gap: 12 }}>
                 <View style={st.heroCard}>
                   <View style={{ gap: 10 }}>
-                    {!!cleanDescription((session as any).note) && <Text style={st.heroNote}>{cleanDescription((session as any).note)}</Text>}
+                    {!!cleanDescription((session as any).note) && (
+                      <Text style={st.heroNote}>{cleanDescription((session as any).note)}</Text>
+                    )}
 
                     <View style={st.heroTopRow}>
                       <View style={[st.badge, badgeStyle(status)]}>
@@ -889,7 +945,9 @@ export default function SessionDetailIndex() {
 
                       <View style={st.metaChip}>
                         <FontAwesome name="home" size={13} color={Colors.sub} />
-                        <Text style={st.metaChipText}>Skladište #{(session as any).warehouseId}</Text>
+                        <Text style={st.metaChipText}>
+                          Skladište #{(session as any).warehouseId}
+                        </Text>
                       </View>
                     </View>
 
@@ -908,30 +966,37 @@ export default function SessionDetailIndex() {
                       </View>
                     </View>
 
-                    {partnersLoading ? (
-                      <Text style={st.inlineLoading}>Dohvaćam nazive partnera…</Text>
-                    ) : null}
-
                     {status === "DRAFT" ? (
                       <View style={st.heroBtns}>
-                        <Pressable style={st.primaryBtn} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
+                        <Pressable
+                          style={st.primaryBtn}
+                          onPress={openPartnerPicker}
+                          disabled={finalizeM.isPending || validateBusy}
+                        >
                           <FontAwesome name="plus" size={14} color="#fff" />
                           <Text style={st.primaryBtnText}>Dodaj partnera</Text>
                         </Pressable>
 
                         <Pressable
-                          style={[st.secondaryBtn, (finalizeM.isPending || validateBusy) && { opacity: 0.7 }]}
+                          style={[
+                            st.secondaryBtn,
+                            (finalizeM.isPending || validateBusy) && { opacity: 0.7 },
+                          ]}
                           onPress={startValidateThenConfirm}
                           disabled={finalizeM.isPending || validateBusy}
                         >
                           <FontAwesome name="check" size={14} color={Colors.text} />
-                          <Text style={st.secondaryBtnText}>{finalizeM.isPending || validateBusy ? "…" : "Validiraj & knjiži"}</Text>
+                          <Text style={st.secondaryBtnText}>
+                            {finalizeM.isPending || validateBusy ? "…" : "Validiraj & knjiži"}
+                          </Text>
                         </Pressable>
                       </View>
                     ) : (
                       <View style={st.lockedLine}>
                         <FontAwesome name="lock" size={14} color={Colors.sub} />
-                        <Text style={st.lockedText}>Sesija je zaključana – unosi se ne mogu mijenjati.</Text>
+                        <Text style={st.lockedText}>
+                          Sesija je zaključana – unosi se ne mogu mijenjati.
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -944,7 +1009,11 @@ export default function SessionDetailIndex() {
                   </View>
 
                   {status === "DRAFT" ? (
-                    <Pressable style={st.smallPill} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
+                    <Pressable
+                      style={st.smallPill}
+                      onPress={openPartnerPicker}
+                      disabled={finalizeM.isPending || validateBusy}
+                    >
                       <Text style={st.smallPillText}>+ Partner</Text>
                     </Pressable>
                   ) : null}
@@ -954,7 +1023,9 @@ export default function SessionDetailIndex() {
             ListEmptyComponent={
               <View style={st.emptyBox}>
                 <FontAwesome name="info-circle" size={18} color={Colors.sub} />
-                <Text style={st.helper}>{status === "DRAFT" ? "Nema unosa. Dodaj partnera." : "Nema unosa."}</Text>
+                <Text style={st.helper}>
+                  {status === "DRAFT" ? "Nema unosa. Dodaj partnera." : "Nema unosa."}
+                </Text>
               </View>
             }
           />
@@ -991,7 +1062,9 @@ export default function SessionDetailIndex() {
         onConfirm={confirmValidateAndFinalize}
         confirmText="Knjiži"
         showConfirm={!detailFromMany}
-        bulkHint={detailFromMany ? "Bulk knjiženje: potvrda se radi na prethodnom ekranu." : null}
+        bulkHint={
+          detailFromMany ? "Bulk knjiženje: potvrda se radi na prethodnom ekranu." : null
+        }
       />
 
       <ValidateManyModal
@@ -1018,7 +1091,6 @@ const st = StyleSheet.create({
 
   center: { padding: 20, alignItems: "center", justifyContent: "center", gap: 10 },
   helper: { color: Colors.sub, fontWeight: "800", textAlign: "center" },
-  inlineLoading: { color: Colors.sub, fontWeight: "800" },
 
   heroCard: {
     backgroundColor: "rgba(249,115,22,0.08)",
@@ -1029,7 +1101,13 @@ const st = StyleSheet.create({
   },
   heroNote: { color: Colors.text, fontWeight: "900", lineHeight: 19 },
 
-  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 2 },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 2,
+  },
   heroStatsRow: { flexDirection: "row", gap: 8 },
 
   statChip: {
@@ -1057,7 +1135,12 @@ const st = StyleSheet.create({
   },
   metaChipText: { color: Colors.sub, fontWeight: "900", fontSize: 12 },
 
-  badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   badgeText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
 
   heroBtns: { flexDirection: "row", gap: 10, marginTop: 2 },
@@ -1090,7 +1173,12 @@ const st = StyleSheet.create({
   lockedLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
   lockedText: { color: Colors.sub, fontWeight: "800", flex: 1 },
 
-  listHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
+  listHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 2,
+  },
   h2: { fontWeight: "900", color: Colors.text, fontSize: 18 },
   h2sub: { color: Colors.sub, fontWeight: "800" },
 
@@ -1124,7 +1212,12 @@ const st = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
-  cardTop: { flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" },
+  cardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    alignItems: "center",
+  },
 
   left: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
 
@@ -1153,7 +1246,13 @@ const st = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(2, 6, 23, 0.08)",
   },
-  noteText: { flex: 1, color: Colors.text, fontWeight: "700", fontSize: 12, lineHeight: 16 },
+  noteText: {
+    flex: 1,
+    color: Colors.text,
+    fontWeight: "700",
+    fontSize: 12,
+    lineHeight: 16,
+  },
 
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(2, 6, 23, 0.10)" },
 
@@ -1212,7 +1311,13 @@ const vm = StyleSheet.create({
     gap: 10,
   },
   title: { fontWeight: "900", color: Colors.text, fontSize: 16, lineHeight: 20 },
-  sub: { marginTop: 2, color: Colors.sub, fontWeight: "800", fontSize: 12, lineHeight: 16 },
+  sub: {
+    marginTop: 2,
+    color: Colors.sub,
+    fontWeight: "800",
+    fontSize: 12,
+    lineHeight: 16,
+  },
   iconBtn: {
     width: 34,
     height: 34,
@@ -1224,9 +1329,20 @@ const vm = StyleSheet.create({
 
   body: { padding: 14, gap: 12, paddingBottom: 18 },
 
-  stateBox: { paddingVertical: 18, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", gap: 8 },
+  stateBox: {
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
   stateTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-  stateSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, textAlign: "center" },
+  stateSub: {
+    fontWeight: "800",
+    color: Colors.sub,
+    fontSize: 12,
+    textAlign: "center",
+  },
 
   summaryGrid: { flexDirection: "row", gap: 8 },
   summaryChip: {
@@ -1285,11 +1401,21 @@ const vm = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  rowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  rowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
   rowName: { fontWeight: "900", color: Colors.text, fontSize: 15 },
   rowSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, marginTop: 2 },
 
-  rowBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  rowBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   rowMiniPills: { flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 },
   rowMiniText: { fontWeight: "800", color: Colors.sub, fontSize: 11 },
 
@@ -1316,9 +1442,19 @@ const vm = StyleSheet.create({
   },
   pillText: { fontWeight: "900", fontSize: 11 },
 
-  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
+  primary: {
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.orange,
+    alignItems: "center",
+  },
   primaryText: { color: "#fff", fontWeight: "900" },
 
-  secondary: { padding: 12, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center" },
+  secondary: {
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(148,163,184,0.18)",
+    alignItems: "center",
+  },
   secondaryText: { fontWeight: "900", color: Colors.text },
 });

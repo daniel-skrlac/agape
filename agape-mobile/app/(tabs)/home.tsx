@@ -11,7 +11,7 @@ import { useCurrentUser } from "../../src/api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "../../src/api/hooks/common/usePullToRefresh";
 import { formatQtyHR, formatTimeHR } from "../../src/utils/format";
 
-import { styles, RIPPLE, T } from "./styles/HomeScreen.styles";
+import { styles, RIPPLE, T } from "../../src/styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
 
 import { useWarehouses } from "../../src/api/hooks/dashboard/useWarehouses";
@@ -118,9 +118,9 @@ export default function HomeScreen() {
 
   const updatedText = useMemo(() => formatTimeHR(dataUpdatedAt), [dataUpdatedAt]);
 
-  const missingItems = (data?.missing ?? []).slice(0, 12);
-  const needsFillItems = (data?.needsFill ?? []).slice(0, 12);
-  const mostItems = (data?.mostInStock ?? []).slice(0, 12);
+  const missingItems = (data?.missing ?? []).slice(0, 10);
+  const needsFillItems = (data?.needsFill ?? []).slice(0, 10);
+  const mostItems = (data?.mostInStock ?? []).slice(0, 10);
 
   const selectedWarehouseLabel = useMemo(() => {
     if (warehousesEmpty) return Strings.home.warehouse.empty;
@@ -169,7 +169,7 @@ export default function HomeScreen() {
       <Screen>
         <View style={styles.sectionGap}>
           <HeroCard
-            routerPushProfile={() => router.push("/(tabs)/profile")}
+            routerPushProfile={() => router.push("/profile")}
             displayName={displayName}
             headerSubtitle={headerSubtitle}
             totalsQty={formatQtyHR(totals?.totalStockQty)}

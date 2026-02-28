@@ -13,30 +13,78 @@ import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
 import { toUserMessage } from "../../../../../src/api/apiClient";
 import { userDirectoryService, UserDirectoryItem } from "../../../../../src/api/services/userDirectoryService";
-import type {
-  DispatchTemplateSharePermission,
-  TemplateShareResponseDTO,
-} from "@/src/models/generated";
+import type { DispatchTemplateSharePermission, TemplateShareResponseDTO } from "@/src/models/generated";
 import {
   useTemplateShares,
   useShareTemplate,
   useRevokeTemplateShare,
 } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 
+type Mode = "SVE" | "MOJI" | "DIJELJENI";
 type Perm = DispatchTemplateSharePermission;
 
-type ConfirmShareState = {
-  id: number;
-  username?: string | null;
-} | null;
+type ConfirmShareState =
+  | {
+    id: number;
+    username?: string | null;
+  }
+  | null;
+
+function readNullableNumberParam(v: unknown): number | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw == null) return null;
+
+  const s = String(raw).trim();
+  if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readStringParam(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim();
+  return s ? s : null;
+}
+
+function readModeParam(v: unknown): Mode {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (s === "MOJI" || s === "DIJELJENI") return s;
+  return "SVE";
+}
 
 export default function DijeliPredlozak() {
-  const params = useLocalSearchParams<{ id?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    folderId?: string;
+    folderName?: string;
+    mode?: string;
+  }>();
 
   const templateId = useMemo(() => {
     const n = Number(params.id);
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [params.id]);
+
+  const routeFolderId = readNullableNumberParam(params.folderId);
+  const routeFolderName = readStringParam(params.folderName);
+  const routeMode = readModeParam(params.mode);
+
+  const backHref = useMemo(() => {
+    if (templateId) {
+      return {
+        pathname: "/(tabs)/templates/template/[id]" as const,
+        params: {
+          id: String(templateId),
+          folderId: routeFolderId == null ? "null" : String(routeFolderId),
+          folderName: routeFolderName ?? "Mapa",
+          mode: routeMode,
+        },
+      };
+    }
+    return "/(tabs)/templates" as const;
+  }, [templateId, routeFolderId, routeFolderName, routeMode]);
 
   const sharesQ = useTemplateShares(templateId);
   const shareM = useShareTemplate();
@@ -133,7 +181,7 @@ export default function DijeliPredlozak() {
       <NavigationHeader
         title="Dijeli predložak"
         subtitle={templateId ? `Predložak #${templateId}` : "Predložak"}
-        fallbackHref="/(tabs)/templates"
+        fallbackHref={backHref}
       />
 
       <View style={s.container}>
@@ -239,9 +287,7 @@ export default function DijeliPredlozak() {
             </View>
           )}
           ListEmptyComponent={
-            <Text style={s.empty}>
-              {sharesQ.isLoading ? "Učitavam…" : "Nema dijeljenja."}
-            </Text>
+            <Text style={s.empty}>{sharesQ.isLoading ? "Učitavam…" : "Nema dijeljenja."}</Text>
           }
         />
 
@@ -272,11 +318,7 @@ export default function DijeliPredlozak() {
         <CenterConfirmSheet
           visible={!!confirmShare}
           title="Ukloniti dijeljenje?"
-          description={
-            confirmShare?.username
-              ? `@${confirmShare.username}`
-              : "Ova akcija se ne može poništiti."
-          }
+          description={confirmShare?.username ? `@${confirmShare.username}` : "Ova akcija se ne može poništiti."}
           confirmText="Ukloni"
           danger
           loading={revokeM.isPending}

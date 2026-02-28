@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Strings from "@/src/constants/Strings";
-import { updateSession } from "@/app/api/sessionStore";
-import { userService } from "@/app/api/services/profile/userService";
-import { toUserMessage } from "@/app/api/apiClient";
+import { updateSession } from "../../../../src/api/sessionStore";
+import { userService } from "../../../../src/api/services/profile/userService";
+import { toUserMessage } from "../../../../src/api/apiClient";
 
 export type SubmitResult = { ok: true } | { ok: false };
 

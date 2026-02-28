@@ -41,7 +41,6 @@ export function CenterConfirmSheet({
     try {
       await Promise.resolve(onConfirm());
     } finally {
-      // parent loading normally takes over; this just protects the tap gap
       setTimeout(() => {
         pressLockRef.current = false;
       }, 250);

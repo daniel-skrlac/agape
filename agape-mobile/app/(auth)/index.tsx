@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
 import AuthHeader from "@/components/auth/AuthHeader";
@@ -13,7 +13,7 @@ import Strings from "@/src/constants/Strings";
 
 import { getToken } from "../../src/api/sessionStore";
 import { ErrorCard } from "@/components/ErrorCard";
-import { styles } from "./styles/LoginScreen.styles";
+import { styles } from "../../src/styles/LoginScreen.styles";
 import { useLoginForm } from "../../src/api/hooks/auth/useLoginForm";
 
 export default function Index() {

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ItemDescriptorResponseDTO, PagedResultDTO } from "@/src/models/generated";
-import { itemDirectoryService } from "@/app/api/services/itemDirectoryService";
+import { itemDirectoryService } from "../../../../src/api/services/itemDirectoryService";
 
 export type ItemPickerPageArgs = {
     page: number;

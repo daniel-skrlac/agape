@@ -23,7 +23,6 @@ import type {
 } from "@/src/models/generated";
 
 import { toUserMessage } from "../../../../src/api//apiClient";
-import { partnerService } from "../../../../src/api//services/partnerService";
 import { useBookingSession, useUpsertBookingSessionEntry } from "../../../../src/api//hooks/sessions/useBookingSessions";
 import { useTemplateDetail } from "../../../../src/api//hooks/templates/useDispatchTemplates";
 import { useItemDirectory } from "../../../../src/api//hooks/documents/useItemDirectory";
@@ -37,14 +36,18 @@ import {
   clearDraft,
   patchDraft,
   ensureDraft,
-} from "../_entryDraftStore";
+} from "../../../../src/stores/entryDraftStore";
 
 const MAX_W = 560;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
+const ITEM_META_HYDRATE_SIZE = 20;
+const MAX_ITEM_META_HYDRATE_IDS = 40;
 
 function cleanText(v: unknown) {
   const s = String(v ?? "").trim();
-  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) return s.slice(1, -1);
+  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
+    return s.slice(1, -1);
+  }
   return s;
 }
 
@@ -155,15 +158,20 @@ function normalizeDocPatches(raw: unknown): TemplateBookDocPatchDTO[] {
   const docMap = new Map<number, Map<number, number>>();
 
   for (const p of arr) {
-    const documentId = num(p?.documentId ?? p?.document_id ?? p?.docId ?? p?.doc_id ?? p?.document?.id ?? 0);
+    const documentId = num(
+      p?.documentId ?? p?.document_id ?? p?.docId ?? p?.doc_id ?? p?.document?.id ?? 0
+    );
     if (!documentId) continue;
 
     let addItemsRaw = p?.addItems ?? p?.add_items ?? p?.items ?? p?.lines ?? [];
 
-    if (typeof addItemsRaw === "string") addItemsRaw = safeJsonAny(addItemsRaw) ?? [];
+    if (typeof addItemsRaw === "string") {
+      addItemsRaw = safeJsonAny(addItemsRaw) ?? [];
+    }
 
     if (addItemsRaw && typeof addItemsRaw === "object" && !Array.isArray(addItemsRaw)) {
       const w: any = addItemsRaw;
+
       if (w.addItems || w.items || w.lines) {
         addItemsRaw = w.addItems ?? w.items ?? w.lines ?? [];
       } else {
@@ -180,7 +188,10 @@ function normalizeDocPatches(raw: unknown): TemplateBookDocPatchDTO[] {
       const quantity = Number(it?.quantity ?? it?.qty ?? 0);
       if (!itemId || quantity <= 0) continue;
 
-      if (!docMap.has(documentId)) docMap.set(documentId, new Map());
+      if (!docMap.has(documentId)) {
+        docMap.set(documentId, new Map());
+      }
+
       const itemMap = docMap.get(documentId)!;
       itemMap.set(itemId, (itemMap.get(itemId) ?? 0) + quantity);
     }
@@ -217,7 +228,11 @@ function buildDocPatchesFromTemplateDocs(docs: TemplateDocResponseDTO[]): Templa
   return (docs ?? [])
     .map((d: any) => {
       const documentId = normDocDocumentId(d) || normTemplateDocId(d);
-      const addItems = templateDocRows(d).map((x) => ({ itemId: x.itemId, quantity: x.quantity }));
+      const addItems = templateDocRows(d).map((x) => ({
+        itemId: x.itemId,
+        quantity: x.quantity,
+      }));
+
       return { documentId, addItems };
     })
     .filter((x) => x.documentId)
@@ -256,15 +271,24 @@ function hasKeys(v: Record<string, any> | null | undefined) {
 
 function buildTemplateMetaMap(docs: TemplateDocResponseDTO[]) {
   const out: StandaloneMetaMap = {};
+
   for (const d of docs ?? []) {
     for (const r of templateDocRows(d)) {
       const k = String(r.itemId);
       if (!k || k === "0") continue;
       if (out[k]) continue;
       if (!r.name && !r.code && !r.unit && !r.barcode) continue;
-      out[k] = { itemId: r.itemId, name: r.name, code: r.code, unit: r.unit, barcode: r.barcode };
+
+      out[k] = {
+        itemId: r.itemId,
+        name: r.name,
+        code: r.code,
+        unit: r.unit,
+        barcode: r.barcode,
+      };
     }
   }
+
   return out;
 }
 
@@ -282,13 +306,16 @@ function metaToStandaloneMeta(it: ItemDescriptorResponseDTO | any) {
 
 function mergeStandaloneMetaMaps(...maps: Array<StandaloneMetaMap | null | undefined>) {
   const out: StandaloneMetaMap = {};
+
   for (const m of maps) {
     if (!m) continue;
+
     for (const [k, v] of Object.entries(m)) {
       if (!v) continue;
       if (!out[k]) out[k] = v;
     }
   }
+
   return out;
 }
 
@@ -315,9 +342,7 @@ export default function SessionEntryEditor() {
   const sessionId = num(params.id);
   const partnerId = num(params.partnerId);
 
-  const [partnerName, setPartnerName] = useState("");
   const [screenError, setScreenError] = useState<string | null>(null);
-
   const [noteSheetOpen, setNoteSheetOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
 
@@ -326,7 +351,6 @@ export default function SessionEntryEditor() {
   const metaHydrateKeyRef = useRef("");
 
   useEffect(() => {
-    setPartnerName("");
     setScreenError(null);
     setNoteSheetOpen(false);
     setNoteDraft("");
@@ -348,13 +372,25 @@ export default function SessionEntryEditor() {
 
   const isSessionDraft = String((session as any)?.status ?? "") === "DRAFT";
   const canEdit = !session || isSessionDraft;
-
   const warehouseId = num((session as any)?.warehouseId ?? 0) || null;
 
   const existingEntry = useMemo(() => {
     const entries = (((session as any)?.entries ?? []) as any[]) ?? [];
     return entries.find((e: any) => num(e?.partnerId) === partnerId) ?? null;
   }, [session, partnerId]);
+
+  const partnerName = useMemo(() => {
+    const fromEntry =
+      cleanText((existingEntry as any)?.partnerName) ||
+      cleanText((existingEntry as any)?.partner?.name) ||
+      "";
+
+    if (fromEntry) return fromEntry;
+    if (partnerId > 0) return `Partner #${partnerId}`;
+    return "";
+  }, [existingEntry, partnerId]);
+
+  const headerTitle = partnerName?.trim() ? `Unos • ${partnerName}` : "Unos";
 
   const tplId = num((draft as any)?.templateId ?? 0) || null;
   const tplQ = useTemplateDetail(tplId, { includeItemMeta: true });
@@ -374,7 +410,11 @@ export default function SessionEntryEditor() {
 
   const [extraHydratedMetaById, setExtraHydratedMetaById] = useState<StandaloneMetaMap>({});
 
-  const standaloneItems = useMemo(() => qtyToItems((draft as any)?.standaloneQty ?? {}), [draft?.standaloneQty]);
+  const standaloneItems = useMemo(
+    () => qtyToItems((draft as any)?.standaloneQty ?? {}),
+    [draft?.standaloneQty]
+  );
+
   const standaloneMetaById = ((draft as any)?.standaloneMetaById ?? {}) as StandaloneMetaMap;
 
   const standaloneIdsKey = useMemo(() => {
@@ -391,7 +431,11 @@ export default function SessionEntryEditor() {
     if (!warehouseId) return;
     if (!standaloneItems.length) return;
 
-    const mergedAlready = mergeStandaloneMetaMaps(standaloneMetaById, extraHydratedMetaById, templateMetaById);
+    const mergedAlready = mergeStandaloneMetaMaps(
+      standaloneMetaById,
+      extraHydratedMetaById,
+      templateMetaById
+    );
 
     const missingIds = standaloneItems
       .map((x) => num((x as any)?.itemId))
@@ -408,19 +452,26 @@ export default function SessionEntryEditor() {
     metaHydrateKeyRef.current = runKey;
 
     (async () => {
-      const ids = missingIds.slice(0, 40);
+      const ids = missingIds.slice(0, MAX_ITEM_META_HYDRATE_IDS);
       const nextPatch: StandaloneMetaMap = {};
 
       for (const id of ids) {
         if (!alive) return;
 
         try {
-          const res = await fetchItemsPage({ page: 0, size: 25, q: String(id) });
+          const res = await fetchItemsPage({
+            page: 0,
+            size: ITEM_META_HYDRATE_SIZE,
+            q: String(id),
+          });
+
           const rows = (res?.items ?? []) as ItemDescriptorResponseDTO[];
-          const hit = rows.find((r: any) => num((r as any)?.itemId) === id) ?? rows[0];
+          const hit = rows.find((r: any) => num((r as any)?.itemId) === id);
 
           const meta = metaToStandaloneMeta(hit);
-          if (meta) nextPatch[String(id)] = meta;
+          if (meta) {
+            nextPatch[String(id)] = meta;
+          }
         } catch {
         }
       }
@@ -437,7 +488,15 @@ export default function SessionEntryEditor() {
     return () => {
       alive = false;
     };
-  }, [warehouseId, standaloneIdsKey, fetchItemsPage, templateMetaById, standaloneMetaById, standaloneItems]);
+  }, [
+    warehouseId,
+    standaloneIdsKey,
+    fetchItemsPage,
+    templateMetaById,
+    standaloneMetaById,
+    standaloneItems,
+    extraHydratedMetaById,
+  ]);
 
   const mergedExtraMetaById = useMemo(
     () => mergeStandaloneMetaMaps(standaloneMetaById, extraHydratedMetaById, templateMetaById),
@@ -458,34 +517,6 @@ export default function SessionEntryEditor() {
   }, [sQ, tplQ]);
 
   useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      try {
-        const hitFromSession = ((session as any)?.entries ?? []).find((e: any) => num(e.partnerId) === partnerId) ?? null;
-        const maybeName = cleanText((hitFromSession as any)?.partnerName) || cleanText((hitFromSession as any)?.partner?.name) || "";
-
-        if (maybeName) {
-          if (alive) setPartnerName(maybeName);
-          return;
-        }
-
-        const res = await partnerService.pagePartners({ page: 0, size: 50, q: String(partnerId) });
-        const hit = (res.items ?? []).find((p: any) => num(p.id) === partnerId) ?? null;
-        if (alive) setPartnerName(cleanText((hit as any)?.name) || "");
-      } catch {
-        if (alive) setPartnerName("");
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [partnerId, session?.id, (session as any)?.entries?.length]);
-
-  const headerTitle = partnerName?.trim() ? `Unos • ${partnerName}` : "Unos";
-
-  useEffect(() => {
     if (!sessionId || !partnerId || !session) return;
 
     const key = `${sessionId}:${partnerId}:${(session as any)?.id ?? ""}`;
@@ -503,7 +534,8 @@ export default function SessionEntryEditor() {
       return;
     }
 
-    const incomingTemplateId = (existing as any)?.templateId != null ? num((existing as any).templateId) : null;
+    const incomingTemplateId =
+      (existing as any)?.templateId != null ? num((existing as any).templateId) : null;
 
     const incomingDocPatches = normalizeDocPatches(
       (existing as any)?.docPatches ??
@@ -523,14 +555,21 @@ export default function SessionEntryEditor() {
       null
     );
 
-    const incomingNote = isBlankNote((existing as any)?.note) ? null : cleanText((existing as any)?.note);
+    const incomingNote = isBlankNote((existing as any)?.note)
+      ? null
+      : cleanText((existing as any)?.note);
+
     const incomingDocDate = (existing as any)?.documentDate ?? null;
 
     const merged = {
       ...cur,
       draftMode: ((cur as any)?.draftMode ?? (existing as any)?.draftMode ?? "FINAL") as any,
       templateId: touched.templateId ? cur.templateId : cur.templateId ?? incomingTemplateId,
-      docPatches: touched.docPatches ? curDocPatches : curDocPatches.length ? curDocPatches : incomingDocPatches,
+      docPatches: touched.docPatches
+        ? curDocPatches
+        : curDocPatches.length
+          ? curDocPatches
+          : incomingDocPatches,
       standaloneQty: touched.standaloneQty
         ? cur.standaloneQty ?? {}
         : cur.standaloneQty && Object.keys(cur.standaloneQty).length > 0
@@ -542,7 +581,9 @@ export default function SessionEntryEditor() {
           ? (cur as any).standaloneMetaById
           : incomingExtra.metaById,
       note: touched.note ? cur.note ?? null : cur.note != null ? cur.note : incomingNote,
-      documentDate: touched.documentDate ? ((cur as any)?.documentDate ?? null) : ((cur as any)?.documentDate ?? incomingDocDate),
+      documentDate: touched.documentDate
+        ? ((cur as any)?.documentDate ?? null)
+        : ((cur as any)?.documentDate ?? incomingDocDate),
     };
 
     setDraft(merged as any);
@@ -652,7 +693,10 @@ export default function SessionEntryEditor() {
   }, [canEdit, sessionId, partnerId]);
 
   const goBackToSessionEntriesList = useCallback(() => {
-    router.replace({ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } });
+    router.replace({
+      pathname: "/(tabs)/sessions/[id]" as const,
+      params: { id: String(sessionId) },
+    });
   }, [sessionId]);
 
   const clearTemplateSelection = useCallback(() => {
@@ -688,13 +732,15 @@ export default function SessionEntryEditor() {
       }
 
       const extraItemsOut = qtyToItems((cur as any).standaloneQty ?? {});
-      const noteOut = isBlankNote((cur as any).note) ? null : sanitizeNote(String((cur as any).note ?? ""));
+      const noteOut = isBlankNote((cur as any).note)
+        ? null
+        : sanitizeNote(String((cur as any).note ?? ""));
 
       const rawMode = String((cur as any).draftMode ?? "FINAL");
       const normalizedMode = rawMode === "DRAFT" ? "DRAFT" : "FINAL";
 
       const payload: BookingSessionEntryUpsertRequestDTO = {
-        partnerId: num((cur as any).partnerId),
+        partnerId,
         templateId: curTplId,
         draftMode: normalizedMode as any,
         documentDate: ((cur as any).documentDate ?? null) as any,
@@ -711,12 +757,27 @@ export default function SessionEntryEditor() {
     } catch (e) {
       setScreenError(toUserMessage(e, "Greška pri spremanju unosa."));
     }
-  }, [session, isSessionDraft, sessionId, partnerId, selectedTemplate, templateDocs, upsertM, sQ]);
+  }, [
+    session,
+    isSessionDraft,
+    sessionId,
+    partnerId,
+    selectedTemplate,
+    templateDocs,
+    upsertM,
+    sQ,
+  ]);
 
   if (!draft) {
     return (
       <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-        <NavigationHeader title="Unos" fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }} />
+        <NavigationHeader
+          title="Unos"
+          fallbackHref={{
+            pathname: "/(tabs)/sessions/[id]" as const,
+            params: { id: String(sessionId) },
+          }}
+        />
         <View style={{ padding: 16, alignItems: "center", gap: 10 }}>
           <ActivityIndicator />
           <Text style={{ color: Colors.sub, fontWeight: "800" }}>Učitavam…</Text>
@@ -725,7 +786,9 @@ export default function SessionEntryEditor() {
     );
   }
 
-  const effectiveDraftMode = (String((draft as any)?.draftMode ?? "FINAL") === "DRAFT" ? "DRAFT" : "FINAL") as "DRAFT" | "FINAL";
+  const effectiveDraftMode = (
+    String((draft as any)?.draftMode ?? "FINAL") === "DRAFT" ? "DRAFT" : "FINAL"
+  ) as "DRAFT" | "FINAL";
 
   const noteValue = isBlankNote((draft as any)?.note) ? "" : String((draft as any)?.note ?? "");
   const noteClean = noteValue.trim();
@@ -739,9 +802,19 @@ export default function SessionEntryEditor() {
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
-      <NavigationHeader title={headerTitle} fallbackHref={{ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } }} />
+      <NavigationHeader
+        title={headerTitle}
+        fallbackHref={{
+          pathname: "/(tabs)/sessions/[id]" as const,
+          params: { id: String(sessionId) },
+        }}
+      />
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={st.container} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={st.container}
+        keyboardShouldPersistTaps="handled"
+      >
         {!!topError && (
           <ErrorCard
             title="Greška"
@@ -769,18 +842,31 @@ export default function SessionEntryEditor() {
 
         <Text style={st.label}>Napomena</Text>
 
-        <Pressable style={[st.noteCard, !hasNote && st.noteCardEmpty, !canEdit && st.disabled]} onPress={openNote} disabled={!canEdit}>
+        <Pressable
+          style={[st.noteCard, !hasNote && st.noteCardEmpty, !canEdit && st.disabled]}
+          onPress={openNote}
+          disabled={!canEdit}
+        >
           <View style={st.noteIconBox}>
             <FontAwesome name="sticky-note" size={14} color={Colors.text} />
           </View>
 
           <View style={{ flex: 1, gap: 6 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
               <Text style={st.noteTitle}>{hasNote ? "Napomena dodana" : "Dodaj napomenu"}</Text>
 
               {hasNote ? (
                 <View style={st.notePill}>
-                  <Text style={st.notePillText}>{noteLines > 1 ? `${noteLines} linije` : "1 linija"}</Text>
+                  <Text style={st.notePillText}>
+                    {noteLines > 1 ? `${noteLines} linije` : "1 linija"}
+                  </Text>
                 </View>
               ) : (
                 <View style={[st.notePill, st.notePillOptional]}>
@@ -799,7 +885,13 @@ export default function SessionEntryEditor() {
               </Text>
             )}
 
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
               <Text style={st.noteAction}>{hasNote ? "Uredi" : "Dodaj"}</Text>
               <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
             </View>
@@ -808,8 +900,14 @@ export default function SessionEntryEditor() {
 
         <View style={st.sectionHeader}>
           <Text style={st.label}>Predložak</Text>
-          <Pressable style={[st.smallBtn, !canEdit && st.smallBtnDisabled]} onPress={openTemplatePicker} disabled={!canEdit}>
-            <Text style={[st.smallBtnText, !canEdit && st.smallBtnTextDisabled]}>{draft.templateId ? "Promijeni" : "Odaberi"}</Text>
+          <Pressable
+            style={[st.smallBtn, !canEdit && st.smallBtnDisabled]}
+            onPress={openTemplatePicker}
+            disabled={!canEdit}
+          >
+            <Text style={[st.smallBtnText, !canEdit && st.smallBtnTextDisabled]}>
+              {draft.templateId ? "Promijeni" : "Odaberi"}
+            </Text>
           </Pressable>
         </View>
 
@@ -822,7 +920,11 @@ export default function SessionEntryEditor() {
               <Text style={st.pickSub}>dokumenata: {templateDocs?.length ?? 0}</Text>
             </View>
 
-            <Pressable style={[st.iconBtn, !canEdit && st.disabled]} onPress={clearTemplateSelection} disabled={!canEdit}>
+            <Pressable
+              style={[st.iconBtn, !canEdit && st.disabled]}
+              onPress={clearTemplateSelection}
+              disabled={!canEdit}
+            >
               <FontAwesome name="trash" size={16} color={Colors.text} />
             </Pressable>
           </View>
@@ -840,7 +942,14 @@ export default function SessionEntryEditor() {
               <View style={{ gap: 10 }}>
                 {templateBlocks.map((block) => (
                   <View key={String(block.docId)} style={st.cardCol}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
                       <View style={{ flex: 1 }}>
                         <Text style={st.title}>Dokument</Text>
                         <Text style={st.sub}>Stavki: {block.count}</Text>
@@ -942,11 +1051,17 @@ export default function SessionEntryEditor() {
               </View>
             )}
 
-            <Text style={[st.helper, { marginTop: 8 }]}>Ove stavke nisu vezane uz određeni dokument.</Text>
+            <Text style={[st.helper, { marginTop: 8 }]}>
+              Ove stavke nisu vezane uz određeni dokument.
+            </Text>
           </View>
         )}
 
-        <Pressable style={[st.primaryBtn, saveDisabled && st.disabled]} disabled={saveDisabled} onPress={save}>
+        <Pressable
+          style={[st.primaryBtn, saveDisabled && st.disabled]}
+          disabled={saveDisabled}
+          onPress={save}
+        >
           {upsertM.isPending ? <ActivityIndicator /> : <Text style={st.primaryText}>Spremi</Text>}
         </Pressable>
 
@@ -988,11 +1103,19 @@ export default function SessionEntryEditor() {
         />
 
         <View style={{ gap: 12 }}>
-          <Pressable style={[st.primaryBtn, upsertM.isPending && st.disabled]} onPress={applyNote} disabled={upsertM.isPending}>
+          <Pressable
+            style={[st.primaryBtn, upsertM.isPending && st.disabled]}
+            onPress={applyNote}
+            disabled={upsertM.isPending}
+          >
             <Text style={st.primaryText}>Spremi napomenu</Text>
           </Pressable>
 
-          <Pressable style={[st.ghostBtn, upsertM.isPending && st.disabled]} onPress={closeNoteSheet} disabled={upsertM.isPending}>
+          <Pressable
+            style={[st.ghostBtn, upsertM.isPending && st.disabled]}
+            onPress={closeNoteSheet}
+            disabled={upsertM.isPending}
+          >
             <Text style={st.ghostText}>Zatvori</Text>
           </Pressable>
 
@@ -1001,7 +1124,9 @@ export default function SessionEntryEditor() {
             onPress={() => setNoteDraft("")}
             disabled={upsertM.isPending}
           >
-            <Text style={[st.smallBtnText, upsertM.isPending && st.smallBtnTextDisabled]}>Obriši unos</Text>
+            <Text style={[st.smallBtnText, upsertM.isPending && st.smallBtnTextDisabled]}>
+              Obriši unos
+            </Text>
           </Pressable>
         </View>
       </CenterSheet>
@@ -1122,7 +1247,10 @@ const st = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  pickRowSelected: { borderColor: Colors.orange, backgroundColor: "rgba(249,115,22,0.10)" },
+  pickRowSelected: {
+    borderColor: Colors.orange,
+    backgroundColor: "rgba(249,115,22,0.10)",
+  },
   pickTitle: { fontWeight: "900", color: Colors.text },
   pickSub: { color: Colors.sub, fontWeight: "800" },
 

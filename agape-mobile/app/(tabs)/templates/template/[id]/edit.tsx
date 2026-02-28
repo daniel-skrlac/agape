@@ -7,10 +7,12 @@ import Colors from "@/src/constants/Colors";
 import NavigationHeader from "../../../../../components/NavigationHeader";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { useTemplateDetail, useUpdateTemplate } from "@/app/api/hooks/templates/useDispatchTemplates";
+import { toUserMessage } from "../../../../../src/api/apiClient";
+import { useTemplateDetail, useUpdateTemplate } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
+
+type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
 type Touched = {
   name: boolean;
@@ -18,8 +20,38 @@ type Touched = {
   desc: boolean;
 };
 
+function readNullableNumberParam(v: unknown): number | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw == null) return null;
+
+  const s = String(raw).trim();
+  if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readStringParam(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim();
+  return s ? s : null;
+}
+
+function readModeParam(v: unknown): Mode {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (s === "MOJI" || s === "DIJELJENI") return s;
+  return "SVE";
+}
+
 export default function EditTemplateScreen() {
-  const params = useLocalSearchParams<{ id?: string; templateId?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    templateId?: string;
+    folderId?: string;
+    folderName?: string;
+    mode?: string;
+  }>();
 
   const templateId = useMemo(() => {
     const raw = params.id ?? params.templateId;
@@ -27,10 +59,66 @@ export default function EditTemplateScreen() {
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [params.id, params.templateId]);
 
+  const routeFolderId = readNullableNumberParam(params.folderId);
+  const routeFolderName = readStringParam(params.folderName);
+  const routeMode = readModeParam(params.mode);
+
   const tQ = useTemplateDetail(templateId);
   const updM = useUpdateTemplate();
 
   const t = tQ.data;
+
+  const templateFolderId = useMemo(() => {
+    if (routeFolderId != null) return routeFolderId;
+
+    const fromT1 = Number((t as any)?.folderId ?? NaN);
+    if (Number.isFinite(fromT1) && fromT1 > 0) return fromT1;
+
+    const fromT2 = Number((t as any)?.folder?.id ?? NaN);
+    if (Number.isFinite(fromT2) && fromT2 > 0) return fromT2;
+
+    return null;
+  }, [routeFolderId, t]);
+
+  const templateFolderName = useMemo(() => {
+    const a = routeFolderName?.trim();
+    if (a) return a;
+
+    const b = String((t as any)?.folderName ?? "").trim();
+    if (b) return b;
+
+    const c = String((t as any)?.folder?.name ?? "").trim();
+    if (c) return c;
+
+    return "Mapa";
+  }, [routeFolderName, t]);
+
+  const backHref = useMemo(() => {
+    if (templateFolderId) {
+      return {
+        pathname: "/(tabs)/templates/folder/[folderId]" as const,
+        params: {
+          folderId: String(templateFolderId),
+          folderName: templateFolderName,
+          mode: routeMode,
+        },
+      };
+    }
+
+    if (templateId) {
+      return {
+        pathname: "/(tabs)/templates/template/[id]" as const,
+        params: {
+          id: String(templateId),
+          folderId: templateFolderId ? String(templateFolderId) : "null",
+          folderName: templateFolderName,
+          mode: routeMode,
+        },
+      };
+    }
+
+    return "/(tabs)/templates" as const;
+  }, [templateFolderId, templateFolderName, routeMode, templateId]);
 
   const [name, setName] = useState("");
   const [householdSize, setHouseholdSize] = useState("");
@@ -126,7 +214,7 @@ export default function EditTemplateScreen() {
       <NavigationHeader
         title="Uredi predložak"
         subtitle={templateId ? `#${templateId}` : "Predložak"}
-        fallbackHref="/(tabs)/templates"
+        fallbackHref={backHref}
       />
 
       <View style={s.container}>
@@ -224,7 +312,7 @@ export default function EditTemplateScreen() {
                     } as any,
                   });
 
-                  router.back();
+                  router.replace(backHref as any);
                 } catch (e) {
                   setScreenError(toUserMessage(e, "Greška pri spremanju predloška."));
                 }
@@ -250,53 +338,6 @@ const s = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     marginTop: 20,
-  },
-
-  card: {
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: MAX_W,
-    backgroundColor: Colors.bg,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    padding: 14,
-    gap: 8,
-  },
-
-  cardTitle: {
-    fontWeight: "900",
-    color: Colors.text,
-    fontSize: 16,
-  },
-
-  cardSub: {
-    color: Colors.sub,
-    fontWeight: "800",
-  },
-
-  actionsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 6,
-    flexWrap: "wrap",
-  },
-
-  actionBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-
-  actionBtnSoft: {
-    backgroundColor: "rgba(249,115,22,0.16)",
-    borderColor: "rgba(249,115,22,0.35)",
-  },
-
-  actionText: {
-    fontWeight: "900",
-    color: Colors.text,
   },
 
   fieldWrap: {

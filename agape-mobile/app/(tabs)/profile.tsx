@@ -10,12 +10,13 @@ import Colors from "@/src/constants/Colors";
 import Strings from "@/src/constants/Strings";
 import { ErrorCard } from "@/components/ErrorCard";
 
-import { clearSession } from "@/app/api/sessionStore";
-import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
+import { clearSession } from "../../src/api/sessionStore";
+import { usePullToRefresh } from "../../src/api/hooks/common/usePullToRefresh";
 
-import { styles } from "./styles/ProfileScreen.styles";
-import { useUserProfile } from "../api/hooks/profile/useUserProfile";
-import { useUserProfileForm } from "../api/hooks/profile/useUserProfileForm";
+import { styles } from "../../src/styles/ProfileScreen.styles";
+import { useUserProfile } from "../../src/api/hooks/profile/useUserProfile";
+import { useUserProfileForm } from "../../src/api/hooks/profile/useUserProfileForm";
+import NavigationHeader from "@/components/NavigationHeader";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -77,6 +78,10 @@ export default function ProfileScreen() {
   return (
     <TabScroll refreshing={refreshing} onRefresh={onRefresh} contentContainerStyle={styles.container} withScreen={false}>
       <Screen edges={["bottom", "left", "right"]}>
+        <NavigationHeader
+          title="Početna"
+          onBackPress={() => router.replace("/(tabs)/home")}
+        />
         <View style={styles.container}>
           {errorMessage ? (
             <>

@@ -12,7 +12,7 @@ import { ErrorCard } from "@/components/ErrorCard";
 
 import Strings from "@/src/constants/Strings";
 import { useRegisterForm } from "../../src/api/hooks/auth/useRegisterForm";
-import { styles } from "./styles/RegisterScreen.styles";
+import { styles } from "../../src/styles/RegisterScreen.styles";
 
 export default function RegisterScreen() {
   const router = useRouter();

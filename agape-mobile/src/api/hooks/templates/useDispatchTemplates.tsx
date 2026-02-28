@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { toUserMessage } from "@/app/api/apiClient";
+import { toUserMessage } from "../../../../src/api/apiClient";
 
 import type {
   FolderCreateRequestDTO,
@@ -24,9 +24,9 @@ import type {
 import { TemplateListScope, dispatchTemplateService } from "../../services/dispatchTemplateService";
 
 const qk = {
-  folders: (params: { parentId: number | null; size: number }) =>
-    ["dispatch-template-folders", params] as const,
-
+  foldersRoot: (q: string) => ["dispatch-template-folders", "root", q] as const,
+  foldersPage: (parentId: number | null, q: string, size: number) =>
+    ["dispatch-template-folders", "page", parentId ?? "root", q, size] as const,
   foldersTree: () => ["dispatch-template-folders", "tree"] as const,
 
   templatesHeaders: (params: {
@@ -35,9 +35,20 @@ const qk = {
     scope: TemplateListScope;
     rootOnly: boolean;
     size: number;
-  }) => ["dispatch-templates", "headers", params] as const,
+  }) =>
+    [
+      "dispatch-templates",
+      "headers",
+      params.folderId ?? "root",
+      params.scope,
+      params.rootOnly ? 1 : 0,
+      params.size,
+      params.q,
+    ] as const,
 
-  templateDetail: (id: number) => ["dispatch-template", id] as const,
+  templateDetail: (id: number, includeItemMeta: boolean) =>
+    ["dispatch-template", id, includeItemMeta ? 1 : 0] as const,
+
   templateShares: (templateId: number) => ["dispatch-template-shares", templateId] as const,
 };
 
@@ -56,6 +67,9 @@ function flattenPages<T>(pages?: PagedResultDTO<T>[]) {
   return (pages ?? []).flatMap((p) => p?.items ?? []);
 }
 
+/**
+ * UI expects “can edit/delete only if not shared”
+ */
 export function canEditDeleteTemplate(input: {
   shared?: boolean | null;
   sharedPermission?: "VIEW" | "BOOK" | null;
@@ -65,25 +79,39 @@ export function canEditDeleteTemplate(input: {
 
 type UseTemplateFoldersArgs = {
   parentId?: number | null;
+  q?: string;
   size?: number;
   enabled?: boolean;
+  loadAllRoot?: boolean;
 };
 
 export function useTemplateFolders(args: UseTemplateFoldersArgs = {}) {
   const {
     parentId = null,
+    q = "",
     size = 20,
     enabled = true,
+    loadAllRoot = false,
   } = args;
 
-  const query = useInfiniteQuery({
-    queryKey: qk.folders({ parentId, size }),
-    enabled,
+  const normalizedQ = q.trim();
+  const useRootEndpoint = loadAllRoot && parentId == null;
+
+  const rootQuery = useQuery({
+    queryKey: qk.foldersRoot(normalizedQ),
+    enabled: enabled && useRootEndpoint,
+    queryFn: ({ signal }) => dispatchTemplateService.listRootFolders({ q: normalizedQ }, signal),
+  });
+
+  const pagedQuery = useInfiniteQuery({
+    queryKey: qk.foldersPage(parentId, normalizedQ, size),
+    enabled: enabled && !useRootEndpoint,
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }) =>
       dispatchTemplateService.listFoldersPage(
         {
           parentId,
+          q: normalizedQ,
           page: Number(pageParam ?? 0),
           size,
         },
@@ -92,36 +120,54 @@ export function useTemplateFolders(args: UseTemplateFoldersArgs = {}) {
     getNextPageParam,
   });
 
-  const data = useMemo(
-    () => flattenPages<FolderResponseDTO>(query.data?.pages as PagedResultDTO<FolderResponseDTO>[] | undefined),
-    [query.data]
-  );
+  const data = useMemo(() => {
+    const rows = useRootEndpoint
+      ? ((rootQuery.data ?? []) as FolderResponseDTO[])
+      : flattenPages<FolderResponseDTO>(
+        pagedQuery.data?.pages as PagedResultDTO<FolderResponseDTO>[] | undefined
+      );
+
+    const needle = normalizedQ.toLowerCase();
+    if (!needle) return rows;
+
+    return rows.filter((x: any) => String(x?.name ?? "").toLowerCase().includes(needle));
+  }, [useRootEndpoint, rootQuery.data, pagedQuery.data, normalizedQ]);
 
   const loadMore = useCallback(async () => {
-    if (!query.hasNextPage || query.isFetchingNextPage) return;
-    await query.fetchNextPage();
-  }, [query]);
+    if (useRootEndpoint) return;
+    if (!pagedQuery.hasNextPage || pagedQuery.isFetchingNextPage) return;
+    await pagedQuery.fetchNextPage();
+  }, [useRootEndpoint, pagedQuery]);
 
   const refresh = useCallback(async () => {
-    await query.refetch();
-  }, [query]);
+    if (useRootEndpoint) {
+      await rootQuery.refetch();
+      return;
+    }
+    await pagedQuery.refetch();
+  }, [useRootEndpoint, rootQuery, pagedQuery]);
 
-  const clearStatus = useCallback(() => {
-  }, []);
+  const clearStatus = useCallback(() => { }, []);
 
   return {
     data,
-    isLoading: query.isLoading,
-    loading: query.isFetching,
-    error: query.isError ? query.error : null,
+    isLoading: useRootEndpoint ? rootQuery.isLoading : pagedQuery.isLoading,
+    loading: useRootEndpoint ? rootQuery.isFetching : pagedQuery.isFetching,
+    error: useRootEndpoint
+      ? (rootQuery.error ?? null)
+      : (pagedQuery.isError ? pagedQuery.error : null),
 
-    canLoadMore: !!query.hasNextPage,
-    loadingMore: query.isFetchingNextPage,
-    loadMoreError: query.isFetchNextPageError ? toUserMessage(query.error, "Greška pri učitavanju više mapa.") : null,
+    canLoadMore: useRootEndpoint ? false : !!pagedQuery.hasNextPage,
+    loadingMore: useRootEndpoint ? false : pagedQuery.isFetchingNextPage,
+    loadMoreError: useRootEndpoint
+      ? null
+      : pagedQuery.isFetchNextPageError
+        ? toUserMessage(pagedQuery.error, "Greška pri učitavanju više mapa.")
+        : null,
 
     loadMore,
     refresh,
-    refetch: query.refetch,
+    refetch: useRootEndpoint ? rootQuery.refetch : pagedQuery.refetch,
     clearStatus,
   };
 }
@@ -148,11 +194,12 @@ export function useTemplateList(args: UseTemplateListArgs) {
   } = args;
 
   const effectiveScope: TemplateListScope = scope ?? (includeShared ? "ALL" : "OWNED");
+  const normalizedQ = q.trim();
 
   const query = useInfiniteQuery({
     queryKey: qk.templatesHeaders({
       folderId,
-      q: q.trim(),
+      q: normalizedQ,
       scope: effectiveScope,
       rootOnly,
       size,
@@ -163,7 +210,7 @@ export function useTemplateList(args: UseTemplateListArgs) {
       dispatchTemplateService.listTemplateHeadersPaged(
         {
           folderId,
-          q,
+          q: normalizedQ,
           scope: effectiveScope,
           rootOnly,
           page: Number(pageParam ?? 0),
@@ -174,10 +221,16 @@ export function useTemplateList(args: UseTemplateListArgs) {
     getNextPageParam,
   });
 
-  const data = useMemo(
-    () => flattenPages<TemplateResponseDTO>(query.data?.pages as PagedResultDTO<TemplateResponseDTO>[] | undefined),
-    [query.data]
-  );
+  const data = useMemo(() => {
+    const rows = flattenPages<TemplateResponseDTO>(
+      query.data?.pages as PagedResultDTO<TemplateResponseDTO>[] | undefined
+    );
+
+    const needle = normalizedQ.toLowerCase();
+    if (!needle) return rows;
+
+    return rows.filter((x: any) => String(x?.name ?? "").toLowerCase().includes(needle));
+  }, [query.data, normalizedQ]);
 
   const loadMore = useCallback(async () => {
     if (!query.hasNextPage || query.isFetchingNextPage) return;
@@ -188,8 +241,7 @@ export function useTemplateList(args: UseTemplateListArgs) {
     await query.refetch();
   }, [query]);
 
-  const clearStatus = useCallback(() => {
-  }, []);
+  const clearStatus = useCallback(() => { }, []);
 
   return {
     data,
@@ -199,7 +251,9 @@ export function useTemplateList(args: UseTemplateListArgs) {
 
     canLoadMore: !!query.hasNextPage,
     loadingMore: query.isFetchingNextPage,
-    loadMoreError: query.isFetchNextPageError ? toUserMessage(query.error, "Greška pri učitavanju više predložaka.") : null,
+    loadMoreError: query.isFetchNextPageError
+      ? toUserMessage(query.error, "Greška pri učitavanju više predložaka.")
+      : null,
 
     loadMore,
     refresh,
@@ -212,16 +266,11 @@ type UseTemplateDetailOptions = {
   includeItemMeta?: boolean;
 };
 
-export function useTemplateDetail(
-  id: number | null,
-  options: UseTemplateDetailOptions = {}
-) {
+export function useTemplateDetail(id: number | null, options: UseTemplateDetailOptions = {}) {
   const includeItemMeta = options.includeItemMeta ?? false;
 
   const query = useQuery({
-    queryKey: id
-      ? ["dispatch-template", id, { includeItemMeta }]
-      : ["dispatch-template", "null", { includeItemMeta }],
+    queryKey: id != null ? qk.templateDetail(Number(id), includeItemMeta) : ["dispatch-template", "null"],
     enabled: id != null,
     queryFn: ({ signal }) =>
       dispatchTemplateService.getTemplate(Number(id), signal, { includeItemMeta }),
@@ -320,7 +369,7 @@ export function useUpdateTemplate() {
       dispatchTemplateService.updateTemplate(v.id, v.payload),
     onSuccess: async (_data, vars) => {
       await qc.invalidateQueries({ queryKey: ["dispatch-templates", "headers"] });
-      await qc.invalidateQueries({ queryKey: qk.templateDetail(vars.id) });
+      await qc.invalidateQueries({ queryKey: ["dispatch-template", vars.id] });
     },
   });
 }
@@ -346,7 +395,7 @@ export function useMoveTemplate() {
     onSuccess: async (_data, vars) => {
       await qc.invalidateQueries({ queryKey: ["dispatch-templates", "headers"] });
       await qc.invalidateQueries({ queryKey: ["dispatch-template-folders"] });
-      await qc.invalidateQueries({ queryKey: qk.templateDetail(vars.templateId) });
+      await qc.invalidateQueries({ queryKey: ["dispatch-template", vars.templateId] });
     },
   });
 }
@@ -371,7 +420,7 @@ export function useUpsertTemplateDoc() {
     mutationFn: (v: { templateId: number; payload: TemplateDocUpsertRequestDTO }) =>
       dispatchTemplateService.upsertTemplateDoc(v.templateId, v.payload),
     onSuccess: async (_data, vars) => {
-      await qc.invalidateQueries({ queryKey: qk.templateDetail(vars.templateId) });
+      await qc.invalidateQueries({ queryKey: ["dispatch-template", vars.templateId] });
       await qc.invalidateQueries({ queryKey: ["dispatch-templates", "headers"] });
     },
   });
@@ -381,14 +430,10 @@ export function useReplaceTemplateDocItems() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (v: {
-      templateId: number;
-      templateDocId: number;
-      items: TemplateItemUpsertRequestDTO[];
-    }) =>
+    mutationFn: (v: { templateId: number; templateDocId: number; items: TemplateItemUpsertRequestDTO[] }) =>
       dispatchTemplateService.replaceTemplateDocItems(v.templateId, v.templateDocId, v.items),
     onSuccess: async (_data, vars) => {
-      await qc.invalidateQueries({ queryKey: qk.templateDetail(vars.templateId) });
+      await qc.invalidateQueries({ queryKey: ["dispatch-template", vars.templateId] });
     },
   });
 }
@@ -400,7 +445,7 @@ export function useDeleteTemplateDoc() {
     mutationFn: (v: { templateId: number; templateDocId: number }) =>
       dispatchTemplateService.deleteTemplateDoc(v.templateId, v.templateDocId),
     onSuccess: async (_data, vars) => {
-      await qc.invalidateQueries({ queryKey: qk.templateDetail(vars.templateId) });
+      await qc.invalidateQueries({ queryKey: ["dispatch-template", vars.templateId] });
       await qc.invalidateQueries({ queryKey: ["dispatch-templates", "headers"] });
     },
   });
@@ -408,7 +453,7 @@ export function useDeleteTemplateDoc() {
 
 export function useTemplateShares(templateId: number | null) {
   const query = useQuery({
-    queryKey: templateId ? qk.templateShares(templateId) : ["dispatch-template-shares", "null"],
+    queryKey: templateId ? qk.templateShares(Number(templateId)) : ["dispatch-template-shares", "null"],
     enabled: !!templateId,
     queryFn: ({ signal }) => dispatchTemplateService.listShares(Number(templateId), signal),
   });
@@ -418,7 +463,9 @@ export function useTemplateShares(templateId: number | null) {
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     error: query.error ?? null,
-    errorMessage: query.error ? toUserMessage(query.error, "Greška prilikom učitavanja dijeljenja.") : null,
+    errorMessage: query.error
+      ? toUserMessage(query.error, "Greška prilikom učitavanja dijeljenja.")
+      : null,
     refetch: query.refetch,
   };
 }
@@ -432,7 +479,7 @@ export function useShareTemplate() {
     onSuccess: async (_data, vars) => {
       await qc.invalidateQueries({ queryKey: qk.templateShares(vars.templateId) });
       await qc.invalidateQueries({ queryKey: ["dispatch-templates", "headers"] });
-      await qc.invalidateQueries({ queryKey: qk.templateDetail(vars.templateId) });
+      await qc.invalidateQueries({ queryKey: ["dispatch-template", vars.templateId] });
     },
   });
 }
@@ -446,7 +493,7 @@ export function useRevokeTemplateShare() {
     onSuccess: async (_data, vars) => {
       await qc.invalidateQueries({ queryKey: qk.templateShares(vars.templateId) });
       await qc.invalidateQueries({ queryKey: ["dispatch-templates", "headers"] });
-      await qc.invalidateQueries({ queryKey: qk.templateDetail(vars.templateId) });
+      await qc.invalidateQueries({ queryKey: ["dispatch-template", vars.templateId] });
     },
   });
 }
@@ -479,7 +526,9 @@ export function useTemplateFolderTree(args: { enabled?: boolean } = {}) {
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     error: query.error ?? null,
-    errorMessage: query.error ? toUserMessage(query.error, "Greška prilikom učitavanja mapa.") : null,
+    errorMessage: query.error
+      ? toUserMessage(query.error, "Greška prilikom učitavanja mapa.")
+      : null,
     refetch: query.refetch,
     clearStatus: () => { },
   };

@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-27 19:40:33.
+// Generated using typescript-generator version 3.2.1263 on 2026-02-28 12:48:25.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -90,6 +90,25 @@ export interface DispatchBulkResponseDTO {
     posted: number;
     drafts: number;
     items: DispatchBulkItemResultDTO[];
+}
+
+export interface DispatchBulkValidationItemDTO {
+    partnerId: number;
+    request: DispatchRequestValidationDTO;
+}
+
+export interface DispatchBulkValidationRequestDTO {
+    items: DispatchBulkValidationItemDTO[];
+}
+
+export interface DispatchBulkValidationResponseDTO {
+    results: DispatchBulkValidationRowDTO[];
+}
+
+export interface DispatchBulkValidationRowDTO {
+    partnerId: number;
+    data: WarehouseBookingImpactDTO;
+    error: string;
 }
 
 export interface DispatchLineResponseDTO {
@@ -281,6 +300,7 @@ export interface BookingSessionCreateRequestDTO {
 export interface BookingSessionEntryResponseDTO {
     id: number;
     partnerId: number;
+    partnerName: string;
     templateId: number;
     draftMode: DraftMode;
     docPatches: any;

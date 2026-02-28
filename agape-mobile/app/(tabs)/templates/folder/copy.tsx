@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
@@ -9,10 +9,12 @@ import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { FolderPicker } from "@/components/FolderPicker";
 
-import { toUserMessage } from "@/app/api/apiClient";
-import { useCopyFolder, useTemplateFolderTree } from "@/app/api/hooks/templates/useDispatchTemplates";
+import { toUserMessage } from "../../../../src/api/apiClient";
+import { useCopyFolder, useTemplateFolderTree } from "../../../../src/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
+
+type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
 type FolderLike = {
   id: number;
@@ -32,6 +34,30 @@ function readNumberParam(params: any, keys: string[]): number {
   }
 
   return NaN;
+}
+
+function readNullableNumberParam(v: unknown): number | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw == null) return null;
+
+  const s = String(raw).trim();
+  if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readStringParam(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim();
+  return s ? s : null;
+}
+
+function readModeParam(v: unknown): Mode {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (s === "MOJI" || s === "DIJELJENI") return s;
+  return "SVE";
 }
 
 function buildDescendantsSet(folders: FolderLike[], rootId: number): Set<number> {
@@ -64,10 +90,32 @@ function buildDescendantsSet(folders: FolderLike[], rootId: number): Set<number>
 }
 
 export default function CopyFolderScreen() {
-  const params = useLocalSearchParams<{ folderId?: string; id?: string }>();
+  const params = useLocalSearchParams<{
+    folderId?: string;
+    id?: string;
+
+    parentFolderId?: string;
+    parentFolderName?: string;
+    mode?: string;
+  }>();
 
   const folderId = readNumberParam(params, ["folderId", "id"]);
   const hasValidId = Number.isFinite(folderId) && folderId > 0;
+
+  const parentFolderId = readNullableNumberParam(params.parentFolderId);
+  const parentFolderName = readStringParam(params.parentFolderName) ?? "Mapa";
+  const mode = readModeParam(params.mode);
+
+  const backHref = useMemo(() => {
+    if (parentFolderId != null && Number.isFinite(parentFolderId) && parentFolderId > 0) {
+      return {
+        pathname: "/(tabs)/templates/folder/[folderId]" as const,
+        params: { folderId: String(parentFolderId), folderName: parentFolderName, mode },
+      };
+    }
+
+    return "/(tabs)/templates" as const;
+  }, [parentFolderId, parentFolderName, mode]);
 
   const folderTreeQuery = useTemplateFolderTree({ enabled: hasValidId });
   const copyMutation = useCopyFolder();
@@ -131,13 +179,11 @@ export default function CopyFolderScreen() {
 
   const handleRetry = async () => {
     copyMutation.reset();
-
     if (!hasValidId) return;
-
     await Promise.resolve(folderTreeQuery.refetch());
   };
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     if (!canSubmit) return;
 
     try {
@@ -150,17 +196,18 @@ export default function CopyFolderScreen() {
         } as any,
       });
 
-      router.back();
+      if (typeof backHref === "string") router.replace(backHref);
+      else router.replace(backHref);
     } catch {
     }
-  };
+  }, [canSubmit, copyMutation, folderId, targetParentId, includeSubfolders, includeTemplates, backHref]);
 
   return (
     <Screen>
       <NavigationHeader
         title="Kopiraj mapu"
         subtitle={hasValidId ? `#${folderId}` : "—"}
-        fallbackHref="/(tabs)/templates"
+        fallbackHref={backHref}
       />
 
       <View style={s.page}>
@@ -183,9 +230,7 @@ export default function CopyFolderScreen() {
             <Text style={s.loading}>Učitavam…</Text>
           </View>
         ) : !sourceFolder ? (
-          <Text style={s.loading}>
-            {folderTreeQuery.isFetching ? "Učitavam…" : "Mapa nije pronađena."}
-          </Text>
+          <Text style={s.loading}>{folderTreeQuery.isFetching ? "Učitavam…" : "Mapa nije pronađena."}</Text>
         ) : (
           <>
             <View style={s.card}>
@@ -246,7 +291,10 @@ export default function CopyFolderScreen() {
               <Pressable
                 style={[s.secondary, copyMutation.isPending && s.disabled]}
                 disabled={copyMutation.isPending}
-                onPress={() => router.back()}
+                onPress={() => {
+                  if (typeof backHref === "string") router.replace(backHref);
+                  else router.replace(backHref);
+                }}
               >
                 <Text style={s.secondaryText}>Odustani</Text>
               </Pressable>

@@ -4,6 +4,7 @@ import Colors from "@/src/constants/Colors";
 export const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    backgroundColor: Colors.bg,
   },
 
   container: {
@@ -14,6 +15,31 @@ export const styles = StyleSheet.create({
 
   topErrorWrap: {
     marginBottom: 2,
+  },
+
+  searchWrap: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(148,163,184,0.14)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  searchInput: {
+    flex: 1,
+    height: 25,
+    paddingVertical: 0,
+    fontWeight: "800",
+    color: Colors.text,
+    fontSize: 14,
+  },
+
+  searchClearBtn: {
+    padding: 2,
   },
 
   search: {
@@ -42,7 +68,7 @@ export const styles = StyleSheet.create({
   },
 
   folderCard: {
-    backgroundColor: Colors.bg,
+    backgroundColor: "rgba(148,163,184,0.08)",
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
@@ -50,7 +76,7 @@ export const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: Colors.bg,
+    backgroundColor: "rgba(148,163,184,0.08)",
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
@@ -112,7 +138,7 @@ export const styles = StyleSheet.create({
 
   badgeBook: {
     backgroundColor: "rgba(34,197,94,0.18)",
-    color: "#16A34A",
+    color: Colors.successText,
   },
 
   badgeView: {
@@ -198,7 +224,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: "rgba(148,163,184,0.18)",
+    backgroundColor: Colors.neutralBg,
   },
 
   addItemText: {
@@ -250,7 +276,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: "rgba(148,163,184,0.18)",
+    backgroundColor: Colors.neutralBg,
   },
 
   moreItemDanger: {
@@ -295,7 +321,7 @@ export const swipeStyles = StyleSheet.create({
   },
 
   edit: {
-    backgroundColor: "rgba(148,163,184,0.20)",
+    backgroundColor: Colors.neutralBg,
   },
 
   delete: {

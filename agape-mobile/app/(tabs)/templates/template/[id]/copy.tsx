@@ -10,14 +10,16 @@ import { ErrorCard } from "@/components/ErrorCard";
 import { FolderPicker } from "@/components/FolderPicker";
 import InfoResultPopup from "@/components/InfoResultPopup";
 
-import { toUserMessage } from "@/app/api/apiClient";
+import { toUserMessage } from "../../../../../src/api/apiClient";
 import {
   useCopyTemplate,
   useTemplateDetail,
   useTemplateFolderTree,
-} from "@/app/api/hooks/templates/useDispatchTemplates";
+} from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 
 const MAX_W = 560;
+
+type Mode = "SVE" | "MOJI" | "DIJELJENI";
 
 type CopyResultPopupState = {
   visible: boolean;
@@ -39,11 +41,61 @@ function readNumberParam(params: any, keys: string[]): number {
   return NaN;
 }
 
+function readStringParam(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim();
+  return s ? s : null;
+}
+
+function readNullableNumberParam(v: unknown): number | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw == null) return null;
+
+  const s = String(raw).trim();
+  if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readModeParam(v: unknown): Mode {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (s === "MOJI" || s === "DIJELJENI") return s;
+  return "SVE";
+}
+
 export default function CopyTemplateScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{
+    id?: string;
+    templateId?: string;
+    folderId?: string;
+    folderName?: string;
+    mode?: string;
+  }>();
 
   const templateId = readNumberParam(params, ["id", "templateId"]);
   const hasValidId = Number.isFinite(templateId) && templateId > 0;
+
+  const routeFolderId = readNullableNumberParam(params.folderId);
+  const routeFolderName = readStringParam(params.folderName);
+  const routeMode = readModeParam(params.mode);
+
+  const backHref = useMemo(() => {
+    if (hasValidId) {
+      return {
+        pathname: "/(tabs)/templates/template/[id]" as const,
+        params: {
+          id: String(templateId),
+          folderId: routeFolderId == null ? "null" : String(routeFolderId),
+          folderName: routeFolderName ?? "Mapa",
+          mode: routeMode,
+        },
+      };
+    }
+
+    return "/(tabs)/templates" as const;
+  }, [hasValidId, templateId, routeFolderId, routeFolderName, routeMode]);
 
   const templateQuery = useTemplateDetail(hasValidId ? templateId : null);
   const folderTreeQuery = useTemplateFolderTree({ enabled: hasValidId });
@@ -111,10 +163,7 @@ export default function CopyTemplateScreen() {
 
     if (!hasValidId) return;
 
-    await Promise.all([
-      Promise.resolve(templateQuery.refetch()),
-      Promise.resolve(folderTreeQuery.refetch()),
-    ]);
+    await Promise.allSettled([Promise.resolve(templateQuery.refetch()), Promise.resolve(folderTreeQuery.refetch())]);
   };
 
   const closeResultPopup = useCallback(() => {
@@ -137,9 +186,7 @@ export default function CopyTemplateScreen() {
       })) as any;
 
       const copiedTemplateIdRaw = response?.id ?? response?.templateId ?? null;
-      const copiedTemplateId = Number.isFinite(Number(copiedTemplateIdRaw))
-        ? Number(copiedTemplateIdRaw)
-        : null;
+      const copiedTemplateId = Number.isFinite(Number(copiedTemplateIdRaw)) ? Number(copiedTemplateIdRaw) : null;
 
       const copiedTemplateName = String(response?.name ?? newName).trim() || newName;
 
@@ -163,7 +210,7 @@ export default function CopyTemplateScreen() {
       <NavigationHeader
         title="Kopiraj predložak"
         subtitle={hasValidId ? `#${templateId}` : "—"}
-        fallbackHref="/(tabs)/templates"
+        fallbackHref={backHref}
       />
 
       <View style={s.page}>
@@ -262,6 +309,24 @@ export default function CopyTemplateScreen() {
             ? `Otvori kopiju #${resultPopup.copiedTemplateId}`
             : "Otvori predloške"
         }
+        onLinkPress={() => {
+          closeResultPopup();
+
+          if (resultPopup.copiedTemplateId) {
+            router.replace({
+              pathname: "/(tabs)/templates/template/[id]" as const,
+              params: {
+                id: String(resultPopup.copiedTemplateId),
+                folderId: routeFolderId == null ? "null" : String(routeFolderId),
+                folderName: routeFolderName ?? "Mapa",
+                mode: routeMode,
+              },
+            });
+            return;
+          }
+
+          router.replace("/(tabs)/templates");
+        }}
         buttonText="U redu"
         onClose={closeResultPopup}
         closeOnBackdrop={false}

@@ -13,7 +13,7 @@ import { toUserMessage } from "../../../../src/api//apiClient";
 import { usePullToRefresh } from "../../../../src/api//hooks/common/usePullToRefresh";
 import { useTemplateFolders, useTemplateList } from "../../../../src/api//hooks/templates/useDispatchTemplates";
 import type { FolderResponseDTO, TemplateResponseDTO } from "@/src/models/generated";
-import { patchDraft } from "../_entryDraftStore";
+import { patchDraft } from "../../../../src/stores/entryDraftStore";
 
 const MAX_W = 560;
 const PAGE_SIZE = 20;

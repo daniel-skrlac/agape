@@ -7,7 +7,7 @@ const AuthHeader: React.FC = () => {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../assets/images/logo.png")}
+        source={require("../../assets/images/icon.png")}
         style={styles.logo}
         resizeMode="contain"
       />
@@ -36,8 +36,8 @@ const styles = StyleSheet.create({
   },
 
   logo: {
-    width: 140,
-    height: 140,
+    width: 180,
+    height: 180,
     marginBottom: 12,
   },
   title: {

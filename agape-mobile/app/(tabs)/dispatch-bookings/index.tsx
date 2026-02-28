@@ -18,18 +18,18 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { DateRangeSheet } from "@/components/DateRangeSheet";
 import InfoResultPopup from "@/components/InfoResultPopup";
 
-import { useCurrentUser } from "../../../src/api//hooks/common/useCurrentUser";
-import { usePullToRefresh } from "../../../src/api//hooks/common/usePullToRefresh";
-import { useDispatchBookings } from "../../../src/api//hooks/dispatch-bookings/useDispatchBookings";
-import { useWarehouses } from "../../../src/api//hooks/dashboard/useWarehouses";
-import { documentDirectoryService } from "../../../src/api//services/documentDirectoryService";
-import { toUserMessage } from "../../../src/api//apiClient";
+import { useCurrentUser } from "../../../src/api/hooks/common/useCurrentUser";
+import { usePullToRefresh } from "../../../src/api/hooks/common/usePullToRefresh";
+import { useDispatchBookings } from "../../../src/api/hooks/dispatch-bookings/useDispatchBookings";
+import { useWarehouses } from "../../../src/api/hooks/dashboard/useWarehouses";
+import { documentDirectoryService } from "../../../src/api/services/documentDirectoryService";
+import { toUserMessage } from "../../../src/api/apiClient";
 
 import type {
   DocumentDescriptorResponseDTO,
   DispatchBookingListItemDTO,
 } from "@/src/models/generated";
-import { styles as s } from "./styles/DispatchBookingsIndex.styles";
+import { styles as s } from "../../../src/styles/DispatchBookingsIndex.styles";
 import { fmtHrFromIso } from "@/src/utils/dateIso";
 
 type DispatchBookingStatusFilter = "ALL" | "FINAL" | "DRAFT" | "CANCELLED";
@@ -55,12 +55,15 @@ function parseStatusParam(v: string | string[] | undefined): DispatchBookingStat
   return null;
 }
 
-function parseResultParam(v: string | string[] | undefined): "STORNO_OK" | null {
+function parseResultParam(v: string | string[] | undefined): "STORNO_OK" | "DRAFT_DELETED" | "POST_OK" | null {
   const raw = Array.isArray(v) ? v[0] : v;
   if (!raw) return null;
 
   const x = String(raw).toUpperCase().trim();
-  return x === "STORNO_OK" ? "STORNO_OK" : null;
+  if (x === "STORNO_OK") return "STORNO_OK";
+  if (x === "DRAFT_DELETED") return "DRAFT_DELETED";
+  if (x === "POST_OK") return "POST_OK";
+  return null;
 }
 
 function parseIntParam(v: string | string[] | undefined): number | null {
@@ -69,6 +72,13 @@ function parseIntParam(v: string | string[] | undefined): number | null {
 
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseTextParam(v: string | string[] | undefined): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (!raw) return null;
+  const x = String(raw);
+  return x.trim() ? x : null;
 }
 
 function statusOfRow(d: any): "DRAFT" | "FINAL" | "CANCELLED" {
@@ -136,12 +146,14 @@ export default function DispatchBookingsIndex() {
     _r?: string | string[];
     result?: string | string[];
     resultHeaderId?: string | string[];
+    resultMessage?: string | string[];
   }>();
 
   const routeStatus = parseStatusParam(routeParams.status);
   const routeRefreshToken = Array.isArray(routeParams._r) ? routeParams._r[0] : routeParams._r;
   const routeResult = parseResultParam(routeParams.result);
   const routeResultHeaderId = parseIntParam(routeParams.resultHeaderId);
+  const routeResultMessage = parseTextParam(routeParams.resultMessage);
 
   const { session, ready } = useCurrentUser();
   const defaultWhId =
@@ -271,7 +283,8 @@ export default function DispatchBookingsIndex() {
   useEffect(() => {
     if (!routeRefreshToken) return;
 
-    const eventKey = `${routeRefreshToken}|${routeStatus ?? ""}|${routeResult ?? ""}|${routeResultHeaderId ?? ""}`;
+    const eventKey =
+      `${routeRefreshToken}|${routeStatus ?? ""}|${routeResult ?? ""}|${routeResultHeaderId ?? ""}|${routeResultMessage ?? ""}`;
     if (handledRouteEventRef.current === eventKey) return;
 
     if (routeStatus && status !== routeStatus) {
@@ -285,6 +298,16 @@ export default function DispatchBookingsIndex() {
     listQ?.clearStatus?.();
     refreshList().catch(() => { });
 
+    if (routeResult === "DRAFT_DELETED") {
+      setResultPopup({
+        visible: true,
+        kind: "success",
+        title: "Draft obrisan",
+        message: "Draft dokument je uspješno obrisan.",
+        linkHeaderId: null,
+      });
+    }
+
     if (routeResult === "STORNO_OK") {
       setResultPopup({
         visible: true,
@@ -294,11 +317,22 @@ export default function DispatchBookingsIndex() {
         linkHeaderId: routeResultHeaderId,
       });
     }
+
+    if (routeResult === "POST_OK") {
+      setResultPopup({
+        visible: true,
+        kind: "success",
+        title: "Knjiženje uspješno",
+        message: routeResultMessage ?? "Dokument je uspješno knjižen.",
+        linkHeaderId: routeResultHeaderId,
+      });
+    }
   }, [
     routeRefreshToken,
     routeStatus,
     routeResult,
     routeResultHeaderId,
+    routeResultMessage,
     status,
     closePickers,
     listQ,
@@ -525,7 +559,7 @@ export default function DispatchBookingsIndex() {
 
             {dateActive ? (
               <Pressable
-                onPressIn={(e) => e.stopPropagation?.()}
+                onPressIn={(e) => (e as any)?.stopPropagation?.()}
                 onPress={() => {
                   setDateFromIso(null);
                   setDateToIso(null);

@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import Colors from "@/src/constants/Colors";
 
 export function CenterSheet({
@@ -16,7 +16,7 @@ export function CenterSheet({
   onClose: () => void;
   children: React.ReactNode;
   width?: number;
-  closeOnBackdrop?: boolean; 
+  closeOnBackdrop?: boolean;
   disableClose?: boolean;
 }) {
   const canClose = !disableClose;
@@ -38,11 +38,16 @@ export function CenterSheet({
       <View style={s.backdropWrap}>
         <Pressable
           style={s.backdrop}
-          onPress={backdropCloses ? handleClose : undefined}
-          pointerEvents={backdropCloses ? "auto" : "none"}
+          onPress={() => {
+            Keyboard.dismiss();
+            if (backdropCloses) handleClose();
+          }}
         />
 
         <View style={s.centerWrap} pointerEvents="box-none">
+          {/* ✅ tap anywhere in the modal area (outside inputs) -> dismiss keyboard */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={Keyboard.dismiss} />
+
           <View style={[s.card, { maxWidth: width }]}>
             <View style={s.header}>
               <Text style={s.title}>{title}</Text>
@@ -57,7 +62,10 @@ export function CenterSheet({
               </Pressable>
             </View>
 
-            <View style={s.body}>{children}</View>
+            {/* ✅ prevent this area from being “eaten” by the dismiss-pressable */}
+            <View style={s.body} pointerEvents="box-none">
+              <View pointerEvents="auto">{children}</View>
+            </View>
           </View>
         </View>
       </View>

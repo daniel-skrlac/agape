@@ -4,7 +4,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
 import Colors from "@/src/constants/Colors";
-import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
+import { useCurrentUser } from "../src/api/hooks/common/useCurrentUser";
 
 export default function RequireMainWarehouse({ children }: { children: React.ReactNode }) {
   const router = useRouter();

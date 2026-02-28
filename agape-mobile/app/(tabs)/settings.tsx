@@ -8,15 +8,15 @@ import { ErrorCard } from "@/components/ErrorCard";
 
 import Strings from "@/src/constants/Strings";
 
-import { useCurrentUser } from "@/app/api/hooks/common/useCurrentUser";
-import { usePullToRefresh } from "@/app/api/hooks/common/usePullToRefresh";
-import { useWarehouses } from "@/app/api/hooks/dashboard/useWarehouses";
-import { useMainWarehouseSettingsForm } from "../api/hooks/settings/useSettingsForm";
+import { useCurrentUser } from "../../src/api/hooks/common/useCurrentUser";
+import { usePullToRefresh } from "../../src/api/hooks/common/usePullToRefresh";
+import { useWarehouses } from "../../src/api/hooks/dashboard/useWarehouses";
+import { useMainWarehouseSettingsForm } from "../../src/api/hooks/settings/useSettingsForm";
 
 import WarehousePickerCard from "@/components/WarehousePickerCard";
 
-import { styles as S } from "./styles/SettingsScreen.styles";
-import { toUserMessage } from "../api/apiClient";
+import { styles as S } from "../../src/styles/SettingsScreen.styles";
+import { toUserMessage } from "../../src/api/apiClient";
 
 export default function SettingsScreen() {
   const { session, ready } = useCurrentUser();
