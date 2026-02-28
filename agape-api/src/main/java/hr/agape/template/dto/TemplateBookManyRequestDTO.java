@@ -23,6 +23,8 @@ public class TemplateBookManyRequestDTO {
 
     private LocalDate documentDate;
 
+    private String note;
+
     @NotNull
     private DraftMode draftMode;
 

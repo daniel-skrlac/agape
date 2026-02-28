@@ -9,6 +9,7 @@ import lombok.Setter;
 public class BookingSessionEntryResponseDTO {
     private Long id;
     private Long partnerId;
+    private String partnerName;
     private Long templateId;
     private DraftMode draftMode;
     private Object docPatches;

@@ -17,6 +17,7 @@ import jakarta.transaction.TransactionSynchronizationRegistry;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
@@ -109,6 +110,35 @@ public class PartnerService {
         } catch (Exception e) {
             tsr.setRollbackOnly();
             return ServiceResponseDirector.errorInternal("Failed to search partners: " + e.getMessage());
+        }
+    }
+
+    public Map<Long, PartnerResponseDTO> findPartnersByIds(List<Long> partnerIds) {
+        try {
+            if (partnerIds == null || partnerIds.isEmpty()) {
+                return Map.of();
+            }
+
+            List<Long> ids = partnerIds.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            if (ids.isEmpty()) {
+                return Map.of();
+            }
+
+            return repo.findPartnersByIds(ids).stream()
+                    .map(mapper::toResponse)
+                    .filter(x -> x.getId() != null)
+                    .collect(java.util.stream.Collectors.toMap(
+                            PartnerResponseDTO::getId,
+                            x -> x,
+                            (a, b) -> a,
+                            java.util.LinkedHashMap::new
+                    ));
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 }

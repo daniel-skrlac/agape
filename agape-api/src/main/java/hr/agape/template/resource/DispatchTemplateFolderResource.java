@@ -7,6 +7,7 @@ import hr.agape.template.dto.FolderCopyRequestDTO;
 import hr.agape.template.dto.FolderCreateRequestDTO;
 import hr.agape.template.dto.FolderMoveRequestDTO;
 import hr.agape.template.dto.FolderRenameRequestDTO;
+import hr.agape.template.dto.FolderSearchFilter;
 import hr.agape.template.service.DispatchTemplateFolderService;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.RequestScoped;
@@ -45,6 +46,12 @@ public class DispatchTemplateFolderResource {
             @BeanParam @Valid BaseSearchFilter paging
     ) {
         return Responses.from(service.listFolders(parentId, paging));
+    }
+
+    @GET
+    @Path("/root")
+    public Response listRootFolders(@BeanParam @Valid FolderSearchFilter filter) {
+        return Responses.from(service.listRootFolders(filter));
     }
 
     @GET

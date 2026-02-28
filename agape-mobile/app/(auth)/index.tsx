@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
@@ -10,6 +11,7 @@ import FormCard from "@/components/ui/FormCard";
 import TabScroll from "@/components/ui/TabScroll";
 
 import Strings from "@/src/constants/Strings";
+import Colors from "@/src/constants/Colors";
 
 import { getToken } from "../../src/api/sessionStore";
 import { ErrorCard } from "@/components/ErrorCard";
@@ -21,6 +23,7 @@ export default function Index() {
     const form = useLoginForm();
 
     const [checkingAuth, setCheckingAuth] = useState(true);
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         let mounted = true;
@@ -90,18 +93,31 @@ export default function Index() {
                                     onBlur={() => form.markTouched("username")}
                                     returnKeyType="next"
                                 />
-                                {!!form.errors.usernameError && <Text style={styles.fieldError}>{form.errors.usernameError}</Text>}
+                                {!!form.errors.usernameError && (
+                                    <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
+                                )}
 
                                 <TextField
                                     label={Strings.auth.passwordLabel}
                                     placeholder={Strings.auth.passwordPlaceholder}
-                                    secureTextEntry
+                                    secureTextEntry={!showPassword}
                                     value={form.values.password}
                                     onChangeText={form.setPassword}
                                     onBlur={() => form.markTouched("password")}
                                     returnKeyType="done"
+                                    right={
+                                        <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
+                                            <FontAwesome
+                                                name={showPassword ? "eye-slash" : "eye"}
+                                                size={18}
+                                                color={Colors.light.inputPlaceholder}
+                                            />
+                                        </Pressable>
+                                    }
                                 />
-                                {!!form.errors.passwordError && <Text style={styles.fieldError}>{form.errors.passwordError}</Text>}
+                                {!!form.errors.passwordError && (
+                                    <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
+                                )}
                             </View>
                         </FormCard>
                     </View>

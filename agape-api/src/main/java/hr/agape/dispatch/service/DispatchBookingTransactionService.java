@@ -195,7 +195,6 @@ public class DispatchBookingTransactionService {
         });
     }
 
-
     /**
      * REQUIRED:
      * Cancel already posted document (simple UPDATE).

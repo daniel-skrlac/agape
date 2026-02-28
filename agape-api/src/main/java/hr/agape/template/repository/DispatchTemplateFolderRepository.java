@@ -2,10 +2,10 @@ package hr.agape.template.repository;
 
 import hr.agape.template.domain.DispatchTemplateFolderEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
-import io.quarkus.panache.common.Page;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.TypedQuery;
 
 import java.util.List;
 
@@ -15,37 +15,114 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
     @PersistenceContext
     EntityManager em;
 
-    public long countChildren(Long ownerUserId, Long parentId) {
+    public long countChildren(Long ownerUserId, Long parentId, String q) {
+        StringBuilder jpql = new StringBuilder("""
+                SELECT COUNT(f.id)
+                FROM DispatchTemplateFolderEntity f
+                WHERE f.owner.id = :ownerUserId
+                """);
+
         if (parentId == null) {
-            return count("owner.id = ?1 AND parent IS NULL", ownerUserId);
+            jpql.append(" AND f.parent IS NULL ");
+        } else {
+            jpql.append(" AND f.parent.id = :parentId ");
         }
-        return count("owner.id = ?1 AND parent.id = ?2", ownerUserId, parentId);
+
+        if (q != null && !q.isBlank()) {
+            jpql.append(" AND LOWER(COALESCE(f.name, '')) LIKE :q ");
+        }
+
+        TypedQuery<Long> query = em.createQuery(jpql.toString(), Long.class)
+                .setParameter("ownerUserId", ownerUserId);
+
+        if (parentId != null) {
+            query.setParameter("parentId", parentId);
+        }
+
+        if (q != null && !q.isBlank()) {
+            query.setParameter("q", "%" + q.trim().toLowerCase() + "%");
+        }
+
+        return query.getSingleResult();
     }
 
-    public List<DispatchTemplateFolderEntity> pageChildren(Long ownerUserId, Long parentId, int page, int size) {
-        if (parentId == null) {
-            return find("""
-                    SELECT f
-                    FROM DispatchTemplateFolderEntity f
-                    LEFT JOIN FETCH f.parent
-                    WHERE f.owner.id = ?1
-                      AND f.parent IS NULL
-                    ORDER BY LOWER(f.name) ASC, f.id ASC
-                    """, ownerUserId)
-                    .page(Page.of(page, size))
-                    .list();
-        }
-
-        return find("""
+    public List<DispatchTemplateFolderEntity> pageChildren(Long ownerUserId, Long parentId, String q, int page, int size) {
+        StringBuilder jpql = new StringBuilder("""
                 SELECT f
                 FROM DispatchTemplateFolderEntity f
                 LEFT JOIN FETCH f.parent
-                WHERE f.owner.id = ?1
-                  AND f.parent.id = ?2
-                ORDER BY LOWER(f.name) ASC, f.id ASC
-                """, ownerUserId, parentId)
-                .page(Page.of(page, size))
-                .list();
+                WHERE f.owner.id = :ownerUserId
+                """);
+
+        if (parentId == null) {
+            jpql.append(" AND f.parent IS NULL ");
+        } else {
+            jpql.append(" AND f.parent.id = :parentId ");
+        }
+
+        if (q != null && !q.isBlank()) {
+            jpql.append(" AND LOWER(COALESCE(f.name, '')) LIKE :q ");
+        }
+
+        jpql.append(" ORDER BY LOWER(COALESCE(f.name, '')) ASC, f.id ASC ");
+
+        TypedQuery<DispatchTemplateFolderEntity> query = em.createQuery(
+                jpql.toString(),
+                DispatchTemplateFolderEntity.class
+        ).setParameter("ownerUserId", ownerUserId);
+
+        if (parentId != null) {
+            query.setParameter("parentId", parentId);
+        }
+
+        if (q != null && !q.isBlank()) {
+            query.setParameter("q", "%" + q.trim().toLowerCase() + "%");
+        }
+
+        query.setFirstResult(page * size);
+        query.setMaxResults(size);
+
+        return query.getResultList();
+    }
+
+    public List<DispatchTemplateFolderEntity> listChildren(Long ownerUserId, Long parentId, String q) {
+        StringBuilder jpql = new StringBuilder("""
+                SELECT f
+                FROM DispatchTemplateFolderEntity f
+                LEFT JOIN FETCH f.parent
+                WHERE f.owner.id = :ownerUserId
+                """);
+
+        if (parentId == null) {
+            jpql.append(" AND f.parent IS NULL ");
+        } else {
+            jpql.append(" AND f.parent.id = :parentId ");
+        }
+
+        if (q != null && !q.isBlank()) {
+            jpql.append(" AND LOWER(COALESCE(f.name, '')) LIKE :q ");
+        }
+
+        jpql.append(" ORDER BY LOWER(COALESCE(f.name, '')) ASC, f.id ASC ");
+
+        TypedQuery<DispatchTemplateFolderEntity> query = em.createQuery(
+                jpql.toString(),
+                DispatchTemplateFolderEntity.class
+        ).setParameter("ownerUserId", ownerUserId);
+
+        if (parentId != null) {
+            query.setParameter("parentId", parentId);
+        }
+
+        if (q != null && !q.isBlank()) {
+            query.setParameter("q", "%" + q.trim().toLowerCase() + "%");
+        }
+
+        return query.getResultList();
+    }
+
+    public List<DispatchTemplateFolderEntity> listRootChildren(Long ownerUserId, String q) {
+        return listChildren(ownerUserId, null, q);
     }
 
     public List<DispatchTemplateFolderEntity> listTreeForOwner(Long ownerUserId) {
@@ -56,7 +133,7 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
                 WHERE f.owner.id = ?1
                 ORDER BY
                     CASE WHEN f.parent IS NULL THEN 0 ELSE 1 END,
-                    LOWER(f.name),
+                    LOWER(COALESCE(f.name, '')),
                     f.id
                 """, ownerUserId)
                 .list();
@@ -118,5 +195,13 @@ public class DispatchTemplateFolderRepository implements PanacheRepository<Dispa
                 .setParameter(2, parentId)
                 .setParameter(3, excludeFolderId)
                 .getResultList();
+    }
+
+    public long countChildren(Long ownerUserId, Long parentId) {
+        return countChildren(ownerUserId, parentId, null);
+    }
+
+    public List<DispatchTemplateFolderEntity> pageChildren(Long ownerUserId, Long parentId, int page, int size) {
+        return pageChildren(ownerUserId, parentId, null, page, size);
     }
 }

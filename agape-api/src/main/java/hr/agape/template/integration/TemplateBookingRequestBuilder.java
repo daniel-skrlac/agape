@@ -24,6 +24,7 @@ public class TemplateBookingRequestBuilder {
             Long warehouseId,
             Long partnerId,
             boolean draft,
+            String entryNote,
             List<TemplateBookDocPatchDTO> docPatches,
             List<TemplateBookItemDTO> extraItems,
             DispatchTemplateEntity template
@@ -45,14 +46,7 @@ public class TemplateBookingRequestBuilder {
                 throw new IllegalArgumentException("Document " + doc.getDocumentId() + " has no items after overrides.");
             }
 
-            out.add(toDispatchRequest(
-                    warehouseId,
-                    partnerId,
-                    draft,
-                    doc,
-                    patch,
-                    qtyByItemId
-            ));
+            out.add(toDispatchRequest(warehouseId, partnerId, draft, entryNote, doc, qtyByItemId));
         }
 
         return out;
@@ -135,8 +129,8 @@ public class TemplateBookingRequestBuilder {
             Long warehouseId,
             Long partnerId,
             boolean draft,
+            String entryNote,
             DispatchTemplateDocEntity doc,
-            TemplateBookDocPatchDTO patch,
             Map<Long, BigDecimal> qtyByItemId
     ) {
         DispatchRequestDTO dr = new DispatchRequestDTO();
@@ -145,7 +139,7 @@ public class TemplateBookingRequestBuilder {
         dr.setWarehouseId(warehouseId);
         dr.setDraft(draft);
 
-        dr.setNote(resolveNote(doc, patch));
+        dr.setNote(resolveNote(entryNote, doc));
 
         List<DispatchRequestDTO.DispatchItemRequest> items = new ArrayList<>();
         for (Map.Entry<Long, BigDecimal> e : qtyByItemId.entrySet()) {
@@ -154,15 +148,22 @@ public class TemplateBookingRequestBuilder {
             line.setQuantity(e.getValue().doubleValue());
             items.add(line);
         }
-
         dr.setItems(items);
         return dr;
     }
 
-    private String resolveNote(DispatchTemplateDocEntity doc, TemplateBookDocPatchDTO patch) {
-        if (patch != null && doc.getDefaultNote() != null) {
-            return doc.getDefaultNote();
+    private String resolveNote(String entryNote, DispatchTemplateDocEntity doc) {
+        String n = entryNote == null ? null : entryNote.trim();
+        if (n != null && !n.isEmpty()) {
+            return n;
         }
+
+        String def = doc == null ? null : doc.getDefaultNote();
+        def = def == null ? null : def.trim();
+        if (def != null && !def.isEmpty()) {
+            return def;
+        }
+
         return null;
     }
 }

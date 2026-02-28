@@ -23,10 +23,7 @@ import { toUserMessage } from "../../../src/api/apiClient";
 import { toLocalDateString, fmtHrFromIso } from "@/src/utils/dateIso";
 import { useCurrentUser } from "../../../src/api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "../../../src/api/hooks/common/usePullToRefresh";
-import type {
-  BookingSessionCreateRequestDTO,
-  BookingSessionResponseDTO,
-} from "@/src/models/generated";
+import type { BookingSessionCreateRequestDTO, BookingSessionResponseDTO } from "@/src/models/generated";
 import {
   useBookingSessions,
   useCancelBookingSession,
@@ -48,10 +45,7 @@ type ResultPopupState = {
 
 function cleanText(v: unknown) {
   const x = String(v ?? "").trim();
-  if (
-    x.length >= 2 &&
-    ((x.startsWith('"') && x.endsWith('"')) || (x.startsWith("'") && x.endsWith("'")))
-  ) {
+  if (x.length >= 2 && ((x.startsWith('"') && x.endsWith('"')) || (x.startsWith("'") && x.endsWith("'")))) {
     return x.slice(1, -1);
   }
   return x;
@@ -124,8 +118,7 @@ function formatDateTimeHr(v: unknown): string | null {
 
 export default function SessionsIndex() {
   const { session } = useCurrentUser();
-  const warehouseId =
-    session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
+  const warehouseId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
 
   const [filter, setFilter] = useState<SessionFilter>("ALL");
 
@@ -252,7 +245,7 @@ export default function SessionsIndex() {
         visible: true,
         kind: "success",
         title: "Evidencija kreirana",
-        message: `Kreirana je evidencija "${cleanText(created?.title) || title.trim()}".`,
+        message: `Kreirana je evidencija "${cleanText((created as any)?.title) || title.trim()}".`,
       });
 
       await Promise.resolve(listQ.refresh?.());
@@ -387,6 +380,36 @@ export default function SessionsIndex() {
           </View>
         )}
 
+        <View
+          style={[
+            s.heroCard,
+            {
+              paddingVertical: 14,
+              paddingHorizontal: 14,
+            },
+          ]}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.title, { marginBottom: 2 }]} numberOfLines={1}>
+                Evidencije
+              </Text>
+              <Text style={[s.sub, { opacity: 0.9 }]} numberOfLines={1}>
+                Upravljaj evidencijama
+              </Text>
+            </View>
+
+            <Pressable
+              style={[s.addBtn, { flexDirection: "row", alignItems: "center", gap: 8 }]}
+              onPress={openCreate}
+              hitSlop={10}
+            >
+              <FontAwesome name="plus" size={14} color="#fff" />
+              <Text style={s.addBtnText}>Nova</Text>
+            </Pressable>
+          </View>
+        </View>
+
         <View style={s.filterWrap}>
           <View style={s.searchWrap}>
             <FontAwesome name="search" size={14} color={Colors.sub} />
@@ -419,7 +442,7 @@ export default function SessionsIndex() {
 
               {dateActive ? (
                 <Pressable
-                  onPressIn={(e) => e.stopPropagation?.()}
+                  onPressIn={(e) => (e as any)?.stopPropagation?.()}
                   onPress={() => {
                     setDateFromIso(null);
                     setDateToIso(null);
@@ -461,9 +484,7 @@ export default function SessionsIndex() {
             style={s.list}
             data={sessions}
             keyExtractor={(x) => String((x as any)?.id)}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             onEndReachedThreshold={0.35}
             onEndReached={() => {
               if (!sessions.length) return;
@@ -479,18 +500,15 @@ export default function SessionsIndex() {
               const n = cleanDescription((item as any)?.note);
 
               const updatedAt =
-                formatDateTimeHr((item as any)?.updatedAt) ||
-                formatDateTimeHr((item as any)?.dateModified);
+                formatDateTimeHr((item as any)?.updatedAt) || formatDateTimeHr((item as any)?.dateModified);
 
               const createdAt =
-                formatDateTimeHr((item as any)?.createdAt) ||
-                formatDateTimeHr((item as any)?.dateCreated);
+                formatDateTimeHr((item as any)?.createdAt) || formatDateTimeHr((item as any)?.dateCreated);
 
               const canMutate = status === "DRAFT";
               const av = initials(t || `#${id}`);
 
-              const anyBusy =
-                createM.isPending || cancelM.isPending || deleteM.isPending || refreshing;
+              const anyBusy = createM.isPending || cancelM.isPending || deleteM.isPending || refreshing;
 
               const open = () =>
                 router.push({
@@ -556,9 +574,7 @@ export default function SessionsIndex() {
                       disabled={!canMutate || anyBusy}
                     >
                       <FontAwesome name="ban" size={13} color={Colors.text} />
-                      <Text style={s.cancelActionBtnText}>
-                        {canMutate ? "Otkaži" : "Zaključ."}
-                      </Text>
+                      <Text style={s.cancelActionBtnText}>{canMutate ? "Otkaži" : "Zaključ."}</Text>
                     </Pressable>
 
                     <Pressable
@@ -567,9 +583,7 @@ export default function SessionsIndex() {
                       disabled={!canMutate || anyBusy}
                     >
                       <FontAwesome name="trash" size={13} color={Colors.dangerText} />
-                      <Text style={s.dangerBtnText}>
-                        {canMutate ? "Obriši" : "Zaključ."}
-                      </Text>
+                      <Text style={s.dangerBtnText}>{canMutate ? "Obriši" : "Zaključ."}</Text>
                     </Pressable>
                   </View>
                 </Pressable>
@@ -579,20 +593,6 @@ export default function SessionsIndex() {
               <View style={s.emptyCard}>
                 <FontAwesome name="inbox" size={18} color={Colors.sub} />
                 <Text style={s.emptyTitle}>Nema evidencija</Text>
-                <Text style={s.emptySub}>
-                  {q.trim()
-                    ? "Nijedna evidencija ne odgovara pretrazi."
-                    : dateActive
-                      ? "Nema evidencija za odabrani period."
-                      : "Kreiraj novu evidenciju za početak."}
-                </Text>
-
-                {!q.trim() && !dateActive && (
-                  <Pressable style={s.addBtn} onPress={openCreate}>
-                    <FontAwesome name="plus" size={14} color="#fff" />
-                    <Text style={s.addBtnText}>Nova evidencija</Text>
-                  </Pressable>
-                )}
               </View>
             }
             ListFooterComponent={
@@ -675,16 +675,8 @@ export default function SessionsIndex() {
             editable={!createM.isPending}
           />
 
-          <Pressable
-            style={[s.createBtn, !canCreate && s.disabled]}
-            disabled={!canCreate}
-            onPress={handleCreate}
-          >
-            {createM.isPending ? (
-              <ActivityIndicator />
-            ) : (
-              <Text style={s.createBtnText}>Kreiraj</Text>
-            )}
+          <Pressable style={[s.createBtn, !canCreate && s.disabled]} disabled={!canCreate} onPress={handleCreate}>
+            {createM.isPending ? <ActivityIndicator /> : <Text style={s.createBtnText}>Kreiraj</Text>}
           </Pressable>
 
           <Pressable

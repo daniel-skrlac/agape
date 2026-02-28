@@ -231,6 +231,7 @@ public class DispatchTemplateService {
                     req.getWarehouseId(),
                     req.getPartnerId(),
                     draft,
+                    req.getNote(),          // ✅ NEW
                     req.getDocPatches(),
                     req.getExtraItems(),
                     t
@@ -263,6 +264,7 @@ public class DispatchTemplateService {
                         req.getWarehouseId(),
                         partnerId,
                         draft,
+                        req.getNote(),
                         req.getDocPatches(),
                         req.getExtraItems(),
                         t

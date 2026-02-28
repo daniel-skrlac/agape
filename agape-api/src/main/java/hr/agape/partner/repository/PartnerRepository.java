@@ -15,6 +15,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 //PARTNERI
 @ApplicationScoped
@@ -64,6 +65,55 @@ public class PartnerRepository {
                 """;
 
         return jdbc.queryOne(sql, ps -> ps.setLong(1, id), PartnerRepository::mapRowToEntity);
+    }
+
+    public List<PartnerEntity> findPartnersByIds(List<Long> partnerIds) throws SQLException {
+        if (partnerIds == null || partnerIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> ids = partnerIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        String placeholders = ids.stream()
+                .map(x -> "?")
+                .collect(java.util.stream.Collectors.joining(","));
+
+        final String sql = """
+                SELECT
+                  p.PARTNER_ID,
+                  p.KORISNIK_ID,
+                  p.STATUSID,
+                  p.PARTNERID,
+                  p.OIB,
+                  p.NAZIV,
+                  p.ADRESA,
+                  p.PTTBROJ,
+                  p.PTTMJESTO,
+                  NVL(p.AKTIVAN,1) AS AKTIVAN,
+                  p.DATUM_IZRADE,
+                  p.DATUM_IZMJENE
+                FROM PARTNERI p
+                WHERE p.PARTNER_ID IN (%s)
+                ORDER BY LOWER(p.NAZIV), p.PARTNER_ID
+                """.formatted(placeholders);
+
+        return jdbc.query(
+                sql,
+                ps -> {
+                    int i = 1;
+                    for (Long id : ids) {
+                        ps.setLong(i++, id);
+                    }
+                },
+                PartnerRepository::mapRowToEntity
+        );
     }
 
     public PartnerEntity insert(PartnerEntity in) throws SQLException {

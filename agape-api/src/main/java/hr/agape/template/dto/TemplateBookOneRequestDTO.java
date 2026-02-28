@@ -24,6 +24,8 @@ public class TemplateBookOneRequestDTO {
 
     private Boolean draftOverride;
 
+    private String note;
+
     @NotNull
     private DraftMode draftMode;
 

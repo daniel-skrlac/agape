@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
 import Screen from "@/components/ui/Screen";
@@ -11,12 +12,15 @@ import TextField from "@/components/ui/TextField";
 import { ErrorCard } from "@/components/ErrorCard";
 
 import Strings from "@/src/constants/Strings";
+import Colors from "@/src/constants/Colors";
 import { useRegisterForm } from "../../src/api/hooks/auth/useRegisterForm";
 import { styles } from "../../src/styles/RegisterScreen.styles";
 
 export default function RegisterScreen() {
   const router = useRouter();
   const form = useRegisterForm();
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleRegister = async () => {
     const res = await form.submit();
@@ -55,7 +59,9 @@ export default function RegisterScreen() {
                   onBlur={() => form.markTouched("fullName")}
                   returnKeyType="next"
                 />
-                {!!form.errors.fullNameError && <Text style={styles.fieldError}>{form.errors.fullNameError}</Text>}
+                {!!form.errors.fullNameError && (
+                  <Text style={styles.fieldError}>{form.errors.fullNameError}</Text>
+                )}
 
                 <TextField
                   label={Strings.auth.oibLabel ?? "OIB:"}
@@ -66,7 +72,9 @@ export default function RegisterScreen() {
                   keyboardType="number-pad"
                   returnKeyType="next"
                 />
-                {!!form.errors.oibError && <Text style={styles.fieldError}>{form.errors.oibError}</Text>}
+                {!!form.errors.oibError && (
+                  <Text style={styles.fieldError}>{form.errors.oibError}</Text>
+                )}
 
                 <TextField
                   label={Strings.auth.usernameLabel}
@@ -77,18 +85,31 @@ export default function RegisterScreen() {
                   onBlur={() => form.markTouched("username")}
                   returnKeyType="next"
                 />
-                {!!form.errors.usernameError && <Text style={styles.fieldError}>{form.errors.usernameError}</Text>}
+                {!!form.errors.usernameError && (
+                  <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
+                )}
 
                 <TextField
                   label={Strings.auth.passwordLabel}
                   placeholder={Strings.auth.passwordPlaceholder}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   value={form.values.password}
                   onChangeText={form.setPassword}
                   onBlur={() => form.markTouched("password")}
                   returnKeyType="done"
+                  right={
+                    <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
+                      <FontAwesome
+                        name={showPassword ? "eye-slash" : "eye"}
+                        size={18}
+                        color={Colors.light.inputPlaceholder}
+                      />
+                    </Pressable>
+                  }
                 />
-                {!!form.errors.passwordError && <Text style={styles.fieldError}>{form.errors.passwordError}</Text>}
+                {!!form.errors.passwordError && (
+                  <Text style={styles.fieldError}>{form.errors.passwordError}</Text>
+                )}
               </View>
             </FormCard>
           </View>

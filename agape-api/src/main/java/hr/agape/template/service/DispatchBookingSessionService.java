@@ -1,7 +1,6 @@
 package hr.agape.template.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import hr.agape.common.dto.BaseSearchFilter;
 import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
@@ -9,6 +8,8 @@ import hr.agape.common.util.JsonUtil;
 import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.service.DispatchBookingService;
+import hr.agape.partner.dto.PartnerResponseDTO;
+import hr.agape.partner.service.PartnerService;
 import hr.agape.template.domain.DispatchBookingSessionEntity;
 import hr.agape.template.domain.DispatchBookingSessionEntryEntity;
 import hr.agape.template.domain.DispatchTemplateEntity;
@@ -59,6 +60,8 @@ public class DispatchBookingSessionService {
     private final DispatchBookingService oracleBooking;
     private final BookingSessionMapper mapper;
 
+    private final PartnerService partnerService;
+
     @Inject
     public DispatchBookingSessionService(
             AuthUtil authUtil, JsonUtil jsonUtil,
@@ -67,7 +70,7 @@ public class DispatchBookingSessionService {
             DispatchBookingSessionEntryRepository entryRepo,
             DispatchTemplateRepository templateRepo, TemplateBookingRequestBuilder bookingRequestBuilder,
             DispatchBookingService oracleBooking,
-            BookingSessionMapper mapper
+            BookingSessionMapper mapper, PartnerService partnerService
     ) {
         this.authUtil = authUtil;
         this.jsonUtil = jsonUtil;
@@ -78,6 +81,7 @@ public class DispatchBookingSessionService {
         this.bookingRequestBuilder = bookingRequestBuilder;
         this.oracleBooking = oracleBooking;
         this.mapper = mapper;
+        this.partnerService = partnerService;
     }
 
     public ServiceResponseDTO<PagedResultDTO<BookingSessionResponseDTO>> listSessions(BookingSessionsQueryDTO q) {
@@ -195,7 +199,8 @@ public class DispatchBookingSessionService {
             List<DispatchBookingSessionEntryEntity> entries = entryRepo.listForSession(sessionId);
 
             BookingSessionResponseDTO dto = mapper.toDto(s);
-            dto.setEntries(entries.stream().map(mapper::toDto).toList());
+            dto.setEntries(toEntryDtosWithPartnerMeta(entries));
+
             return ServiceResponseDirector.successOk(dto, "OK");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to fetch session.");
@@ -328,14 +333,17 @@ public class DispatchBookingSessionService {
 
                 boolean draft = e.getDraftMode().asDraftFlag();
 
-                List<TemplateBookDocPatchDTO> patches = jsonUtil.readList(e.getDocPatchesJson(), new TypeReference<>() {});
-                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(e.getExtraItemsJson(), new TypeReference<>() {});
+                List<TemplateBookDocPatchDTO> patches = jsonUtil.readList(e.getDocPatchesJson(), new TypeReference<>() {
+                });
+                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(e.getExtraItemsJson(), new TypeReference<>() {
+                });
 
                 allRequests.addAll(
                         bookingRequestBuilder.buildRequestsForPartner(
                                 s.getWarehouseId(),
                                 e.getPartnerId(),
                                 draft,
+                                e.getNote(),
                                 patches,
                                 extraItems,
                                 t
@@ -377,5 +385,36 @@ public class DispatchBookingSessionService {
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to cancel session.");
         }
+    }
+
+    private List<BookingSessionEntryResponseDTO> toEntryDtosWithPartnerMeta(
+            List<DispatchBookingSessionEntryEntity> entries
+    ) {
+        if (entries == null || entries.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> partnerIds = entries.stream()
+                .map(DispatchBookingSessionEntryEntity::getPartnerId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, PartnerResponseDTO> partnerById = partnerService.findPartnersByIds(partnerIds);
+
+        return entries.stream()
+                .map(entry -> {
+                    BookingSessionEntryResponseDTO dto = mapper.toDto(entry);
+
+                    if (entry.getPartnerId() != null) {
+                        PartnerResponseDTO partner = partnerById.get(entry.getPartnerId());
+                        if (partner != null) {
+                            dto.setPartnerName(partner.getName());
+                        }
+                    }
+
+                    return dto;
+                })
+                .toList();
     }
 }

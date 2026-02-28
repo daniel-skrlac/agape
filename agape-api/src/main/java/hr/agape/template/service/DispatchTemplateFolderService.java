@@ -13,6 +13,7 @@ import hr.agape.template.dto.FolderCreateRequestDTO;
 import hr.agape.template.dto.FolderMoveRequestDTO;
 import hr.agape.template.dto.FolderRenameRequestDTO;
 import hr.agape.template.dto.FolderResponseDTO;
+import hr.agape.template.dto.FolderSearchFilter;
 import hr.agape.template.mapper.DispatchTemplateFolderMapper;
 import hr.agape.template.repository.DispatchTemplateFolderRepository;
 import hr.agape.template.repository.DispatchTemplateRepository;
@@ -79,6 +80,22 @@ public class DispatchTemplateFolderService {
             return ServiceResponseDirector.successOk(result, "OK");
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to list folders.");
+        }
+    }
+
+    public ServiceResponseDTO<List<FolderResponseDTO>> listRootFolders(FolderSearchFilter f) {
+        try {
+            Long userId = authUtil.requireUserId();
+            String q = normalizeQ(f);
+
+            List<DispatchTemplateFolderEntity> list = folderRepo.listRootChildren(userId, q);
+
+            return ServiceResponseDirector.successOk(
+                    list.stream().map(folderMapper::toDto).toList(),
+                    "OK"
+            );
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to list root folders.");
         }
     }
 
@@ -399,5 +416,11 @@ public class DispatchTemplateFolderService {
         if (!Objects.equals(uniqueName, folder.getName())) {
             folder.setName(uniqueName);
         }
+    }
+
+    private String normalizeQ(FolderSearchFilter f) {
+        if (f == null || f.getQ() == null) return null;
+        String q = f.getQ().trim();
+        return q.isBlank() ? null : q;
     }
 }
