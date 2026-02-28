@@ -124,22 +124,6 @@ SQL\n\
       timeout: 3s
       retries: 30
 
-  oracle-post-bootstrap:
-    image: gvenzl/oracle-xe:11
-    depends_on:
-      oracle-impdp:
-        condition: service_completed_successfully
-    volumes:
-      - ./oracle/bootstrap:/bootstrap:ro
-    entrypoint:
-      [
-        "bash","-lc",
-        "sqlplus -s \"IN_WPRG/${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE\" @/bootstrap/create_agape_api.sql"
-      ]
-    environment:
-      ORACLE_APP_PASSWORD: ${ORACLE_APP_PASSWORD}
-    restart: "no"
-
 volumes:
   xe-data:
   pgdata:

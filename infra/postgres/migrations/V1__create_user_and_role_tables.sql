@@ -33,8 +33,7 @@ CREATE TABLE user_role
 );
 
 INSERT INTO role (name)
-VALUES ('USER')
-    ON CONFLICT (name) DO NOTHING;
+VALUES ('USER') ON CONFLICT (name) DO NOTHING;
 
 -- ------------------------------------------------------------
 -- TEMPLATE FOLDERS
@@ -43,7 +42,7 @@ CREATE TABLE dispatch_template_folder
 (
     id            BIGSERIAL PRIMARY KEY,
     owner_user_id BIGINT       NOT NULL REFERENCES app_user (id) ON DELETE CASCADE,
-    parent_id     BIGINT       REFERENCES dispatch_template_folder (id) ON DELETE CASCADE,
+    parent_id     BIGINT REFERENCES dispatch_template_folder (id) ON DELETE CASCADE,
     name          VARCHAR(160) NOT NULL,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
@@ -85,10 +84,10 @@ CREATE INDEX idx_dt_template_folder ON dispatch_template (folder_id);
 CREATE TABLE dispatch_template_doc
 (
     id           BIGSERIAL PRIMARY KEY,
-    template_id  BIGINT      NOT NULL REFERENCES dispatch_template (id) ON DELETE CASCADE,
-    sort_order   INT         NOT NULL DEFAULT 0,
-    document_id  BIGINT      NOT NULL,
-    draft        BOOLEAN     NOT NULL DEFAULT FALSE,
+    template_id  BIGINT  NOT NULL REFERENCES dispatch_template (id) ON DELETE CASCADE,
+    sort_order   INT     NOT NULL DEFAULT 0,
+    document_id  BIGINT  NOT NULL,
+    draft        BOOLEAN NOT NULL DEFAULT FALSE,
     default_note TEXT,
 
     CONSTRAINT ux_dt_doc_template_document UNIQUE (template_id, document_id)
@@ -160,35 +159,35 @@ CREATE INDEX idx_dt_share_shared_with ON dispatch_template_share (shared_with_us
 CREATE TABLE dispatch_booking_session
 (
     id            BIGSERIAL PRIMARY KEY,
-    owner_user_id BIGINT NOT NULL REFERENCES app_user (id) ON DELETE CASCADE,
+    owner_user_id BIGINT       NOT NULL REFERENCES app_user (id) ON DELETE CASCADE,
 
     title         VARCHAR(200) NOT NULL,
     note          TEXT,
 
-    warehouse_id  BIGINT NOT NULL,
+    warehouse_id  BIGINT       NOT NULL,
 
-    status        VARCHAR(20) NOT NULL DEFAULT 'DRAFT', -- DRAFT / FINALIZED / CANCELLED
+    status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT', -- DRAFT / FINALIZED / CANCELLED
 
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     finalized_at  TIMESTAMPTZ,
 
     final_result  JSONB
 );
 
-CREATE INDEX idx_dbs_owner ON dispatch_booking_session(owner_user_id);
-CREATE INDEX idx_dbs_status ON dispatch_booking_session(status);
+CREATE INDEX idx_dbs_owner ON dispatch_booking_session (owner_user_id);
+CREATE INDEX idx_dbs_status ON dispatch_booking_session (status);
 
 -- ------------------------------------------------------------
 -- BOOKING SESSION ENTRY (matches your entity exactly)
 -- ------------------------------------------------------------
 CREATE TABLE dispatch_booking_session_entry
 (
-    id            BIGSERIAL PRIMARY KEY,
-    session_id    BIGINT NOT NULL REFERENCES dispatch_booking_session(id) ON DELETE CASCADE,
+    id          BIGSERIAL PRIMARY KEY,
+    session_id  BIGINT NOT NULL REFERENCES dispatch_booking_session (id) ON DELETE CASCADE,
 
-    partner_id    BIGINT NOT NULL,
-    template_id   BIGINT NOT NULL REFERENCES dispatch_template(id) ON DELETE RESTRICT,
+    partner_id  BIGINT NOT NULL,
+    template_id BIGINT NOT NULL REFERENCES dispatch_template (id) ON DELETE RESTRICT,
 
     draft_mode    VARCHAR(10) NOT NULL,          -- EnumType.STRING
 
@@ -202,11 +201,17 @@ CREATE TABLE dispatch_booking_session_entry
     CONSTRAINT ux_dbse_session_partner UNIQUE (session_id, partner_id)
 );
 
-CREATE INDEX idx_dbse_session ON dispatch_booking_session_entry(session_id);
-CREATE INDEX idx_dbse_template ON dispatch_booking_session_entry(template_id);
+CREATE INDEX idx_dbse_session ON dispatch_booking_session_entry (session_id);
+CREATE INDEX idx_dbse_template ON dispatch_booking_session_entry (template_id);
 
 CREATE INDEX IF NOT EXISTS idx_dbs_owner_created_id
     ON dispatch_booking_session (owner_user_id, created_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_dbs_owner_status_created_id
     ON dispatch_booking_session (owner_user_id, status, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_dbse_session_id
+    ON dispatch_booking_session_entry (session_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_dt_share_shared_with_template
+    ON dispatch_template_share (shared_with_user_id, template_id);
