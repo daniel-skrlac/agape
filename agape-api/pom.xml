@@ -223,7 +223,7 @@
                                 <param>**.*DTO</param>
                             </classPatterns>
 
-                            <outputFile>${project.basedir}/../agape-mobile/app/models/generated.d.ts</outputFile>
+                            <outputFile>${project.basedir}/../agape-mobile/src/models/generated.d.ts</outputFile>
                         </configuration>
                     </execution>
                 </executions>

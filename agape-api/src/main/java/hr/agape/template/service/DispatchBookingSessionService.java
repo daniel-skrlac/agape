@@ -288,7 +288,7 @@ public class DispatchBookingSessionService {
         }
     }
 
-    @Transactional
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public ServiceResponseDTO<DispatchBulkResponseDTO> finalizeSession(Long sessionId) {
         try {
             Long userId = authUtil.requireUserId();
@@ -323,7 +323,6 @@ public class DispatchBookingSessionService {
 
             for (DispatchBookingSessionEntryEntity e : entries) {
                 DispatchTemplateEntity t = templateById.get(e.getTemplateId());
-
                 if (t == null) {
                     return ServiceResponseDirector.errorBadRequest("Template not accessible: " + e.getTemplateId());
                 }
@@ -333,10 +332,14 @@ public class DispatchBookingSessionService {
 
                 boolean draft = e.getDraftMode().asDraftFlag();
 
-                List<TemplateBookDocPatchDTO> patches = jsonUtil.readList(e.getDocPatchesJson(), new TypeReference<>() {
-                });
-                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(e.getExtraItemsJson(), new TypeReference<>() {
-                });
+                List<TemplateBookDocPatchDTO> patches = jsonUtil.readList(
+                        e.getDocPatchesJson(),
+                        new TypeReference<>() {}
+                );
+                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(
+                        e.getExtraItemsJson(),
+                        new TypeReference<>() {}
+                );
 
                 allRequests.addAll(
                         bookingRequestBuilder.buildRequestsForPartner(
@@ -352,14 +355,9 @@ public class DispatchBookingSessionService {
             }
 
             ServiceResponseDTO<DispatchBulkResponseDTO> res = oracleBooking.bookBulk(allRequests);
+            if (!res.isSuccess()) return res;
 
-            if (!res.isSuccess()) {
-                return res;
-            }
-
-            s.setStatus(BookingSessionStatus.FINALIZED);
-            s.setFinalResultJson(jsonUtil.write(res.getData()));
-            s.setFinalizedAt(OffsetDateTime.now(ZAGREB));
+            persistFinalization(sessionId, userId, res.getData());
 
             return res;
 
@@ -368,6 +366,21 @@ public class DispatchBookingSessionService {
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to finalize session.");
         }
+    }
+
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    void persistFinalization(Long sessionId, Long userId, DispatchBulkResponseDTO data) {
+        DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
+        if (s == null) {
+            return;
+        }
+        if (s.getStatus() != BookingSessionStatus.DRAFT) {
+            return;
+        }
+
+        s.setStatus(BookingSessionStatus.FINALIZED);
+        s.setFinalResultJson(jsonUtil.write(data));
+        s.setFinalizedAt(OffsetDateTime.now(ZAGREB));
     }
 
     @Transactional
