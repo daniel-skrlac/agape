@@ -317,7 +317,7 @@ function ValidateManyModal(props: {
     const minusPartners = rows.filter((r) => !!r.error || r.bad > 0 || r.warn > 0).length;
     const anyWarning = rows.some((r) => !!r.warning);
 
-    const anyBlocking = rows.some((r) => !!r.error || r.bad > 0); // still block confirm
+    const anyBlocking = rows.some((r) => !!r.error || r.bad > 0);
     return { okPartners, minusPartners, anyWarning, anyBlocking };
   }, [rows]);
 
@@ -328,11 +328,9 @@ function ValidateManyModal(props: {
       transparent
       visible={visible}
       animationType="fade"
-      // Android back button: allow closing only if not disabled
       onRequestClose={disableClose ? undefined : onClose}
     >
       <View style={vm.wrap}>
-        {/* IMPORTANT: backdrop click should NOT close */}
         <Pressable style={vm.backdrop} onPress={() => { }} />
 
         <View style={vm.card}>
