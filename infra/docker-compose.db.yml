@@ -1,7 +1,7 @@
 services:
   oracle-xe:
     image: gvenzl/oracle-xe:11
-    platform: linux/amd64
+    restart: unless-stopped
     environment:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD}
       APP_USER: ${ORACLE_APP_USER}
@@ -12,28 +12,17 @@ services:
       - ./oracle/dumps:/dumps
       - ./oracle/bootstrap:/bootstrap:ro
     healthcheck:
-      test: [ "CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XE" ]
+      test: ["CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XE"]
       interval: 15s
       timeout: 5s
       retries: 40
+      start_period: 30s
     ports:
       - "127.0.0.1:1521:1521"
-
-  oracle-ensure-user:
-    image: gvenzl/oracle-xe:11
-    depends_on:
-      oracle-xe:
-        condition: service_healthy
-    environment:
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
-    volumes:
-      - ./oracle/bootstrap:/bootstrap:ro
-    entrypoint:
-      [
-        "bash","-lc",
-        "sqlplus -s /nolog @/bootstrap/ensure_in_wprg.sql \"${ORACLE_PASSWORD}\""
-      ]
-    restart: "no"
+    networks:
+      infra_net:
+        aliases:
+          - oracle-xe
 
   oracle-impdp:
     image: gvenzl/oracle-xe:11
@@ -43,6 +32,7 @@ services:
     environment:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD}
       ORACLE_APP_USER: ${ORACLE_APP_USER}
+      ORACLE_APP_PASSWORD: ${ORACLE_APP_PASSWORD}
     volumes:
       - ./oracle/dumps:/dumps
     entrypoint:
@@ -54,18 +44,18 @@ services:
          CREATE OR REPLACE DIRECTORY dp_dir AS '/dumps';\n\
          GRANT READ, WRITE ON DIRECTORY dp_dir TO ${ORACLE_APP_USER};\n\
          SQL\n\
-         echo \"Running impdp for schema IN_WPRG (dump=data.DMP)...\"; \
+         echo 'Running impdp for schema IN_WPRG (dump=data.DMP)...'; \
          set +e; \
          impdp system/${ORACLE_PASSWORD}@//oracle-xe:1521/XE \\\n\
            directory=dp_dir \\\n\
            dumpfile=data.DMP \\\n\
            logfile=data.DMP_imp.log \\\n\
-           schemas=IN_WPRG; \
+           schemas=${ORACLE_APP_USER}; \
          imp_rc=$?; set -e; echo \"impdp exit code: $$imp_rc (continuing to recompile & validate)\"; \
-         echo 'Compile ALL views in IN_WPRG...'; \
+         echo 'Compile ALL views in schema...'; \
          set +H; \
          printf \"%s\\n\" \\\n\
-           \"CONNECT IN_WPRG/\\\"InWprgPass123!\\\"@//oracle-xe:1521/XE\" \\\n\
+           \"CONNECT ${ORACLE_APP_USER}/${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE\" \\\n\
            \"SET SERVEROUTPUT ON FEEDBACK OFF\" \\\n\
            \"BEGIN\" \\\n\
            \"  FOR r IN (SELECT object_name FROM user_objects WHERE object_type = 'VIEW') LOOP\" \\\n\
@@ -80,36 +70,48 @@ services:
          sqlplus -s /nolog @/tmp/compile_views.sql; \
          echo 'Recompile schema via DBMS_UTILITY.COMPILE_SCHEMA...'; \
          sqlplus -s /nolog <<SQL\n\
-         CONNECT system/\"${ORACLE_PASSWORD}\"@//oracle-xe:1521/XE\n\
+         CONNECT system/${ORACLE_PASSWORD}@//oracle-xe:1521/XE\n\
          BEGIN\n\
-           DBMS_UTILITY.COMPILE_SCHEMA(schema => 'IN_WPRG', compile_all => FALSE);\n\
+           DBMS_UTILITY.COMPILE_SCHEMA(schema => '${ORACLE_APP_USER}', compile_all => FALSE);\n\
          END;\n\
          /\n\
          EXIT\n\
 SQL\n\
-         echo 'Verify and fail if invalids remain...'; \
-         printf \"%s\\n\" \\\n\
-           \"CONNECT IN_WPRG/\\\"InWprgPass123!\\\"@//oracle-xe:1521/XE\" \\\n\
-           \"SET PAGES 200 LINES 200 TRIMS ON\" \\\n\
-           \"SPOOL /dumps/IN_WPRG_compile_errors.lst\" \\\n\
-           \"SELECT NAME, TYPE, LINE, POSITION, TEXT FROM USER_ERRORS ORDER BY NAME, SEQUENCE;\" \\\n\
-           \"SPOOL OFF\" \\\n\
-           \"WHENEVER SQLERROR EXIT SQL.SQLCODE\" \\\n\
-           \"DECLARE v_cnt NUMBER; BEGIN\" \\\n\
-           \"  SELECT COUNT(*) INTO v_cnt FROM user_objects WHERE status <> 'VALID';\" \\\n\
-           \"  IF v_cnt > 0 THEN\" \\\n\
-           \"    RAISE_APPLICATION_ERROR(-20000, 'Invalid objects remain in IN_WPRG: '||v_cnt||' (see /dumps/IN_WPRG_compile_errors.lst)');\" \\\n\
-           \"  END IF; END;\" \\\n\
-           \"/\" \\\n\
-           \"EXIT\" >/tmp/check_invalids.sql; \
-         sqlplus -s /nolog @/tmp/check_invalids.sql; \
-         echo 'Schema IN_WPRG is clean: no invalid objects.' \
+         echo 'Check invalid object count...'; \
+         sqlplus -s /nolog <<SQL\n\
+         CONNECT ${ORACLE_APP_USER}/${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE\n\
+         SET PAGES 200 LINES 200 TRIMS ON\n\
+         PROMPT -> Invalid objects in ${ORACLE_APP_USER}:\n\
+         SELECT COUNT(*) AS invalid_cnt FROM user_objects WHERE status <> 'VALID';\n\
+         PROMPT\n\
+         PROMPT -> First 50 compile errors (if any):\n\
+         SELECT * FROM (\n\
+           SELECT NAME, TYPE, LINE, POSITION, TEXT\n\
+           FROM USER_ERRORS\n\
+           ORDER BY NAME, SEQUENCE\n\
+         ) WHERE ROWNUM <= 50;\n\
+         WHENEVER SQLERROR EXIT SQL.SQLCODE\n\
+         DECLARE v_cnt NUMBER; BEGIN\n\
+           SELECT COUNT(*) INTO v_cnt FROM user_objects WHERE status <> 'VALID';\n\
+           IF v_cnt > 0 THEN\n\
+             RAISE_APPLICATION_ERROR(-20000, 'Invalid objects remain in ${ORACLE_APP_USER}: '||v_cnt);\n\
+           END IF;\n\
+         END;\n\
+         /\n\
+         EXIT\n\
+SQL\n\
+         echo 'Schema is clean: no invalid objects.' \
         "
       ]
     restart: "no"
+    networks:
+      infra_net:
+        aliases:
+          - oracle-impdp
 
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -119,10 +121,15 @@ SQL\n\
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h localhost" ]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h localhost"]
       interval: 5s
       timeout: 3s
       retries: 30
+      start_period: 10s
+    networks:
+      infra_net:
+        aliases:
+          - postgres
 
 volumes:
   xe-data:
@@ -130,4 +137,5 @@ volumes:
 
 networks:
   infra_net:
+    external: true
     name: infra_default

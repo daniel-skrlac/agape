@@ -1,56 +1,69 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ───────────── config ─────────────
-: "${IMPORT_DUMP:=1}"
+: "${IMPORT_DUMP:=0}"
+: "${RESET_DB:=0}"
 : "${DB_LOGS:=0}"
-: "${FOLLOW_ALERT:=1}"
+: "${APP_LOGS:=1}"
 : "${TAIL_LINES:=200}"
 
 DUMP_FILE="data.DMP"
 
-# ───────────── pretty helpers ─────────────
-bold()  { printf "\033[1m%s\033[0m\n" "$*"; }
-green() { printf "\033[32m%s\033[0m\n" "$*"; }
-yellow(){ printf "\033[33m%s\033[0m\n" "$*"; }
-red()   { printf "\033[31m%s\033[0m\n" "$*"; }
-ts()    { date +"%Y-%m-%d %H:%M:%S"; }
-log()   { printf "[%s] %s\n" "$(ts)" "$*"; }
-step()  { echo; bold "==> $*"; }
+bold()   { printf "\033[1m%s\033[0m\n" "$*"; }
+green()  { printf "\033[32m%s\033[0m\n" "$*"; }
+yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
+red()    { printf "\033[31m%s\033[0m\n" "$*"; }
+ts()     { date +"%Y-%m-%d %H:%M:%S"; }
+log()    { printf "[%s] %s\n" "$(ts)" "$*"; }
+step()   { echo; bold "==> $*"; }
 section(){ echo; bold "──────── $* ────────"; }
 
-# ───────────── repo detection ─────────────
 resolve_root() {
-  if [[ "${1-}" != "" ]]; then (cd "$1" && pwd) && return; fi
-  if command -v git >/dev/null 2>&1 && git rev-parse --show-toplevel >/dev/null 2>&1; then
-    git rev-parse --show-toplevel; return
+  if [[ "${1-}" != "" ]]; then
+    (cd "$1" && pwd)
+    return
   fi
+
+  if command -v git >/dev/null 2>&1 && git rev-parse --show-toplevel >/dev/null 2>&1; then
+    git rev-parse --show-toplevel
+    return
+  fi
+
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
     if [[ -f "$dir/infra/docker-compose.db.yml" && -f "$dir/infra/docker-compose.app.yml" ]]; then
-      echo "$dir"; return
+      echo "$dir"
+      return
     fi
     dir="$(dirname "$dir")"
   done
+
   echo "ERROR: Could not locate repo root (looking for infra/docker-compose.*.yml)." >&2
   exit 1
 }
 
 REPO_ROOT="$(resolve_root "${1-}")"
-cd "$REPO_ROOT"
-DB_COMPOSE="$REPO_ROOT/infra/docker-compose.db.yml"
-APP_COMPOSE="$REPO_ROOT/infra/docker-compose.app.yml"
+INFRA_DIR="$REPO_ROOT/infra"
+DB_COMPOSE="$INFRA_DIR/docker-compose.db.yml"
+APP_COMPOSE="$INFRA_DIR/docker-compose.app.yml"
+ENV_FILE="$INFRA_DIR/.env"
 
-section "START"
-log "Using REPO_ROOT: $REPO_ROOT"
-log "DB compose     : $DB_COMPOSE"
-log "APP compose    : $APP_COMPOSE"
+section "START ALL"
+log "Using REPO_ROOT : $REPO_ROOT"
+log "Using INFRA_DIR : $INFRA_DIR"
+log "DB compose      : $DB_COMPOSE"
+log "APP compose     : $APP_COMPOSE"
+log "Env file        : $ENV_FILE"
 
-if [[ ! -f "$DB_COMPOSE" || ! -f "$APP_COMPOSE" ]]; then
-  red "Compose files not found"; exit 1
-fi
+[[ -f "$DB_COMPOSE" ]] || { red "DB compose file not found: $DB_COMPOSE"; exit 1; }
+[[ -f "$APP_COMPOSE" ]] || { red "App compose file not found: $APP_COMPOSE"; exit 1; }
+[[ -f "$ENV_FILE" ]] || { red "Env file not found: $ENV_FILE"; exit 1; }
 
-# ───────────── cleanup ─────────────
+docker network create infra_default >/dev/null 2>&1 || true
+
+DBC=(docker compose --env-file "$ENV_FILE" -f "$DB_COMPOSE")
+APPC=(docker compose --env-file "$ENV_FILE" -f "$APP_COMPOSE")
+
 PIDS=()
 cleanup() {
   echo
@@ -62,133 +75,134 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ───────────── helpers ─────────────
-wait_for_oracle() {
-  local cname="infra-oracle-xe-1"
-  step "Waiting for Oracle container ($cname) to be healthy..."
-  for _ in {1..60}; do
-    local status
-    status="$(docker inspect -f '{{json .State.Health.Status}}' "$cname" 2>/dev/null || echo '"starting"')"
-    if [[ "$status" == "\"healthy\"" ]]; then
-      green "Oracle is healthy."
-      return 0
+get_container_id() {
+  local compose_name="$1"
+  local service="$2"
+
+  if [[ "$compose_name" == "db" ]]; then
+    "${DBC[@]}" ps -q "$service" 2>/dev/null | head -n 1
+  else
+    "${APPC[@]}" ps -q "$service" 2>/dev/null | head -n 1
+  fi
+}
+
+wait_for_service_healthy() {
+  local compose_name="$1"
+  local service="$2"
+  local label="$3"
+  local attempts="$4"
+  local sleep_seconds="$5"
+
+  step "Waiting for $label ($service) to be healthy..."
+
+  for _ in $(seq 1 "$attempts"); do
+    local cid
+    cid="$(get_container_id "$compose_name" "$service")"
+
+    if [[ -n "$cid" ]]; then
+      local status
+      status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo starting)"
+      if [[ "$status" == "healthy" ]]; then
+        green "$label is healthy."
+        return 0
+      fi
     fi
-    sleep 3
+
+    sleep "$sleep_seconds"
   done
-  red "Oracle did not become healthy in time."; return 1
+
+  red "$label did not become healthy in time."
+  return 1
 }
 
-follow_oracle_alert() {
-  local cname="infra-oracle-xe-1"
-  local alert="/opt/oracle/diag/rdbms/xe/XE/trace/alert_XE.log"
-  step "Following Oracle alert log (Ctrl+C to stop all)…"
-  docker exec -i "$cname" bash -lc '
-    f="'"$alert"'"
-    for i in {1..60}; do [[ -f "$f" ]] && break; sleep 1; done
-    [[ -f "$f" ]] && tail -n '"$TAIL_LINES"' -f "$f" || echo "alert_XE.log not found"
-  ' &
+follow_logs() {
+  local compose_name="$1"
+  local service="$2"
+
+  step "Following logs for $compose_name/$service"
+  if [[ "$compose_name" == "db" ]]; then
+    "${DBC[@]}" logs -f --tail="$TAIL_LINES" "$service" &
+  else
+    "${APPC[@]}" logs -f --tail="$TAIL_LINES" "$service" &
+  fi
   PIDS+=($!)
 }
 
-follow_container_logs() {
-  local cname="$1"
-  step "Following container logs: $cname"
-  docker logs -f --tail="$TAIL_LINES" "$cname" &
-  PIDS+=($!)
+service_exists() {
+  local compose_name="$1"
+  local service="$2"
+
+  if [[ "$compose_name" == "db" ]]; then
+    "${DBC[@]}" config --services | grep -Fxq "$service"
+  else
+    "${APPC[@]}" config --services | grep -Fxq "$service"
+  fi
 }
 
-# ───────────── 1) stop ─────────────
-section "1) Stop ALL stacks (app + db) and remove orphans/anonymous volumes"
-docker compose -f "$APP_COMPOSE" down --volumes --remove-orphans || true
-docker compose -f "$DB_COMPOSE"  down --volumes --remove-orphans || true
+section "1) Stop stacks"
+if [[ "$RESET_DB" == "1" ]]; then
+  yellow "RESET_DB=1 -> removing DB volumes too"
+  "${APPC[@]}" down || true
+  "${DBC[@]}" down --volumes || true
+else
+  "${APPC[@]}" down || true
+  "${DBC[@]}" down || true
+fi
 
-# ───────────── 2) start DB ─────────────
 section "2) Start DB stack (Oracle + Postgres)"
-docker compose -f "$DB_COMPOSE" up -d --build oracle-xe postgres
-wait_for_oracle
+"${DBC[@]}" up -d --build oracle-xe postgres
+
+wait_for_service_healthy "db" "oracle-xe" "Oracle" 120 3
+wait_for_service_healthy "db" "postgres" "Postgres" 60 2
 
 if [[ "$DB_LOGS" == "1" ]]; then
-  follow_container_logs infra-oracle-xe-1
-  follow_container_logs infra-postgres-1
-fi
-if [[ "$FOLLOW_ALERT" == "1" ]]; then
-  follow_oracle_alert
+  follow_logs "db" "oracle-xe"
+  follow_logs "db" "postgres"
 fi
 
-# ───────────── 3) ensure user ─────────────
-section "3) Ensure IN_WPRG user (idempotent)"
-docker compose -f "$DB_COMPOSE" up --no-deps --build --abort-on-container-exit --exit-code-from oracle-ensure-user oracle-ensure-user || true
-
-# ───────────── 4) import dump ─────────────
 if [[ "$IMPORT_DUMP" == "1" ]]; then
-  DUMP_PATH="$REPO_ROOT/infra/oracle/dumps/$DUMP_FILE"
-  if [[ -f "$DUMP_PATH" ]]; then
-    section "4) Import Data Pump dump: $DUMP_FILE"
-    docker compose -f "$DB_COMPOSE" run --rm oracle-impdp
+  DUMP_PATH="$INFRA_DIR/oracle/dumps/$DUMP_FILE"
+  section "3) Import Data Pump dump: $DUMP_FILE"
 
-    section "Post-import validation"
-    docker exec -i infra-oracle-xe-1 bash -lc '
-sqlplus -s system/$ORACLE_PASSWORD@localhost:1521/XE <<SQL
-SET HEADING ON FEEDBACK OFF VERIFY OFF ECHO OFF PAGES 200 LINES 200 TRIMS ON
-COLUMN OWNER FORMAT A10
-COLUMN NAME  FORMAT A30
-COLUMN TYPE  FORMAT A20
-COLUMN TEXT  FORMAT A80
-
-PROMPT -> Invalid objects in IN_WPRG:
-SELECT COUNT(*) AS invalid_cnt
-FROM dba_objects
-WHERE owner = '\''IN_WPRG'\'' AND status <> '\''VALID'\'';
-
-PROMPT
-PROMPT -> First 20 compile errors (if any):
-SELECT * FROM (
-  SELECT owner, name, type, line, position, text
-  FROM dba_errors
-  WHERE owner = '\''IN_WPRG'\''
-  ORDER BY name, sequence
-) WHERE ROWNUM <= 20;
-EXIT
-SQL
-' || true
+  if service_exists "db" "oracle-impdp" && [[ -f "$DUMP_PATH" ]]; then
+    log "Found dump file: $DUMP_PATH"
+    "${DBC[@]}" run --rm oracle-impdp
+  elif ! service_exists "db" "oracle-impdp"; then
+    yellow "Service oracle-impdp does not exist — skipping import."
   else
-    section "4) Import Data Pump dump: $DUMP_FILE"
-    echo "Info: $DUMP_PATH not found — skipping import."
+    yellow "Dump file not found: $DUMP_PATH — skipping import."
   fi
 else
-  section "4) Import Data Pump dump"
-  echo "Info: IMPORT_DUMP=0 — skipping import."
+  section "3) Import Data Pump dump"
+  log "IMPORT_DUMP=0 — skipping import."
 fi
 
-# ───────────── 5) start APP ─────────────
-section "5) Start APP stack"
-docker compose -f "$APP_COMPOSE" up -d --build
+section "4) Start APP stack"
+"${APPC[@]}" up -d --build
 
-# ───────────── 6) status ─────────────
-section "6) Show status"
+section "5) Show status"
 log "== DB stack =="
-docker compose -f "$DB_COMPOSE" ps || true
+"${DBC[@]}" ps || true
+
 log "== APP stack =="
-docker compose -f "$APP_COMPOSE" ps || true
+"${APPC[@]}" ps || true
 
-if ! docker ps --format '{{.Names}}' | grep -q '^infra-oracle-xe-1$'; then
-  red "oracle-xe container not running; check Compose files (avoid --remove-orphans on app)."
-fi
-if ! docker ps --format '{{.Names}}' | grep -q '^infra-postgres-1$'; then
-  red "postgres container not running; check Compose files."
-fi
+section "6) App quick check"
+APP_PORT="$(grep -E '^QUARKUS_HTTP_PORT=' "$ENV_FILE" | head -n1 | cut -d= -f2 || true)"
+APP_PORT="${APP_PORT:-8080}"
 
-# ───────────── 7) follow app logs ─────────────
-section "7) Follow app logs (all services in app compose; Ctrl+C to stop)"
-docker compose -f "$APP_COMPOSE" logs -f --tail="$TAIL_LINES" &
-PIDS+=($!)
+# Give Quarkus a moment to come up before checking
+sleep 5
 
-app_services="$(docker compose -f "$APP_COMPOSE" config --services)"
-bad=$(docker compose -f "$APP_COMPOSE" ps --status=exited --services \
-      | grep -Fxf <(printf "%s\n" "$app_services") || true)
-if [[ -n "${bad:-}" ]]; then
-  red "Detected exited app service(s): $bad"
-  docker compose -f "$APP_COMPOSE" logs --tail="$TAIL_LINES" $bad || true
+if curl -fsS "http://127.0.0.1:${APP_PORT}/q/health" >/dev/null 2>&1; then
+  green "App health check passed on http://127.0.0.1:${APP_PORT}/q/health"
+else
+  yellow "App health check failed on http://127.0.0.1:${APP_PORT}/q/health"
 fi
 
-wait
+if [[ "$APP_LOGS" == "1" ]]; then
+  section "7) Follow app logs (Ctrl+C to stop)"
+  "${APPC[@]}" logs -f --tail="$TAIL_LINES" &
+  PIDS+=($!)
+  wait
+fi
