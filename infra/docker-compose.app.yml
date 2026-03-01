@@ -1,0 +1,64 @@
+services:
+  api:
+    build:
+      context: ../agape-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      infra_net:
+        aliases:
+          - api
+    environment:
+      QUARKUS_HTTP_PORT: ${QUARKUS_HTTP_PORT}
+      QUARKUS_HTTP_HOST: 0.0.0.0
+
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS}
+
+      # Oracle datasource
+      QUARKUS_FLYWAY_ORACLE_REPAIR_AT_START: "true"
+      QUARKUS_DATASOURCE_ORACLE_DB_KIND: oracle
+      QUARKUS_DATASOURCE_ORACLE_USERNAME: ${QUARKUS_DATASOURCE_ORACLE_USERNAME}
+      QUARKUS_DATASOURCE_ORACLE_PASSWORD: ${QUARKUS_DATASOURCE_ORACLE_PASSWORD}
+      QUARKUS_DATASOURCE_ORACLE_JDBC_URL: ${QUARKUS_DATASOURCE_ORACLE_JDBC_URL}
+
+      # Postgres datasource
+      QUARKUS_DATASOURCE_POSTGRES_DB_KIND: postgresql
+      QUARKUS_DATASOURCE_POSTGRES_USERNAME: ${QUARKUS_DATASOURCE_POSTGRES_USERNAME}
+      QUARKUS_DATASOURCE_POSTGRES_PASSWORD: ${QUARKUS_DATASOURCE_POSTGRES_PASSWORD}
+      QUARKUS_DATASOURCE_POSTGRES_JDBC_URL: ${QUARKUS_DATASOURCE_POSTGRES_JDBC_URL}
+
+      # Flyway
+      QUARKUS_FLYWAY_POSTGRES_MIGRATE_AT_START: ${QUARKUS_FLYWAY_POSTGRES_MIGRATE_AT_START}
+      QUARKUS_FLYWAY_POSTGRES_LOCATIONS: ${QUARKUS_FLYWAY_POSTGRES_LOCATIONS}
+
+      # JWT / auth
+      AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER}
+      AUTH_JWT_EXPIRATION_IN_SECONDS: ${AUTH_JWT_EXPIRATION_IN_SECONDS}
+      AUTH_JWT_DEFAULT_ROLE_NAME: ${AUTH_JWT_DEFAULT_ROLE_NAME}
+      MP_JWT_VERIFY_ISSUER: ${MP_JWT_VERIFY_ISSUER}
+
+      SMALLRYE_JWT_SIGN_KEY_LOCATION: file:/keys/privateKey.pem
+      MP_JWT_VERIFY_PUBLICKEY_LOCATION: file:/keys/publicKey.pem
+
+      # CORS
+      FRONTEND_URL: ${FRONTEND_URL}
+
+    volumes:
+      - ./oracle/migrations:/migrations/oracle:ro
+      - ./postgres/migrations:/migrations/postgres:ro
+      - ./keys:/keys:ro
+
+    ports:
+      - "127.0.0.1:${QUARKUS_HTTP_PORT}:${QUARKUS_HTTP_PORT}"
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${QUARKUS_HTTP_PORT}/q/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+networks:
+  infra_net:
+    external: true
+    name: infra_default

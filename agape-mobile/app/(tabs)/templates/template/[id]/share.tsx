@@ -1,0 +1,415 @@
+import React, { useMemo, useState, useCallback } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+
+import Screen from "@/components/ui/Screen";
+import NavigationHeader from "../../../../../components/NavigationHeader";
+
+import Colors from "@/src/constants/Colors";
+import { ErrorCard } from "@/components/ErrorCard";
+import { SearchPickerSheet } from "@/components/SearchPickerSheet";
+import { Segmented } from "@/components/Segmented";
+import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
+
+import { toUserMessage } from "../../../../../src/api/apiClient";
+import { userDirectoryService, UserDirectoryItem } from "../../../../../src/api/services/userDirectoryService";
+import type { DispatchTemplateSharePermission, TemplateShareResponseDTO } from "@/src/models/generated";
+import {
+  useTemplateShares,
+  useShareTemplate,
+  useRevokeTemplateShare,
+} from "../../../../../src/api/hooks/templates/useDispatchTemplates";
+
+type Mode = "SVE" | "MOJI" | "DIJELJENI";
+type Perm = DispatchTemplateSharePermission;
+
+type ConfirmShareState =
+  | {
+    id: number;
+    username?: string | null;
+  }
+  | null;
+
+function readNullableNumberParam(v: unknown): number | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw == null) return null;
+
+  const s = String(raw).trim();
+  if (!s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined") return null;
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readStringParam(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim();
+  return s ? s : null;
+}
+
+function readModeParam(v: unknown): Mode {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (s === "MOJI" || s === "DIJELJENI") return s;
+  return "SVE";
+}
+
+export default function DijeliPredlozak() {
+  const params = useLocalSearchParams<{
+    id?: string;
+    folderId?: string;
+    folderName?: string;
+    mode?: string;
+  }>();
+
+  const templateId = useMemo(() => {
+    const n = Number(params.id);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [params.id]);
+
+  const routeFolderId = readNullableNumberParam(params.folderId);
+  const routeFolderName = readStringParam(params.folderName);
+  const routeMode = readModeParam(params.mode);
+
+  const backHref = useMemo(() => {
+    if (templateId) {
+      return {
+        pathname: "/(tabs)/templates/template/[id]" as const,
+        params: {
+          id: String(templateId),
+          folderId: routeFolderId == null ? "null" : String(routeFolderId),
+          folderName: routeFolderName ?? "Mapa",
+          mode: routeMode,
+        },
+      };
+    }
+    return "/(tabs)/templates" as const;
+  }, [templateId, routeFolderId, routeFolderName, routeMode]);
+
+  const sharesQ = useTemplateShares(templateId);
+  const shareM = useShareTemplate();
+  const revokeM = useRevokeTemplateShare();
+
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserDirectoryItem | null>(null);
+  const [perm, setPerm] = useState<Perm>("BOOK");
+
+  const [confirmShare, setConfirmShare] = useState<ConfirmShareState>(null);
+
+  const [screenError, setScreenError] = useState<string | null>(null);
+  const [dismissedTopError, setDismissedTopError] = useState<string | null>(null);
+
+  const resetTransientErrors = useCallback(() => {
+    setScreenError(null);
+    setDismissedTopError(null);
+    shareM.reset();
+    revokeM.reset();
+  }, [shareM, revokeM]);
+
+  const closeTopError = useCallback(() => {
+    const currentRaw =
+      screenError ||
+      sharesQ.errorMessage ||
+      (shareM.error ? toUserMessage(shareM.error, "Greška pri dijeljenju predloška.") : null) ||
+      (revokeM.error ? toUserMessage(revokeM.error, "Greška pri uklanjanju dijeljenja.") : null) ||
+      (!templateId ? "Neispravan ID predloška." : null);
+
+    setScreenError(null);
+    shareM.reset();
+    revokeM.reset();
+    setDismissedTopError(currentRaw ?? null);
+  }, [screenError, sharesQ.errorMessage, shareM, revokeM, templateId]);
+
+  const list = useMemo<TemplateShareResponseDTO[]>(() => {
+    const raw: any = sharesQ.data;
+
+    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw?.items)) return raw.items;
+    if (Array.isArray(raw?.data?.items)) return raw.data.items;
+    if (Array.isArray(raw?.data)) return raw.data;
+
+    return [];
+  }, [sharesQ.data]);
+
+  const rawTopError =
+    screenError ||
+    sharesQ.errorMessage ||
+    (shareM.error ? toUserMessage(shareM.error, "Greška pri dijeljenju predloška.") : null) ||
+    (revokeM.error ? toUserMessage(revokeM.error, "Greška pri uklanjanju dijeljenja.") : null) ||
+    (!templateId ? "Neispravan ID predloška." : null);
+
+  const topError = rawTopError && rawTopError !== dismissedTopError ? rawTopError : null;
+
+  const userPickerKey = useMemo(
+    () => ["template-share", "user-picker", templateId ?? "NO_TEMPLATE"] as const,
+    [templateId]
+  );
+
+  const queryUsersPage = useCallback(
+    async ({
+      page,
+      size,
+      q,
+      signal,
+    }: {
+      page: number;
+      size: number;
+      q?: string;
+      signal?: AbortSignal;
+    }) => {
+      const res = await userDirectoryService.pageUsers(
+        {
+          page,
+          size,
+          q,
+        },
+        signal
+      );
+
+      return {
+        items: res.items ?? [],
+        page: res.page ?? page,
+        size: res.size ?? size,
+        total: res.total ?? 0,
+      };
+    },
+    []
+  );
+
+  return (
+    <Screen>
+      <NavigationHeader
+        title="Dijeli predložak"
+        subtitle={templateId ? `Predložak #${templateId}` : "Predložak"}
+        fallbackHref={backHref}
+      />
+
+      <View style={s.container}>
+        {!!topError && (
+          <ErrorCard
+            title="Greška"
+            message={topError}
+            actionText="Zatvori"
+            onAction={closeTopError}
+            titleLines={1}
+            messageLines={3}
+          />
+        )}
+
+        <Pressable
+          style={[s.primary, !templateId && s.disabled]}
+          disabled={!templateId}
+          onPress={() => {
+            resetTransientErrors();
+            setPickerOpen(true);
+          }}
+        >
+          <Text style={s.primaryText}>Odaberi korisnika</Text>
+        </Pressable>
+
+        {selectedUser && (
+          <View style={s.card}>
+            <Text style={s.title}>{selectedUser.name || selectedUser.username}</Text>
+            <Text style={s.sub}>@{selectedUser.username}</Text>
+
+            <Text style={s.label}>Dozvola</Text>
+            <Segmented<Perm>
+              value={perm}
+              options={[
+                { value: "VIEW", label: "Pregled" },
+                { value: "BOOK", label: "Kreiranje" },
+              ]}
+              onChange={setPerm}
+            />
+
+            <Pressable
+              style={[s.primary, (shareM.isPending || !templateId) && s.disabled]}
+              disabled={shareM.isPending || !templateId}
+              onPress={async () => {
+                try {
+                  if (!templateId || !selectedUser?.username) return;
+
+                  resetTransientErrors();
+
+                  await shareM.mutateAsync({
+                    templateId,
+                    payload: {
+                      username: selectedUser.username,
+                      permission: perm,
+                    } as any,
+                  });
+
+                  setSelectedUser(null);
+                  await sharesQ.refetch();
+                } catch (e) {
+                  setScreenError(toUserMessage(e, "Greška pri dijeljenju predloška."));
+                }
+              }}
+            >
+              <Text style={s.primaryText}>{shareM.isPending ? "Dijelim…" : "Podijeli"}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <Text style={s.section}>Dijeljeno s</Text>
+
+        <FlatList
+          data={list}
+          keyExtractor={(x) => String(x.id)}
+          refreshing={sharesQ.isFetching}
+          onRefresh={async () => {
+            resetTransientErrors();
+            await sharesQ.refetch();
+          }}
+          contentContainerStyle={{ gap: 10, paddingBottom: 24 }}
+          renderItem={({ item }) => (
+            <View style={s.shareRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.title}>{item.sharedWithUsername || "—"}</Text>
+                <Text style={s.sub}>
+                  {item.permission === "BOOK" ? "Dozvola: Kreiranje" : "Dozvola: Pregled"}
+                </Text>
+              </View>
+
+              <Pressable
+                style={[s.dangerBtn, revokeM.isPending && s.disabled]}
+                disabled={revokeM.isPending}
+                onPress={() => {
+                  resetTransientErrors();
+                  setConfirmShare({
+                    id: item.id,
+                    username: item.sharedWithUsername,
+                  });
+                }}
+              >
+                <Text style={s.dangerText}>Ukloni</Text>
+              </Pressable>
+            </View>
+          )}
+          ListEmptyComponent={
+            <Text style={s.empty}>{sharesQ.isLoading ? "Učitavam…" : "Nema dijeljenja."}</Text>
+          }
+        />
+
+        <SearchPickerSheet<UserDirectoryItem>
+          visible={pickerOpen}
+          title="Odaberi korisnika"
+          onClose={() => setPickerOpen(false)}
+          keyOf={(u) => String(u.id)}
+          queryKeyBase={userPickerKey}
+          queryPage={queryUsersPage}
+          staleTime={16 * 60 * 60 * 1000}
+          gcTime={24 * 60 * 60 * 1000}
+          renderRow={(u, close) => (
+            <Pressable
+              style={s.pickRow}
+              onPress={() => {
+                resetTransientErrors();
+                setSelectedUser(u);
+                close();
+              }}
+            >
+              <Text style={s.pickTitle}>{u.name || u.username}</Text>
+              <Text style={s.pickSub}>@{u.username}</Text>
+            </Pressable>
+          )}
+        />
+
+        <CenterConfirmSheet
+          visible={!!confirmShare}
+          title="Ukloniti dijeljenje?"
+          description={confirmShare?.username ? `@${confirmShare.username}` : "Ova akcija se ne može poništiti."}
+          confirmText="Ukloni"
+          danger
+          loading={revokeM.isPending}
+          onClose={() => setConfirmShare(null)}
+          onConfirm={async () => {
+            try {
+              if (!templateId || !confirmShare?.id) return;
+
+              resetTransientErrors();
+
+              await revokeM.mutateAsync({
+                templateId,
+                shareId: confirmShare.id,
+              });
+
+              setConfirmShare(null);
+              await sharesQ.refetch();
+            } catch (e) {
+              setScreenError(toUserMessage(e, "Greška pri uklanjanju dijeljenja."));
+            }
+          }}
+        />
+      </View>
+    </Screen>
+  );
+}
+
+const s = StyleSheet.create({
+  container: { padding: 14, gap: 12 },
+
+  section: { fontWeight: "900", color: Colors.text, marginTop: 4 },
+  label: { fontWeight: "900", color: Colors.text },
+
+  primary: {
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.orange,
+    alignItems: "center",
+  },
+  primaryText: { color: "#fff", fontWeight: "900" },
+
+  card: {
+    backgroundColor: Colors.bg,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    padding: 14,
+    gap: 10,
+  },
+
+  title: { fontWeight: "900", color: Colors.text },
+  sub: { color: Colors.sub, fontWeight: "700" },
+
+  shareRow: {
+    backgroundColor: Colors.bg,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  dangerBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: Colors.dangerBg,
+  },
+  dangerText: { fontWeight: "900", color: Colors.dangerText },
+
+  pickRow: {
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bg,
+    gap: 4,
+  },
+  pickTitle: { fontWeight: "900", color: Colors.text },
+  pickSub: { color: Colors.sub, fontWeight: "700" },
+
+  empty: {
+    textAlign: "center",
+    color: Colors.sub,
+    fontWeight: "800",
+    marginTop: 18,
+  },
+
+  disabled: {
+    opacity: 0.6,
+  },
+});

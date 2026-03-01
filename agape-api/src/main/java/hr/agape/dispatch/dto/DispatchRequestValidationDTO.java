@@ -1,0 +1,92 @@
+package hr.agape.dispatch.dto;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * Request payload to book a single dispatch note (OTPREMNICA/IZDATNICA) into the legacy Oracle schema.
+ * Minimal input: documentId, partnerId, and at least one line (itemId + quantity).
+ * Everything else (IDs, numbering, derived fields) is handled by Oracle sequences & triggers.
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class DispatchRequestValidationDTO {
+
+    /**
+     * Warehouse (SKLADISTE_ID) from which goods are dispatched.
+     * This MUST be provided by the client.
+     */
+    @NotNull
+    private Long warehouseId;
+
+    /**
+     * Derived server-side: SD_GLAVA.DOKUMENT_ID.
+     * DO NOT send from client.
+     */
+    @JsonIgnore
+    private Long documentId;
+
+    /**
+     * Business date of the document (optional).
+     * If omitted, SD_GLAVA_BIU trigger assigns/normalizes it.
+     */
+    private LocalDate documentDate;
+
+    /**
+     * Lines to book on this document. At least one is required.
+     * Each item needs itemId (ARTIKL_ID) and quantity (KOLICINA).
+     */
+    @NotNull
+    @Size(min = 1)
+    private List<DispatchItemValidationRequest> items;
+
+    /**
+     * User/employee who created the document.
+     *
+     * <p>Maps to {@code SD_GLAVA.IZRADIO}. This is required by the schema.
+     * Typical value: the application user ID or employee ID performing the booking.</p>
+     * Filled from JWT on the backend, FRONTEND MUST NOT SEND IT.
+     */
+    @JsonIgnore
+    private Long createdBy;
+
+    // if true (or omitted -> default false), we just create a draft.
+    // if false, we create and POST immediately.
+    private boolean draft;
+
+    @Size(max = 2000)
+    private String note;
+
+    /**
+     * One line on the dispatch note.
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class DispatchItemValidationRequest {
+        /**
+         * Item/article to dispatch. Maps to SD_STAVKE.ARTIKL_ID.
+         */
+        @NotNull
+        private Long itemId;
+
+        /**
+         * Quantity to dispatch. Maps to SD_STAVKE.KOLICINA.
+         */
+        @NotNull
+        @DecimalMin(value = "0.0", inclusive = false, message = "quantity must be > 0")
+        private Double quantity;
+    }
+}
