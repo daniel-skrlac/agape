@@ -14,10 +14,14 @@
       "backgroundColor": "#ffffff"
     },
     "extra": {
-      "API_BASE_URL": "http://192.168.18.21:8080"
+      "API_BASE_URL": "http://192.168.18.21:8080",
+      "eas": {
+        "projectId": "a2e52c25-4bf3-48da-84b8-555786403588"
+      }
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dskrlac.Agape"
     },
     "android": {
       "adaptiveIcon": {
@@ -25,7 +29,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.dskrlac.Agape"
     },
     "plugins": [
       "expo-router",
