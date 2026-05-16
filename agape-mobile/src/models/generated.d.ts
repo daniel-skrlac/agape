@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-05-16 19:01:06.
+// Generated using typescript-generator version 3.2.1263 on 2026-05-16 22:17:30.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -191,6 +191,7 @@ export interface BookingSessionScanEntryUpsertRequestDTO {
 export interface BookingSessionScanLineCandidateDTO {
     documentId: number;
     slipItemCode: string;
+    source: string;
     itemId: number;
     itemCode: string;
     itemName: string;
@@ -201,6 +202,7 @@ export interface BookingSessionScanLineCandidateDTO {
 export interface BookingSessionScanLineDTO {
     documentId: number;
     slipItemCode: string;
+    source: string;
     itemId: number;
     itemCode: string;
     itemName: string;
@@ -211,6 +213,7 @@ export interface BookingSessionScanLineDTO {
 export interface BookingSessionScanLineValidationDTO {
     documentId: number;
     slipItemCode: string;
+    source: string;
     itemId: number;
     itemCode: string;
     itemName: string;
@@ -222,6 +225,7 @@ export interface BookingSessionScanLineValidationDTO {
     requiresManualItem: boolean;
     requiresManualQuantity: boolean;
     valid: boolean;
+    warning: string;
 }
 
 export interface BookingSessionScanValidateRequestDTO {
@@ -238,18 +242,25 @@ export interface BookingSessionScanValidateResponseDTO {
     partnerName: string;
     templateId: number;
     documentDate: Date;
+    partnerResolved: boolean;
+    requiresManualPartner: boolean;
     allValid: boolean;
     lines: BookingSessionScanLineValidationDTO[];
 }
 
 export interface DispatchSlipParsedDTO {
-    scanId: number;
     bookingSessionId: number;
     partnerId: number;
     partnerName: string;
     templateId: number;
     warehouseId: number;
     documentDate: Date;
+    rawText: string;
+    detectedPartnerText: string;
+    partnerResolved: boolean;
+    requiresManualPartner: boolean;
+    allValid: boolean;
+    warnings: string[];
     lines: DispatchSlipParsedLineDTO[];
     note: string;
 }
@@ -257,11 +268,18 @@ export interface DispatchSlipParsedDTO {
 export interface DispatchSlipParsedLineDTO {
     documentId: number;
     slipItemCode: string;
+    source: string;
     itemId: number;
     itemCode: string;
     itemName: string;
     unit: string;
     quantity: number;
+    itemResolved: boolean;
+    quantityValid: boolean;
+    requiresManualItem: boolean;
+    requiresManualQuantity: boolean;
+    valid: boolean;
+    warning: string;
 }
 
 export interface DocumentDescriptorResponseDTO {

@@ -564,7 +564,7 @@ export default function SessionDetailIndex() {
 
   const openScan = useCallback(() => {
     router.push({
-      pathname: "/(tabs)/sessions/[id]/partner" as const,
+      pathname: "/(tabs)/sessions/[id]/scan" as const,
       params: { id: String(sessionId) },
     });
   }, [sessionId]);

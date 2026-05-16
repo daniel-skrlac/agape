@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Modal,
   Pressable,
   StyleSheet,
@@ -122,7 +123,7 @@ export function SearchPickerSheet<T>(props: Props<T>) {
       <View style={s.backdrop}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={closeOnBackdropPress ? close : undefined}
+          onPress={closeOnBackdropPress ? close : Keyboard.dismiss}
         />
 
         <View style={s.card} pointerEvents="auto">
@@ -176,6 +177,9 @@ export function SearchPickerSheet<T>(props: Props<T>) {
               keyExtractor={keyOf}
               contentContainerStyle={s.list}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              onTouchStart={Keyboard.dismiss}
+              onScrollBeginDrag={Keyboard.dismiss}
               onEndReachedThreshold={0.4}
               onEndReached={() => {
                 if (!query.hasNextPage || query.isFetchingNextPage) return;

@@ -1,26 +1,28 @@
 import { api } from "../api";
 import type {
   BookingSessionEntryResponseDTO,
+  BookingSessionScanEntryUpsertRequestDTO,
+  BookingSessionScanValidateRequestDTO,
+  BookingSessionScanValidateResponseDTO,
   DispatchSlipParsedDTO,
-  DispatchSlipScanCorrectionRequestDTO,
-  DispatchSlipScanSessionEntryRequestDTO,
-  DispatchSlipScanUploadResponseDTO,
 } from "@/src/models/generated";
 
-const BASE = "/api/v1/dispatch-slip-scans";
+const BASE = "/api/v1/dispatch-booking-sessions";
 
-export type UploadDispatchSlipArgs = {
+export type ParseDispatchSlipArgs = {
+  sessionId: number;
   uri: string;
   name: string;
   mimeType: string;
-  bookingSessionId?: number | null;
   partnerId?: number | null;
   templateId?: number | null;
-  warehouseId?: number | null;
+  documentDate?: string | null;
+  note?: string | null;
+  ocrText?: string | null;
 };
 
 export const dispatchSlipScanService = {
-  upload: async (args: UploadDispatchSlipArgs) => {
+  parse: async (args: ParseDispatchSlipArgs) => {
     const form = new FormData();
 
     form.append("file", {
@@ -29,25 +31,30 @@ export const dispatchSlipScanService = {
       type: args.mimeType || "image/jpeg",
     } as any);
 
-    if (args.bookingSessionId) form.append("bookingSessionId", String(args.bookingSessionId));
     if (args.partnerId) form.append("partnerId", String(args.partnerId));
     if (args.templateId) form.append("templateId", String(args.templateId));
-    if (args.warehouseId) form.append("warehouseId", String(args.warehouseId));
+    if (args.documentDate) form.append("documentDate", String(args.documentDate));
+    if (args.note) form.append("note", String(args.note));
+    if (args.ocrText) form.append("ocrText", String(args.ocrText));
 
-    return api.upload<DispatchSlipScanUploadResponseDTO>(BASE, form);
+    return api.upload<DispatchSlipParsedDTO>(
+      `${BASE}/${args.sessionId}/entries/scan/parse`,
+      form
+    );
   },
 
-  get: (id: number) => api.request<DispatchSlipParsedDTO>(`${BASE}/${id}`, { method: "GET" }),
+  validate: (sessionId: number, payload: BookingSessionScanValidateRequestDTO) =>
+    api.request<BookingSessionScanValidateResponseDTO>(
+      `${BASE}/${sessionId}/entries/scan/validate`,
+      {
+        method: "POST",
+        body: payload,
+      }
+    ),
 
-  correct: (id: number, payload: DispatchSlipScanCorrectionRequestDTO) =>
-    api.request<DispatchSlipParsedDTO>(`${BASE}/${id}/corrections`, {
+  saveEntry: (sessionId: number, payload: BookingSessionScanEntryUpsertRequestDTO) =>
+    api.request<BookingSessionEntryResponseDTO>(`${BASE}/${sessionId}/entries/scan`, {
       method: "PUT",
-      body: payload,
-    }),
-
-  saveSessionEntry: (id: number, payload: DispatchSlipScanSessionEntryRequestDTO) =>
-    api.request<BookingSessionEntryResponseDTO>(`${BASE}/${id}/session-entry`, {
-      method: "POST",
       body: payload,
     }),
 };
