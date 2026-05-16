@@ -116,26 +116,6 @@ CREATE INDEX idx_dt_doc_item_sort ON dispatch_template_doc_item (template_doc_id
 CREATE INDEX idx_dt_doc_item_item ON dispatch_template_doc_item (item_id);
 
 -- ------------------------------------------------------------
--- TEMPLATE ITEMS (because you have DispatchTemplateItemEntity)
--- NOTE: this is a SECOND item structure besides doc-items.
--- If you don't want it, delete the entity + mapping.
--- ------------------------------------------------------------
-CREATE TABLE dispatch_template_item
-(
-    id          BIGSERIAL PRIMARY KEY,
-    template_id BIGINT         NOT NULL REFERENCES dispatch_template (id) ON DELETE CASCADE,
-    sort_order  INT            NOT NULL DEFAULT 0,
-    item_id     BIGINT         NOT NULL,
-    quantity    NUMERIC(15, 5) NOT NULL,
-    CONSTRAINT chk_dti_qty_positive CHECK (quantity > 0),
-    CONSTRAINT ux_dt_template_item_unique UNIQUE (template_id, item_id)
-);
-
-CREATE INDEX idx_dt_template_item_template ON dispatch_template_item (template_id);
-CREATE INDEX idx_dt_template_item_sort ON dispatch_template_item (template_id, sort_order, id);
-CREATE INDEX idx_dt_template_item_item ON dispatch_template_item (item_id);
-
--- ------------------------------------------------------------
 -- TEMPLATE SHARES
 -- ------------------------------------------------------------
 CREATE TABLE dispatch_template_share
