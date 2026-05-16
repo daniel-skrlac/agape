@@ -12,13 +12,18 @@ import java.util.List;
 @Setter
 public class DispatchSlipParsedDTO {
 
-    private Long scanId;
     private Long bookingSessionId;
     private Long partnerId;
     private String partnerName;
     private Long templateId;
     private Long warehouseId;
     private LocalDate documentDate;
+    private String rawText;
+    private String detectedPartnerText;
+    private Boolean partnerResolved;
+    private Boolean requiresManualPartner;
+    private Boolean allValid;
+    private List<String> warnings;
 
     @Valid
     @NotEmpty(message = "At least one scan line is required.")

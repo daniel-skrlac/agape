@@ -44,7 +44,11 @@ public final class BookingSessionScanEntryUtil {
         Map<Long, Map<Long, TemplateBookItemDTO>> byDocumentAndItem = new LinkedHashMap<>();
 
         for (BookingSessionScanLineDTO line : lines) {
-            if (line == null || line.getDocumentId() == null) {
+            if (line == null
+                    || line.getDocumentId() == null
+                    || line.getItemId() == null
+                    || line.getQuantity() == null
+                    || line.getQuantity().signum() <= 0) {
                 continue;
             }
 
@@ -67,7 +71,7 @@ public final class BookingSessionScanEntryUtil {
                 .map(entry -> {
                     TemplateBookDocPatchDTO patch = new TemplateBookDocPatchDTO();
                     patch.setDocumentId(entry.getKey());
-                    patch.setSetItems(new ArrayList<>(entry.getValue().values()));
+                    patch.setAddItems(new ArrayList<>(entry.getValue().values()));
                     return patch;
                 })
                 .toList();
@@ -84,7 +88,10 @@ public final class BookingSessionScanEntryUtil {
         Map<Long, TemplateBookItemDTO> byItemId = new LinkedHashMap<>();
 
         for (BookingSessionScanLineDTO line : lines) {
-            if (line == null) {
+            if (line == null
+                    || line.getItemId() == null
+                    || line.getQuantity() == null
+                    || line.getQuantity().signum() <= 0) {
                 continue;
             }
 

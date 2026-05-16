@@ -293,7 +293,7 @@ public class DispatchBookingSessionService {
             return note.trim();
         }
 
-        return "Skenirano iz papirnate otpremnice";
+        return "Skenirano sa papira";
     }
 
     @Transactional

@@ -1,7 +1,5 @@
 package hr.agape.dispatch.scan.dto;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -13,15 +11,20 @@ public class DispatchSlipParsedLineDTO {
 
     private Long documentId;
     private String slipItemCode;
+    private String source;
 
-    @NotNull(message = "Item is required.")
     private Long itemId;
 
     private String itemCode;
     private String itemName;
     private String unit;
 
-    @NotNull(message = "Quantity is required.")
-    @Positive(message = "Quantity must be greater than zero.")
     private BigDecimal quantity;
+
+    private Boolean itemResolved;
+    private Boolean quantityValid;
+    private Boolean requiresManualItem;
+    private Boolean requiresManualQuantity;
+    private Boolean valid;
+    private String warning;
 }

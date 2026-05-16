@@ -11,6 +11,7 @@ public class BookingSessionScanLineValidationDTO {
 
     private Long documentId;
     private String slipItemCode;
+    private String source;
 
     private Long itemId;
     private String itemCode;
@@ -25,4 +26,5 @@ public class BookingSessionScanLineValidationDTO {
     private Boolean requiresManualItem;
     private Boolean requiresManualQuantity;
     private Boolean valid;
+    private String warning;
 }

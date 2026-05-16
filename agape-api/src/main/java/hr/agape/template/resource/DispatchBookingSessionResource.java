@@ -24,6 +24,8 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.reactive.RestForm;
+import org.jboss.resteasy.reactive.multipart.FileUpload;
 
 @Path("/api/v1/dispatch-booking-sessions")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -67,6 +69,29 @@ public class DispatchBookingSessionResource {
             @Valid BookingSessionEntryUpsertRequestDTO req
     ) {
         return Responses.from(service.upsertEntry(sessionId, req));
+    }
+
+    @POST
+    @Path("/{id}/entries/scan/parse")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Response parseScanEntry(
+            @PathParam("id") Long sessionId,
+            @RestForm("file") FileUpload file,
+            @RestForm("partnerId") Long partnerId,
+            @RestForm("templateId") Long templateId,
+            @RestForm("documentDate") String documentDate,
+            @RestForm("note") String note,
+            @RestForm("ocrText") String ocrText
+    ) {
+        return Responses.from(scanEntryService.parseScanUpload(
+                sessionId,
+                file,
+                partnerId,
+                templateId,
+                documentDate,
+                note,
+                ocrText
+        ));
     }
 
     @POST

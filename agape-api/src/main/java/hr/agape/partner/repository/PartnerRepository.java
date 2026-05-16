@@ -116,6 +116,43 @@ public class PartnerRepository {
         );
     }
 
+    public PartnerEntity findByPartnerNumber(Long tenantId, Integer partnerNumber) throws SQLException {
+        if (tenantId == null || partnerNumber == null) {
+            return null;
+        }
+
+        final String sql = """
+                SELECT
+                  p.PARTNER_ID,
+                  p.KORISNIK_ID,
+                  p.STATUSID,
+                  p.PARTNERID,
+                  p.OIB,
+                  p.NAZIV,
+                  p.ADRESA,
+                  p.PTTBROJ,
+                  p.PTTMJESTO,
+                  NVL(p.AKTIVAN,1) AS AKTIVAN,
+                  p.DATUM_IZRADE,
+                  p.DATUM_IZMJENE
+                FROM PARTNERI p
+                WHERE p.KORISNIK_ID = ?
+                  AND p.PARTNERID = ?
+                  AND NVL(p.AKTIVAN, 1) = 1
+                ORDER BY p.PARTNER_ID DESC
+                FETCH FIRST 1 ROWS ONLY
+                """;
+
+        return jdbc.queryOne(
+                sql,
+                ps -> {
+                    ps.setLong(1, tenantId);
+                    ps.setInt(2, partnerNumber);
+                },
+                PartnerRepository::mapRowToEntity
+        );
+    }
+
     public PartnerEntity insert(PartnerEntity in) throws SQLException {
         final String sql = """
                     INSERT INTO PARTNERI

@@ -11,6 +11,7 @@ public class BookingSessionScanLineCandidateDTO {
 
     private Long documentId;
     private String slipItemCode;
+    private String source;
 
     private Long itemId;
     private String itemCode;

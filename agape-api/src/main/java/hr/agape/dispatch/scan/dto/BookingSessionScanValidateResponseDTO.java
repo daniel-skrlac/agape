@@ -15,6 +15,8 @@ public class BookingSessionScanValidateResponseDTO {
     private String partnerName;
     private Long templateId;
     private LocalDate documentDate;
+    private Boolean partnerResolved;
+    private Boolean requiresManualPartner;
 
     private Boolean allValid;
 

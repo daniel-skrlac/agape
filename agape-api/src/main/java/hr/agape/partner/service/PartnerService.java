@@ -141,4 +141,13 @@ public class PartnerService {
             return Map.of();
         }
     }
+
+    public PartnerResponseDTO findByPartnerNumber(Long tenantId, Integer partnerNumber) {
+        try {
+            PartnerEntity partner = repo.findByPartnerNumber(tenantId, partnerNumber);
+            return partner == null ? null : mapper.toResponse(partner);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }

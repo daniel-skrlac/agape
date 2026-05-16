@@ -13,6 +13,7 @@ public class BookingSessionScanLineDTO {
 
     private Long documentId;
     private String slipItemCode;
+    private String source;
 
     @NotNull(message = "Item is required.")
     private Long itemId;
