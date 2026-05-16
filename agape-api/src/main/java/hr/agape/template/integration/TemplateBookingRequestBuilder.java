@@ -39,6 +39,8 @@ public class TemplateBookingRequestBuilder {
             TemplateBookDocPatchDTO patch = patchByDocId.get(doc.getDocumentId());
             Map<Long, BigDecimal> qtyByItemId = buildBaseQtyMap(doc);
 
+            applyPatchSetItems(qtyByItemId, patch);
+            applyPatchRemoveItems(qtyByItemId, patch);
             applyPatchAddItems(qtyByItemId, patch);
             applyExtraItemsToFirstDoc(qtyByItemId, doc, firstDocId, extraItems);
 
@@ -102,6 +104,25 @@ public class TemplateBookingRequestBuilder {
         }
     }
 
+    private void applyPatchSetItems(Map<Long, BigDecimal> qtyByItemId, TemplateBookDocPatchDTO patch) {
+        if (patch == null || patch.getSetItems() == null) return;
+
+        qtyByItemId.clear();
+        for (TemplateBookItemDTO item : patch.getSetItems()) {
+            putExactItem(qtyByItemId, item);
+        }
+    }
+
+    private void applyPatchRemoveItems(Map<Long, BigDecimal> qtyByItemId, TemplateBookDocPatchDTO patch) {
+        if (patch == null || patch.getRemoveItemIds() == null) return;
+
+        for (Long itemId : patch.getRemoveItemIds()) {
+            if (itemId != null) {
+                qtyByItemId.remove(itemId);
+            }
+        }
+    }
+
     private void applyExtraItemsToFirstDoc(
             Map<Long, BigDecimal> qtyByItemId,
             DispatchTemplateDocEntity currentDoc,
@@ -123,6 +144,15 @@ public class TemplateBookingRequestBuilder {
         if (qty == null || qty.signum() == 0) return;
 
         qtyByItemId.merge(item.getItemId(), qty, BigDecimal::add);
+    }
+
+    private void putExactItem(Map<Long, BigDecimal> qtyByItemId, TemplateBookItemDTO item) {
+        if (item == null || item.getItemId() == null) return;
+
+        BigDecimal qty = item.getQuantity();
+        if (qty == null || qty.signum() <= 0) return;
+
+        qtyByItemId.put(item.getItemId(), qty);
     }
 
     private DispatchRequestDTO toDispatchRequest(

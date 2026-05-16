@@ -187,7 +187,7 @@ CREATE TABLE dispatch_booking_session_entry
     session_id  BIGINT NOT NULL REFERENCES dispatch_booking_session (id) ON DELETE CASCADE,
 
     partner_id  BIGINT NOT NULL,
-    template_id BIGINT NOT NULL REFERENCES dispatch_template (id) ON DELETE RESTRICT,
+    template_id BIGINT REFERENCES dispatch_template (id) ON DELETE RESTRICT,
 
     draft_mode    VARCHAR(10) NOT NULL,          -- EnumType.STRING
 

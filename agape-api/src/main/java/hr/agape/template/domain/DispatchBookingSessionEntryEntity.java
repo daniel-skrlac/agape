@@ -41,7 +41,7 @@ public class DispatchBookingSessionEntryEntity extends PanacheEntityBase {
     @Column(name = "partner_id", nullable = false)
     private Long partnerId;
 
-    @Column(name = "template_id", nullable = false)
+    @Column(name = "template_id")
     private Long templateId;
 
     @Enumerated(EnumType.STRING)

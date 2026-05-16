@@ -12,11 +12,20 @@ services:
       - ./oracle/dumps:/dumps
       - ./oracle/bootstrap:/bootstrap:ro
     healthcheck:
-      test: ["CMD", "bash", "-lc", "echo 'select 1 from dual;' | sqlplus -s system/${ORACLE_PASSWORD}@localhost:1521/XE"]
-      interval: 15s
-      timeout: 5s
-      retries: 40
-      start_period: 30s
+      test:
+        [
+          "CMD-SHELL",
+          "printf '%s\n' \
+            'WHENEVER OSERROR EXIT FAILURE' \
+            'WHENEVER SQLERROR EXIT SQL.SQLCODE' \
+            'SELECT 1 FROM dual;' \
+            'EXIT' \
+          | sqlplus -L -s system/$${ORACLE_PASSWORD}@//localhost:1521/XE >/dev/null"
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 60s
     ports:
       - "127.0.0.1:1521:1521"
     networks:
@@ -36,73 +45,148 @@ services:
     volumes:
       - ./oracle/dumps:/dumps
     entrypoint:
-      [
-        "bash","-lc",
-        "set -euo pipefail; \
-         echo 'Creating DIRECTORY dp_dir...'; \
-         sqlplus -s system/${ORACLE_PASSWORD}@//oracle-xe:1521/XE <<'SQL'\n\
-         CREATE OR REPLACE DIRECTORY dp_dir AS '/dumps';\n\
-         GRANT READ, WRITE ON DIRECTORY dp_dir TO ${ORACLE_APP_USER};\n\
-         SQL\n\
-         echo 'Running impdp for schema IN_WPRG (dump=data.DMP)...'; \
-         set +e; \
-         impdp system/${ORACLE_PASSWORD}@//oracle-xe:1521/XE \\\n\
-           directory=dp_dir \\\n\
-           dumpfile=data.DMP \\\n\
-           logfile=data.DMP_imp.log \\\n\
-           schemas=${ORACLE_APP_USER}; \
-         imp_rc=$?; set -e; echo \"impdp exit code: $$imp_rc (continuing to recompile & validate)\"; \
-         echo 'Compile ALL views in schema...'; \
-         set +H; \
-         printf \"%s\\n\" \\\n\
-           \"CONNECT ${ORACLE_APP_USER}/${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE\" \\\n\
-           \"SET SERVEROUTPUT ON FEEDBACK OFF\" \\\n\
-           \"BEGIN\" \\\n\
-           \"  FOR r IN (SELECT object_name FROM user_objects WHERE object_type = 'VIEW') LOOP\" \\\n\
-           \"    BEGIN\" \\\n\
-           \"      EXECUTE IMMEDIATE 'ALTER VIEW '||r.object_name||' COMPILE';\" \\\n\
-           \"    EXCEPTION WHEN OTHERS THEN NULL;\" \\\n\
-           \"    END;\" \\\n\
-           \"  END LOOP;\" \\\n\
-           \"END;\" \\\n\
-           \"/\" \\\n\
-           \"EXIT\" >/tmp/compile_views.sql; \
-         sqlplus -s /nolog @/tmp/compile_views.sql; \
-         echo 'Recompile schema via DBMS_UTILITY.COMPILE_SCHEMA...'; \
-         sqlplus -s /nolog <<SQL\n\
-         CONNECT system/${ORACLE_PASSWORD}@//oracle-xe:1521/XE\n\
-         BEGIN\n\
-           DBMS_UTILITY.COMPILE_SCHEMA(schema => '${ORACLE_APP_USER}', compile_all => FALSE);\n\
-         END;\n\
-         /\n\
-         EXIT\n\
-SQL\n\
-         echo 'Check invalid object count...'; \
-         sqlplus -s /nolog <<SQL\n\
-         CONNECT ${ORACLE_APP_USER}/${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE\n\
-         SET PAGES 200 LINES 200 TRIMS ON\n\
-         PROMPT -> Invalid objects in ${ORACLE_APP_USER}:\n\
-         SELECT COUNT(*) AS invalid_cnt FROM user_objects WHERE status <> 'VALID';\n\
-         PROMPT\n\
-         PROMPT -> First 50 compile errors (if any):\n\
-         SELECT * FROM (\n\
-           SELECT NAME, TYPE, LINE, POSITION, TEXT\n\
-           FROM USER_ERRORS\n\
-           ORDER BY NAME, SEQUENCE\n\
-         ) WHERE ROWNUM <= 50;\n\
-         WHENEVER SQLERROR EXIT SQL.SQLCODE\n\
-         DECLARE v_cnt NUMBER; BEGIN\n\
-           SELECT COUNT(*) INTO v_cnt FROM user_objects WHERE status <> 'VALID';\n\
-           IF v_cnt > 0 THEN\n\
-             RAISE_APPLICATION_ERROR(-20000, 'Invalid objects remain in ${ORACLE_APP_USER}: '||v_cnt);\n\
-           END IF;\n\
-         END;\n\
-         /\n\
-         EXIT\n\
-SQL\n\
-         echo 'Schema is clean: no invalid objects.' \
-        "
-      ]
+      - /bin/bash
+      - -lc
+      - |
+        set -euo pipefail
+
+        DUMP_FILE="data.DMP"
+        IMP_LOG_FILE="data.DMP_imp.log"
+
+        echo 'Waiting for Oracle SQL connection...'
+        for i in $$(seq 1 60); do
+          if printf '%s\n' \
+            'WHENEVER OSERROR EXIT FAILURE' \
+            'WHENEVER SQLERROR EXIT SQL.SQLCODE' \
+            'SELECT 1 FROM dual;' \
+            'EXIT' \
+            | sqlplus -L -s "system/$${ORACLE_PASSWORD}@//oracle-xe:1521/XE" >/dev/null 2>&1; then
+            echo 'Oracle SQL connection is ready.'
+            break
+          fi
+
+          if [ "$$i" = "60" ]; then
+            echo 'Oracle did not become ready for SQL connections.'
+            exit 1
+          fi
+
+          echo "Oracle not ready yet ($$i/60)..."
+          sleep 3
+        done
+
+        echo 'Creating DIRECTORY dp_dir...'
+        sqlplus -L -s "system/$${ORACLE_PASSWORD}@//oracle-xe:1521/XE" <<SQL
+        WHENEVER OSERROR EXIT FAILURE
+        WHENEVER SQLERROR EXIT SQL.SQLCODE
+        CREATE OR REPLACE DIRECTORY dp_dir AS '/dumps';
+        GRANT READ, WRITE ON DIRECTORY dp_dir TO $${ORACLE_APP_USER};
+        EXIT
+        SQL
+
+        echo "Running impdp for schema $${ORACLE_APP_USER} (dump=$${DUMP_FILE})..."
+        rm -f "/dumps/$${IMP_LOG_FILE}"
+
+        set +e
+        impdp "system/$${ORACLE_PASSWORD}@//oracle-xe:1521/XE" \
+          directory=dp_dir \
+          dumpfile="$${DUMP_FILE}" \
+          logfile="$${IMP_LOG_FILE}" \
+          schemas="$${ORACLE_APP_USER}"
+        imp_rc=$$?
+        set -e
+
+        echo
+        echo '──────── Data Pump log ────────'
+        if [ -f "/dumps/$${IMP_LOG_FILE}" ]; then
+          cat "/dumps/$${IMP_LOG_FILE}"
+        else
+          echo "Data Pump log file not found: /dumps/$${IMP_LOG_FILE}"
+        fi
+        echo '──────── End Data Pump log ────────'
+        echo
+
+        echo "impdp exit code: $${imp_rc}"
+
+        echo 'Compile ALL views in schema...'
+        cat >/tmp/compile_views.sql <<SQL
+        CONNECT $${ORACLE_APP_USER}/$${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE
+        WHENEVER OSERROR EXIT FAILURE
+        SET SERVEROUTPUT ON FEEDBACK OFF
+        BEGIN
+          FOR r IN (SELECT object_name FROM user_objects WHERE object_type = 'VIEW') LOOP
+            BEGIN
+              EXECUTE IMMEDIATE 'ALTER VIEW ' || r.object_name || ' COMPILE';
+            EXCEPTION
+              WHEN OTHERS THEN NULL;
+            END;
+          END LOOP;
+        END;
+        /
+        EXIT
+        SQL
+
+        sqlplus -L -s /nolog @/tmp/compile_views.sql
+
+        echo 'Recompile schema via DBMS_UTILITY.COMPILE_SCHEMA...'
+        sqlplus -L -s /nolog <<SQL
+        CONNECT system/$${ORACLE_PASSWORD}@//oracle-xe:1521/XE
+        WHENEVER OSERROR EXIT FAILURE
+        WHENEVER SQLERROR EXIT SQL.SQLCODE
+        BEGIN
+          DBMS_UTILITY.COMPILE_SCHEMA(schema => '$${ORACLE_APP_USER}', compile_all => FALSE);
+        END;
+        /
+        EXIT
+        SQL
+
+        echo 'Check invalid object count...'
+        sqlplus -L -s /nolog <<SQL
+        CONNECT $${ORACLE_APP_USER}/$${ORACLE_APP_PASSWORD}@//oracle-xe:1521/XE
+        WHENEVER OSERROR EXIT FAILURE
+        SET PAGES 200 LINES 200 TRIMS ON
+
+        PROMPT -> Invalid objects in $${ORACLE_APP_USER}:
+        SELECT COUNT(*) AS invalid_cnt
+        FROM user_objects
+        WHERE status <> 'VALID';
+
+        PROMPT
+        PROMPT -> First 50 compile errors if any:
+        SELECT *
+        FROM (
+          SELECT NAME, TYPE, LINE, POSITION, TEXT
+          FROM USER_ERRORS
+          ORDER BY NAME, SEQUENCE
+        )
+        WHERE ROWNUM <= 50;
+
+        WHENEVER SQLERROR EXIT SQL.SQLCODE
+
+        DECLARE
+          v_cnt NUMBER;
+        BEGIN
+          SELECT COUNT(*)
+          INTO v_cnt
+          FROM user_objects
+          WHERE status <> 'VALID';
+
+          IF v_cnt > 0 THEN
+            RAISE_APPLICATION_ERROR(
+              -20000,
+              'Invalid objects remain in $${ORACLE_APP_USER}: ' || v_cnt
+            );
+          END IF;
+        END;
+        /
+        EXIT
+        SQL
+
+        if [ "$${imp_rc}" -ne 0 ]; then
+          echo "impdp finished with non-zero exit code: $${imp_rc}"
+          echo "This can still be OK if Data Pump only reported compile warnings."
+        fi
+
+        echo 'Schema validation finished.'
     restart: "no"
     networks:
       infra_net:
@@ -121,7 +205,7 @@ SQL\n\
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h localhost"]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h localhost" ]
       interval: 5s
       timeout: 3s
       retries: 30

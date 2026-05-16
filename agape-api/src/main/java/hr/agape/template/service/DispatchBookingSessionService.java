@@ -7,6 +7,8 @@ import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.common.util.JsonUtil;
 import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
+import hr.agape.dispatch.scan.dto.BookingSessionScanEntryUpsertRequestDTO;
+import hr.agape.dispatch.scan.util.BookingSessionScanEntryUtil;
 import hr.agape.dispatch.service.DispatchBookingService;
 import hr.agape.partner.dto.PartnerResponseDTO;
 import hr.agape.partner.service.PartnerService;
@@ -239,8 +241,14 @@ public class DispatchBookingSessionService {
             if (s.getStatus() != BookingSessionStatus.DRAFT)
                 return ServiceResponseDirector.errorBadRequest("Session is not editable.");
 
-            DispatchTemplateEntity t = templateRepo.findFullAccessible(req.getTemplateId(), userId);
-            if (t == null) return ServiceResponseDirector.errorBadRequest("Template not accessible.");
+            if (req.getTemplateId() != null) {
+                DispatchTemplateEntity t = templateRepo.findFullAccessible(req.getTemplateId(), userId);
+                if (t == null) return ServiceResponseDirector.errorBadRequest("Template not accessible.");
+            }
+
+            if (req.getTemplateId() == null && isBlankItems(req.getExtraItems())) {
+                return ServiceResponseDirector.errorBadRequest("Template or standalone items are required.");
+            }
 
             DispatchBookingSessionEntryEntity e = entryRepo.findBySessionAndPartner(sessionId, req.getPartnerId());
             if (e == null) {
@@ -253,12 +261,8 @@ public class DispatchBookingSessionService {
             e.setDraftMode(req.getDraftMode());
             e.setNote(req.getNote());
 
-            if (req.getDocPatches() != null) {
-                e.setDocPatchesJson(jsonUtil.write(req.getDocPatches()));
-            }
-            if (req.getExtraItems() != null) {
-                e.setExtraItemsJson(jsonUtil.write(req.getExtraItems()));
-            }
+            e.setDocPatchesJson(jsonUtil.write(req.getDocPatches() == null ? List.of() : req.getDocPatches()));
+            e.setExtraItemsJson(jsonUtil.write(req.getExtraItems() == null ? List.of() : req.getExtraItems()));
 
             e.persist();
 
@@ -266,6 +270,30 @@ public class DispatchBookingSessionService {
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to save entry.");
         }
+    }
+
+    public ServiceResponseDTO<BookingSessionEntryResponseDTO> upsertScanEntry(
+            Long sessionId,
+            BookingSessionScanEntryUpsertRequestDTO req
+    ) {
+        try {
+            BookingSessionEntryUpsertRequestDTO entryReq = BookingSessionScanEntryUtil.toEntryRequest(
+                    req,
+                    resolveScanNote(req.getNote())
+            );
+
+            return upsertEntry(sessionId, entryReq);
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to save scan entry.");
+        }
+    }
+
+    private String resolveScanNote(String note) {
+        if (note != null && !note.isBlank()) {
+            return note.trim();
+        }
+
+        return "Skenirano iz papirnate otpremnice";
     }
 
     @Transactional
@@ -322,6 +350,19 @@ public class DispatchBookingSessionService {
             List<DispatchRequestDTO> allRequests = new ArrayList<>();
 
             for (DispatchBookingSessionEntryEntity e : entries) {
+                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(
+                        e.getExtraItemsJson(),
+                        new TypeReference<>() {}
+                );
+
+                if (e.getTemplateId() == null) {
+                    if (isBlankItems(extraItems)) {
+                        return ServiceResponseDirector.errorBadRequest("Entry has no template and no standalone items: partner " + e.getPartnerId());
+                    }
+                    allRequests.add(buildStandaloneRequest(s.getWarehouseId(), e, extraItems));
+                    continue;
+                }
+
                 DispatchTemplateEntity t = templateById.get(e.getTemplateId());
                 if (t == null) {
                     return ServiceResponseDirector.errorBadRequest("Template not accessible: " + e.getTemplateId());
@@ -336,11 +377,6 @@ public class DispatchBookingSessionService {
                         e.getDocPatchesJson(),
                         new TypeReference<>() {}
                 );
-                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(
-                        e.getExtraItemsJson(),
-                        new TypeReference<>() {}
-                );
-
                 allRequests.addAll(
                         bookingRequestBuilder.buildRequestsForPartner(
                                 s.getWarehouseId(),
@@ -366,6 +402,43 @@ public class DispatchBookingSessionService {
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to finalize session.");
         }
+    }
+
+    private boolean isBlankItems(List<TemplateBookItemDTO> items) {
+        if (items == null || items.isEmpty()) return true;
+        return items.stream().noneMatch(item ->
+                item != null
+                        && item.getItemId() != null
+                        && item.getQuantity() != null
+                        && item.getQuantity().signum() > 0
+        );
+    }
+
+    private DispatchRequestDTO buildStandaloneRequest(
+            Long warehouseId,
+            DispatchBookingSessionEntryEntity entry,
+            List<TemplateBookItemDTO> extraItems
+    ) {
+        DispatchRequestDTO request = new DispatchRequestDTO();
+        request.setWarehouseId(warehouseId);
+        request.setPartnerId(entry.getPartnerId());
+        request.setDraft(entry.getDraftMode().asDraftFlag());
+        request.setNote(entry.getNote());
+
+        List<DispatchRequestDTO.DispatchItemRequest> items = extraItems.stream()
+                .filter(item -> item != null
+                        && item.getItemId() != null
+                        && item.getQuantity() != null
+                        && item.getQuantity().signum() > 0)
+                .map(item -> {
+                    DispatchRequestDTO.DispatchItemRequest line = new DispatchRequestDTO.DispatchItemRequest();
+                    line.setItemId(item.getItemId());
+                    line.setQuantity(item.getQuantity().doubleValue());
+                    return line;
+                })
+                .toList();
+        request.setItems(items);
+        return request;
     }
 
     @Transactional(Transactional.TxType.REQUIRES_NEW)

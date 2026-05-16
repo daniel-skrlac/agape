@@ -6,12 +6,15 @@ import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.item.dto.ItemDescriptorResponseDTO;
 import hr.agape.item.mapper.ItemDirectoryMapper;
 import hr.agape.item.repository.ItemDirectoryRepository;
+import hr.agape.item.util.ItemCodeUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class ItemDirectoryService {
@@ -32,7 +35,7 @@ public class ItemDirectoryService {
             }
 
             List<Long> ids = itemIds.stream()
-                    .filter(java.util.Objects::nonNull)
+                    .filter(Objects::nonNull)
                     .distinct()
                     .toList();
 
@@ -42,19 +45,56 @@ public class ItemDirectoryService {
 
             return repo.findItemsByIds(ids).stream()
                     .map(mapper::toDto)
-                    .filter(x -> x.getItemId() != null)
-                    .collect(java.util.stream.Collectors.toMap(
+                    .filter(item -> item.getItemId() != null)
+                    .collect(Collectors.toMap(
                             ItemDescriptorResponseDTO::getItemId,
-                            x -> x,
-                            (a, b) -> a,
-                            java.util.LinkedHashMap::new
+                            item -> item,
+                            (first, second) -> first,
+                            LinkedHashMap::new
                     ));
         } catch (Exception e) {
             return Map.of();
         }
     }
 
-    @Transactional
+    public Map<String, ItemDescriptorResponseDTO> findItemsByCodes(Long warehouseId, List<String> codes) {
+        try {
+            if (warehouseId == null) {
+                return Map.of();
+            }
+
+            List<String> requestedCodes = ItemCodeUtil.cleanCodes(codes);
+            if (requestedCodes.isEmpty()) {
+                return Map.of();
+            }
+
+            List<String> numericCodes = ItemCodeUtil.numericCodes(requestedCodes);
+            List<String> paddedNumericCodes = ItemCodeUtil.paddedNumericCodes(requestedCodes);
+
+            Map<String, ItemDescriptorResponseDTO> aliases = new LinkedHashMap<>();
+
+            repo.findItemsByCodes(warehouseId, requestedCodes, numericCodes, paddedNumericCodes).stream()
+                    .map(mapper::toDto)
+                    .forEach(item -> ItemCodeUtil.aliasesFor(item.getCode(), item.getItemId())
+                            .forEach(alias -> aliases.putIfAbsent(alias, item)));
+
+            Map<String, ItemDescriptorResponseDTO> out = new LinkedHashMap<>();
+
+            for (String requestedCode : requestedCodes) {
+                String key = ItemCodeUtil.normalize(requestedCode);
+                ItemDescriptorResponseDTO item = aliases.get(key);
+
+                if (item != null) {
+                    out.put(key, item);
+                }
+            }
+
+            return out;
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
     public ServiceResponseDTO<PagedResultDTO<ItemDescriptorResponseDTO>> pageItems(
             Long warehouseId,
             int page,
@@ -70,13 +110,11 @@ public class ItemDirectoryService {
             int safeSize = Math.min(100, Math.max(1, size));
             int offset = safePage * safeSize;
 
-            String qq = (q == null) ? null : q.trim();
+            String qq = q == null ? null : q.trim();
 
             long total = repo.countItems(warehouseId, qq);
 
-            var views = repo.pageItems(warehouseId, offset, safeSize, qq);
-
-            List<ItemDescriptorResponseDTO> items = views.stream()
+            List<ItemDescriptorResponseDTO> items = repo.pageItems(warehouseId, offset, safeSize, qq).stream()
                     .map(mapper::toDto)
                     .toList();
 

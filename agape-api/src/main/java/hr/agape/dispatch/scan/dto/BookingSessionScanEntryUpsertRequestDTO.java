@@ -1,6 +1,8 @@
-package hr.agape.template.dto;
+package hr.agape.dispatch.scan.dto;
 
 import hr.agape.template.enumeration.DraftMode;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,21 +12,17 @@ import java.util.List;
 
 @Getter
 @Setter
-public class BookingSessionEntryUpsertRequestDTO {
+public class BookingSessionScanEntryUpsertRequestDTO {
 
-    @NotNull
+    @NotNull(message = "Partner is required.")
     private Long partnerId;
 
     private Long templateId;
-
-    @NotNull
     private DraftMode draftMode;
-
     private LocalDate documentDate;
-
-    private List<TemplateBookDocPatchDTO> docPatches;
-
-    private List<TemplateBookItemDTO> extraItems;
-
     private String note;
+
+    @Valid
+    @NotEmpty(message = "At least one line is required.")
+    private List<BookingSessionScanLineDTO> lines;
 }

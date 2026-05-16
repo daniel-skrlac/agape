@@ -2,6 +2,9 @@ package hr.agape.template.resource;
 
 import hr.agape.common.constant.Roles;
 import hr.agape.common.response.Responses;
+import hr.agape.dispatch.scan.dto.BookingSessionScanEntryUpsertRequestDTO;
+import hr.agape.dispatch.scan.dto.BookingSessionScanValidateRequestDTO;
+import hr.agape.dispatch.scan.service.BookingSessionScanEntryService;
 import hr.agape.template.dto.BookingSessionCreateRequestDTO;
 import hr.agape.template.dto.BookingSessionEntryUpsertRequestDTO;
 import hr.agape.template.dto.BookingSessionsQueryDTO;
@@ -30,10 +33,15 @@ import jakarta.ws.rs.core.Response;
 public class DispatchBookingSessionResource {
 
     private final DispatchBookingSessionService service;
+    private final BookingSessionScanEntryService scanEntryService;
 
     @Inject
-    public DispatchBookingSessionResource(DispatchBookingSessionService service) {
+    public DispatchBookingSessionResource(
+            DispatchBookingSessionService service,
+            BookingSessionScanEntryService scanEntryService
+    ) {
         this.service = service;
+        this.scanEntryService = scanEntryService;
     }
 
     @GET
@@ -54,13 +62,37 @@ public class DispatchBookingSessionResource {
 
     @PUT
     @Path("/{id}/entries")
-    public Response upsertEntry(@PathParam("id") Long sessionId, @Valid BookingSessionEntryUpsertRequestDTO req) {
+    public Response upsertEntry(
+            @PathParam("id") Long sessionId,
+            @Valid BookingSessionEntryUpsertRequestDTO req
+    ) {
         return Responses.from(service.upsertEntry(sessionId, req));
+    }
+
+    @POST
+    @Path("/{id}/entries/scan/validate")
+    public Response validateScanEntry(
+            @PathParam("id") Long sessionId,
+            @Valid BookingSessionScanValidateRequestDTO req
+    ) {
+        return Responses.from(scanEntryService.validateScanEntry(sessionId, req));
+    }
+
+    @PUT
+    @Path("/{id}/entries/scan")
+    public Response upsertScanEntry(
+            @PathParam("id") Long sessionId,
+            @Valid BookingSessionScanEntryUpsertRequestDTO req
+    ) {
+        return Responses.from(scanEntryService.upsertScanEntry(sessionId, req));
     }
 
     @DELETE
     @Path("/{id}/entries/{partnerId}")
-    public Response deleteEntry(@PathParam("id") Long sessionId, @PathParam("partnerId") Long partnerId) {
+    public Response deleteEntry(
+            @PathParam("id") Long sessionId,
+            @PathParam("partnerId") Long partnerId
+    ) {
         return Responses.from(service.removeEntry(sessionId, partnerId));
     }
 
