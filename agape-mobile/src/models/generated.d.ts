@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-02-28 20:31:40.
+// Generated using typescript-generator version 3.2.1263 on 2026-05-16 19:01:06.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -177,6 +177,91 @@ export interface DispatchUpdateRequestDTO {
     overrideNote: string;
     postNow: boolean;
     items: DispatchItemPatch[];
+}
+
+export interface BookingSessionScanEntryUpsertRequestDTO {
+    partnerId: number;
+    templateId: number;
+    draftMode: DraftMode;
+    documentDate: Date;
+    note: string;
+    lines: BookingSessionScanLineDTO[];
+}
+
+export interface BookingSessionScanLineCandidateDTO {
+    documentId: number;
+    slipItemCode: string;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    unit: string;
+    quantity: number;
+}
+
+export interface BookingSessionScanLineDTO {
+    documentId: number;
+    slipItemCode: string;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    unit: string;
+    quantity: number;
+}
+
+export interface BookingSessionScanLineValidationDTO {
+    documentId: number;
+    slipItemCode: string;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    unit: string;
+    quantity: number;
+    itemResolved: boolean;
+    quantityValid: boolean;
+    mappedToTemplateDocument: boolean;
+    requiresManualItem: boolean;
+    requiresManualQuantity: boolean;
+    valid: boolean;
+}
+
+export interface BookingSessionScanValidateRequestDTO {
+    partnerId: number;
+    templateId: number;
+    documentDate: Date;
+    note: string;
+    lines: BookingSessionScanLineCandidateDTO[];
+}
+
+export interface BookingSessionScanValidateResponseDTO {
+    sessionId: number;
+    partnerId: number;
+    partnerName: string;
+    templateId: number;
+    documentDate: Date;
+    allValid: boolean;
+    lines: BookingSessionScanLineValidationDTO[];
+}
+
+export interface DispatchSlipParsedDTO {
+    scanId: number;
+    bookingSessionId: number;
+    partnerId: number;
+    partnerName: string;
+    templateId: number;
+    warehouseId: number;
+    documentDate: Date;
+    lines: DispatchSlipParsedLineDTO[];
+    note: string;
+}
+
+export interface DispatchSlipParsedLineDTO {
+    documentId: number;
+    slipItemCode: string;
+    itemId: number;
+    itemCode: string;
+    itemName: string;
+    unit: string;
+    quantity: number;
 }
 
 export interface DocumentDescriptorResponseDTO {
@@ -367,7 +452,11 @@ export interface FolderResponseDTO {
 
 export interface TemplateBookDocPatchDTO {
     documentId: number;
-    addItems: TemplateBookItemDTO[];
+    addItems?: TemplateBookItemDTO[] | null;
+    setItems?: TemplateBookItemDTO[] | null;
+    removeItemIds?: number[] | null;
+    draftOverride?: boolean | null;
+    noteOverride?: string | null;
 }
 
 export interface TemplateBookExtraDocDTO {

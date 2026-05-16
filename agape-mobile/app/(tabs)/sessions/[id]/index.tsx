@@ -196,9 +196,11 @@ function buildValidatePayloadFromEntry(args: {
     Object.entries(standaloneQty).forEach(([k, v]) => addQtyToMap(qty, k, v));
   }
 
-  (docPatches ?? []).forEach((p: any) =>
-    ((p?.addItems ?? []) as any[]).forEach((it) => addQtyToMap(qty, it?.itemId, it?.quantity))
-  );
+  (docPatches ?? []).forEach((p: any) => {
+    const exactItems = Array.isArray(p?.setItems) ? p.setItems : null;
+    const additiveItems = Array.isArray(p?.addItems) ? p.addItems : [];
+    ((exactItems ?? additiveItems) as any[]).forEach((it) => addQtyToMap(qty, it?.itemId, it?.quantity));
+  });
   (extraItems ?? []).forEach((it: any) => addQtyToMap(qty, it?.itemId, it?.quantity));
 
   if (Object.keys(qty).length === 0 && Array.isArray(directItems) && directItems.length > 0) {
@@ -547,14 +549,25 @@ export default function SessionDetailIndex() {
   }, [sessionId]);
 
   const openEntry = useCallback(
-    (partnerId: number) => {
+    (partnerId: number, partnerNameHint?: string | null) => {
       router.push({
         pathname: "/(tabs)/sessions/[id]/entry" as const,
-        params: { id: String(sessionId), partnerId: String(partnerId) },
+        params: {
+          id: String(sessionId),
+          partnerId: String(partnerId),
+          partnerName: partnerNameHint?.trim() || undefined,
+        },
       });
     },
     [sessionId]
   );
+
+  const openScan = useCallback(() => {
+    router.push({
+      pathname: "/(tabs)/sessions/[id]/partner" as const,
+      params: { id: String(sessionId) },
+    });
+  }, [sessionId]);
 
   useEffect(() => {
     if (!session) return;
@@ -783,7 +796,7 @@ export default function SessionDetailIndex() {
             <Pressable
               style={[st.rowBtnPrimary, !canEdit && { opacity: 0.5 }]}
               disabled={!canEdit}
-              onPress={() => openEntry(pid)}
+              onPress={() => openEntry(pid, entryNameHint(e))}
             >
               <FontAwesome name="folder-open" size={14} color="#fff" />
               <Text style={st.rowBtnPrimaryText}>Otvori</Text>
@@ -884,7 +897,16 @@ export default function SessionDetailIndex() {
                           disabled={finalizeM.isPending || validateBusy}
                         >
                           <FontAwesome name="plus" size={14} color="#fff" />
-                          <Text style={st.primaryBtnText}>Dodaj partnera</Text>
+                          <Text style={st.primaryBtnText} numberOfLines={1}>Dodaj partnera</Text>
+                        </Pressable>
+
+                        <Pressable
+                          style={[st.secondaryBtn, (finalizeM.isPending || validateBusy) && { opacity: 0.7 }]}
+                          onPress={openScan}
+                          disabled={finalizeM.isPending || validateBusy}
+                        >
+                          <FontAwesome name="camera" size={14} color={Colors.text} />
+                          <Text style={st.secondaryBtnText} numberOfLines={1}>Skeniraj</Text>
                         </Pressable>
 
                         <Pressable
@@ -893,7 +915,7 @@ export default function SessionDetailIndex() {
                           disabled={finalizeM.isPending || validateBusy}
                         >
                           <FontAwesome name="check" size={14} color={Colors.text} />
-                          <Text style={st.secondaryBtnText}>
+                          <Text style={st.secondaryBtnText} numberOfLines={1}>
                             {finalizeM.isPending || validateBusy ? "…" : "Validiraj & knjiži"}
                           </Text>
                         </Pressable>
@@ -914,9 +936,16 @@ export default function SessionDetailIndex() {
                   </View>
 
                   {status === "DRAFT" ? (
-                    <Pressable style={st.smallPill} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
-                      <Text style={st.smallPillText}>+ Partner</Text>
-                    </Pressable>
+                    <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <Pressable style={st.smallPill} onPress={openScan} disabled={finalizeM.isPending || validateBusy}>
+                        <FontAwesome name="camera" size={12} color={Colors.text} />
+                        <Text style={st.smallPillText}>Skeniraj</Text>
+                      </Pressable>
+                      <Pressable style={st.smallPill} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
+                        <FontAwesome name="plus" size={12} color={Colors.text} />
+                        <Text style={st.smallPillText}>+ Partner</Text>
+                      </Pressable>
+                    </View>
                   ) : null}
                 </View>
               </View>
@@ -1039,32 +1068,35 @@ const st = StyleSheet.create({
   },
   badgeText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
 
-  heroBtns: { flexDirection: "row", gap: 10, marginTop: 2 },
+  heroBtns: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 2 },
   primaryBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 999,
+    width: "100%",
+    height: 46,
+    borderRadius: 16,
     backgroundColor: Colors.orange,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
   },
-  primaryBtnText: { color: "#fff", fontWeight: "900" },
+  primaryBtnText: { color: "#fff", fontWeight: "900", fontSize: 14 },
 
   secondaryBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.55)",
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: 130,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.68)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(2, 6, 23, 0.10)",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 8,
+    gap: 7,
+    paddingHorizontal: 10,
   },
-  secondaryBtnText: { fontWeight: "900", color: Colors.text },
+  secondaryBtnText: { fontWeight: "900", color: Colors.text, fontSize: 13 },
 
   lockedLine: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
   lockedText: { color: Colors.sub, fontWeight: "800", flex: 1 },
@@ -1080,13 +1112,15 @@ const st = StyleSheet.create({
 
   smallPill: {
     height: 34,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderRadius: 999,
     backgroundColor: "rgba(249,115,22,0.12)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(249,115,22,0.35)",
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
   },
   smallPillText: { fontWeight: "900", color: Colors.text },
 

@@ -94,7 +94,7 @@ export function createApiClient(config: ApiClientConfig) {
       });
 
       const text = await res.text();
-      const json = text ? safeJsonParse(text, parseDates) : null;
+      const json = parseResponseBody(text, parseDates);
 
       if (res.status === 401 || res.status === 403) {
         await onUnauthorized?.();
@@ -140,7 +140,89 @@ export function createApiClient(config: ApiClientConfig) {
     }
   }
 
-  return { request };
+  async function upload<T>(
+    path: string,
+    formData: FormData,
+    options: Omit<RequestOptions, "body" | "method"> = {}
+  ): Promise<T> {
+    const {
+      query,
+      signal,
+      timeoutMs = 60_000,
+      unwrapServiceResponse = true,
+      parseDates = true,
+    } = options;
+
+    const url = buildUrl(baseUrl, path, query);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const combinedSignal = mergeSignals(signal, controller.signal);
+
+    try {
+      const token = getToken ? await getToken() : null;
+
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: combinedSignal,
+      });
+
+      const text = await res.text();
+      const json = parseResponseBody(text, parseDates);
+
+      if (res.status === 401 || res.status === 403) {
+        await onUnauthorized?.();
+      }
+
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        if (json && typeof json === "object") {
+          const m =
+            (json as any).message ??
+            (json as any).error ??
+            (json as any).detail ??
+            null;
+          if (m) msg = String(m);
+        }
+        if (msg === `HTTP ${res.status}` && typeof json === "string" && json.trim()) {
+          msg = trimResponseText(json);
+        }
+        throw new ApiError(msg, res.status, json);
+      }
+
+      if (!unwrapServiceResponse) {
+        return json as T;
+      }
+
+      const envelope = json as ServiceResponseDTO<T>;
+      if (envelope && typeof envelope === "object" && "success" in envelope) {
+        if (!envelope.success) {
+          const sc = envelope.statusCode ?? res.status;
+          if (sc === 401 || sc === 403) {
+            await onUnauthorized?.();
+          }
+          throw new ApiError(envelope.message || "Request failed", sc, envelope);
+        }
+        return envelope.data;
+      }
+
+      if (typeof json === "string") {
+        throw new ApiError(json || "Unexpected upload response.", res.status, json);
+      }
+
+      return json as T;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return { request, upload };
 }
 
 function buildUrl(baseUrl: string, path: string, query?: RequestOptions["query"]) {
@@ -169,6 +251,21 @@ function safeJsonParse(text: string, parseDates: boolean) {
     }
     return value;
   });
+}
+
+function parseResponseBody(text: string, parseDates: boolean) {
+  if (!text) return null;
+  try {
+    return safeJsonParse(text, parseDates);
+  } catch {
+    return trimResponseText(text);
+  }
+}
+
+function trimResponseText(text: string) {
+  const cleaned = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "Server returned an unreadable response.";
+  return cleaned.length > 220 ? `${cleaned.slice(0, 217)}...` : cleaned;
 }
 
 function isIsoDateString(s: string) {

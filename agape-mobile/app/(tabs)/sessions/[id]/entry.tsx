@@ -15,6 +15,7 @@ import type {
   BookingSessionEntryUpsertRequestDTO,
   BookingSessionResponseDTO,
   ItemDescriptorResponseDTO,
+  PartnerResponseDTO,
   TemplateBookDocPatchDTO,
   TemplateBookItemDTO,
   TemplateDocResponseDTO,
@@ -26,6 +27,8 @@ import { toUserMessage } from "../../../../src/api//apiClient";
 import { useBookingSession, useUpsertBookingSessionEntry } from "../../../../src/api//hooks/sessions/useBookingSessions";
 import { useTemplateDetail } from "../../../../src/api//hooks/templates/useDispatchTemplates";
 import { useItemDirectory } from "../../../../src/api//hooks/documents/useItemDirectory";
+import { useCurrentUser } from "../../../../src/api/hooks/common/useCurrentUser";
+import { partnerService } from "../../../../src/api/services/partnerService";
 
 import {
   QtyMap,
@@ -49,6 +52,14 @@ function cleanText(v: unknown) {
     return s.slice(1, -1);
   }
   return s;
+}
+
+function firstParam(v: unknown) {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+function cleanRouteParam(v: unknown) {
+  return cleanText(firstParam(v));
 }
 
 function num(v: unknown): number {
@@ -338,13 +349,15 @@ function displayFromMeta(itemId: number, mergedMeta: StandaloneMetaMap) {
 }
 
 export default function SessionEntryEditor() {
-  const params = useLocalSearchParams<{ id: string; partnerId: string }>();
+  const params = useLocalSearchParams<{ id: string; partnerId: string; partnerName?: string }>();
   const sessionId = num(params.id);
   const partnerId = num(params.partnerId);
+  const routePartnerName = cleanRouteParam(params.partnerName);
 
   const [screenError, setScreenError] = useState<string | null>(null);
   const [noteSheetOpen, setNoteSheetOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
+  const [hydratedPartner, setHydratedPartner] = useState<PartnerResponseDTO | null>(null);
 
   const hydratedKeyRef = useRef("");
   const builtKeyRef = useRef("");
@@ -354,6 +367,7 @@ export default function SessionEntryEditor() {
     setScreenError(null);
     setNoteSheetOpen(false);
     setNoteDraft("");
+    setHydratedPartner(null);
     hydratedKeyRef.current = "";
     builtKeyRef.current = "";
     metaHydrateKeyRef.current = "";
@@ -366,6 +380,7 @@ export default function SessionEntryEditor() {
 
   const sQ = useBookingSession(sessionId);
   const session = sQ.data as BookingSessionResponseDTO | undefined;
+  const currentUserQ = useCurrentUser();
 
   const upsertM = useUpsertBookingSessionEntry(sessionId);
   const draft = useEntryDraft(sessionId, partnerId);
@@ -379,16 +394,53 @@ export default function SessionEntryEditor() {
     return entries.find((e: any) => num(e?.partnerId) === partnerId) ?? null;
   }, [session, partnerId]);
 
+  useEffect(() => {
+    if (!partnerId) {
+      setHydratedPartner(null);
+      return;
+    }
+
+    let alive = true;
+    const controller = new AbortController();
+
+    partnerService
+      .getPartner(partnerId, controller.signal)
+      .then((partner) => {
+        if (alive) setHydratedPartner(partner);
+      })
+      .catch(() => {
+        // The entry remains usable; route/session hints still provide the visible name when available.
+      });
+
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [partnerId]);
+
   const partnerName = useMemo(() => {
     const fromEntry =
       cleanText((existingEntry as any)?.partnerName) ||
       cleanText((existingEntry as any)?.partner?.name) ||
+      cleanText((hydratedPartner as any)?.name) ||
+      routePartnerName ||
       "";
 
     if (fromEntry) return fromEntry;
-    if (partnerId > 0) return `Partner #${partnerId}`;
+    if (partnerId > 0) return "Učitavam partnera...";
     return "";
-  }, [existingEntry, partnerId]);
+  }, [existingEntry, hydratedPartner, routePartnerName, partnerId]);
+
+  const partnerMeta = useMemo(() => {
+    const number = cleanText((hydratedPartner as any)?.partnerNumber);
+    const city = cleanText((hydratedPartner as any)?.city);
+    return [number ? `#${number}` : null, city || null].filter(Boolean).join(" • ");
+  }, [hydratedPartner]);
+
+  const currentUserName = useMemo(() => {
+    const current = currentUserQ.session;
+    return cleanText((current as any)?.name) || cleanText((current as any)?.username) || "Korisnik";
+  }, [currentUserQ.session]);
 
   const headerTitle = partnerName?.trim() ? `Unos • ${partnerName}` : "Unos";
 
@@ -684,6 +736,23 @@ export default function SessionEntryEditor() {
     });
   }, [canEdit, sessionId, partnerId]);
 
+  const openPartnerScan = useCallback(() => {
+    if (!canEdit) return;
+
+    const templateName = cleanText((selectedTemplate as any)?.name);
+
+    router.push({
+      pathname: "/(tabs)/sessions/[id]/scan" as const,
+      params: {
+        id: String(sessionId),
+        partnerId: String(partnerId),
+        templateId: tplId ? String(tplId) : undefined,
+        partnerName: partnerName || undefined,
+        templateName: templateName || undefined,
+      },
+    });
+  }, [canEdit, sessionId, partnerId, tplId, partnerName, selectedTemplate]);
+
   const openStandaloneItems = useCallback(() => {
     if (!canEdit) return;
     router.push({
@@ -705,9 +774,6 @@ export default function SessionEntryEditor() {
     patchDraft(sessionId, partnerId, {
       templateId: null,
       docPatches: [],
-      standaloneQty: {},
-      standaloneMetaById: {},
-      note: null,
     } as any);
   }, [canEdit, sessionId, partnerId]);
 
@@ -718,12 +784,20 @@ export default function SessionEntryEditor() {
     if (!cur) return;
 
     const curTplId = num((cur as any).templateId ?? 0);
-    if (!curTplId) return;
+    const extraItemsOut = qtyToItems((cur as any).standaloneQty ?? {});
+    if (!curTplId && extraItemsOut.length === 0) {
+      setScreenError("Odaberi predložak ili dodaj barem jednu stavku.");
+      return;
+    }
 
     setScreenError(null);
 
     try {
       let docPatchesOut = normalizeDocPatches((cur as any).docPatches ?? null);
+
+      if (!curTplId) {
+        docPatchesOut = [];
+      }
 
       if (!docPatchesOut.length) {
         if (selectedTemplate && num((selectedTemplate as any)?.id ?? 0) === curTplId) {
@@ -731,7 +805,6 @@ export default function SessionEntryEditor() {
         }
       }
 
-      const extraItemsOut = qtyToItems((cur as any).standaloneQty ?? {});
       const noteOut = isBlankNote((cur as any).note)
         ? null
         : sanitizeNote(String((cur as any).note ?? ""));
@@ -741,7 +814,7 @@ export default function SessionEntryEditor() {
 
       const payload: BookingSessionEntryUpsertRequestDTO = {
         partnerId,
-        templateId: curTplId,
+        templateId: (curTplId || null) as any,
         draftMode: normalizedMode as any,
         documentDate: ((cur as any).documentDate ?? null) as any,
         docPatches: (docPatchesOut ?? []) as any,
@@ -797,8 +870,9 @@ export default function SessionEntryEditor() {
   const notePreview = shorten(firstLine(noteClean), 72);
 
   const tplLoading = !!tplId && (tplQ.isLoading || tplQ.isFetching);
-  const saveDisabled = !draft.templateId || upsertM.isPending || !canEdit || tplLoading;
-  const extraItemsDisabled = !draft.templateId || !canEdit;
+  const saveDisabled = (!draft.templateId && standaloneItems.length === 0) || upsertM.isPending || !canEdit || tplLoading;
+  const extraItemsDisabled = !canEdit;
+  const scanDisabled = !canEdit;
 
   return (
     <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
@@ -829,6 +903,48 @@ export default function SessionEntryEditor() {
         {!!session && !isSessionDraft && (
           <Text style={st.helper}>Sesija nije u DRAFT statusu. Uređivanje je zaključano.</Text>
         )}
+
+        <View style={st.contextCard}>
+          <View style={st.contextIcon}>
+            <FontAwesome name="user" size={16} color={Colors.orange} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={st.contextLabel}>Partner</Text>
+            <Text style={st.contextTitle} numberOfLines={2}>
+              {partnerName || "Partner"}
+            </Text>
+            {!!partnerMeta && (
+              <Text style={st.contextSub} numberOfLines={1}>
+                {partnerMeta}
+              </Text>
+            )}
+          </View>
+          <View style={st.userPill}>
+            <FontAwesome name="user-circle" size={13} color={Colors.sub} />
+            <Text style={st.userPillText} numberOfLines={1}>
+              {currentUserName}
+            </Text>
+          </View>
+        </View>
+
+        <Pressable
+          style={[st.scanCard, scanDisabled && st.disabled]}
+          onPress={openPartnerScan}
+          disabled={scanDisabled}
+        >
+          <View style={st.scanIcon}>
+            <FontAwesome name="camera" size={18} color={Colors.text} />
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={st.scanTitle}>Skeniraj otpremnicu za partnera</Text>
+            <Text style={st.scanSub} numberOfLines={2}>
+              {tplId
+                ? `Fotografiraj slip i spoji ga s predloškom za ${partnerName || "partnera"}.`
+                : `Fotografiraj slip i spremi stavke bez predloška za ${partnerName || "partnera"}.`}
+            </Text>
+          </View>
+          <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
+        </Pressable>
 
         <Text style={st.label}>Način</Text>
         <Segmented<"DRAFT" | "FINAL">
@@ -1013,49 +1129,45 @@ export default function SessionEntryEditor() {
           </Pressable>
         </View>
 
-        {!draft.templateId ? (
-          <Text style={st.helper}>Prvo odaberi predložak pa dodaj stavke.</Text>
-        ) : (
-          <View style={st.cardCol}>
-            <Text style={st.title}>Dodatne stavke</Text>
-            <Text style={st.sub}>
-              Stavki: {standaloneItems.length}
-              {!!warehouseId ? ` • skladište: ${warehouseId}` : ""}
-            </Text>
+        <View style={st.cardCol}>
+          <Text style={st.title}>Dodatne stavke</Text>
+          <Text style={st.sub}>
+            Stavki: {standaloneItems.length}
+            {!!warehouseId ? ` • skladište: ${warehouseId}` : ""}
+          </Text>
 
-            {standaloneItems.length === 0 ? (
-              <Text style={st.muted}>Nema dodanih stavki.</Text>
-            ) : (
-              <View style={{ gap: 8, marginTop: 10 }}>
-                {standaloneItems.map((r) => {
-                  const itemId = num((r as any).itemId);
-                  const quantity = Number((r as any).quantity ?? 0);
-                  const display = displayFromMeta(itemId, mergedExtraMetaById);
+          {standaloneItems.length === 0 ? (
+            <Text style={st.muted}>Nema dodanih stavki.</Text>
+          ) : (
+            <View style={{ gap: 8, marginTop: 10 }}>
+              {standaloneItems.map((r) => {
+                const itemId = num((r as any).itemId);
+                const quantity = Number((r as any).quantity ?? 0);
+                const display = displayFromMeta(itemId, mergedExtraMetaById);
 
-                  return (
-                    <View key={String(itemId)} style={st.simpleRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={st.itemNameStrong} numberOfLines={2}>
-                          {display.name}
+                return (
+                  <View key={String(itemId)} style={st.simpleRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.itemNameStrong} numberOfLines={2}>
+                        {display.name}
+                      </Text>
+                      {!!display.meta && (
+                        <Text style={st.itemMeta} numberOfLines={1}>
+                          {display.meta}
                         </Text>
-                        {!!display.meta && (
-                          <Text style={st.itemMeta} numberOfLines={1}>
-                            {display.meta}
-                          </Text>
-                        )}
-                      </View>
-                      <Text style={st.simpleRight}>x{quantity}</Text>
+                      )}
                     </View>
-                  );
-                })}
-              </View>
-            )}
+                    <Text style={st.simpleRight}>x{quantity}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
-            <Text style={[st.helper, { marginTop: 8 }]}>
-              Ove stavke nisu vezane uz određeni dokument.
-            </Text>
-          </View>
-        )}
+          <Text style={[st.helper, { marginTop: 8 }]}>
+            Ove stavke nisu vezane uz određeni dokument i mogu se spremiti bez predloška.
+          </Text>
+        </View>
 
         <Pressable
           style={[st.primaryBtn, saveDisabled && st.disabled]}
@@ -1141,6 +1253,66 @@ const st = StyleSheet.create({
   label: { fontWeight: "900", color: Colors.text },
 
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+
+  contextCard: {
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  contextIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(249,115,22,0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.24)",
+  },
+  contextLabel: { color: Colors.sub, fontWeight: "900", fontSize: 11 },
+  contextTitle: { color: Colors.text, fontWeight: "900", fontSize: 17, lineHeight: 22 },
+  contextSub: { color: Colors.sub, fontWeight: "800", fontSize: 12, marginTop: 2 },
+  userPill: {
+    maxWidth: 142,
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(148,163,184,0.12)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  userPillText: { color: Colors.sub, fontWeight: "900", fontSize: 12, flexShrink: 1 },
+
+  scanCard: {
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: "rgba(249,115,22,0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(249,115,22,0.32)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  scanIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(2,6,23,0.08)",
+  },
+  scanTitle: { color: Colors.text, fontWeight: "900", fontSize: 15 },
+  scanSub: { color: Colors.sub, fontWeight: "800", fontSize: 12, lineHeight: 16 },
 
   primaryBtn: {
     paddingVertical: 12,
