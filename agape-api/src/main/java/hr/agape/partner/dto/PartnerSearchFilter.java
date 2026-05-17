@@ -24,6 +24,9 @@ public class PartnerSearchFilter extends BaseSearchFilter {
     @QueryParam("nameContains")
     private String nameContains;    // maps to NAZIV like '%x%'
 
+    @QueryParam("partnerNumber")
+    private Integer partnerNumber;  // maps to PARTNERID contains search
+
     @QueryParam("taxNumber")
     private String taxNumber;       // maps to OIB (= exact match)
 

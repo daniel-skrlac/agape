@@ -19,6 +19,8 @@ public class BookingSessionScanLineValidationDTO {
     private String unit;
 
     private BigDecimal quantity;
+    private BigDecimal confidence;
+    private String confidenceLevel;
 
     private Boolean itemResolved;
     private Boolean quantityValid;

@@ -4,8 +4,6 @@ import Colors from "@/src/constants/Colors";
 export const styles = StyleSheet.create({
   wrap: {
     width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
     gap: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -13,6 +11,17 @@ export const styles = StyleSheet.create({
     backgroundColor: "rgba(239,68,68,0.08)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(239,68,68,0.22)",
+  },
+
+  wrapStack: {
+    alignItems: "stretch",
+  },
+
+  row: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
 
   icon: {
@@ -24,7 +33,7 @@ export const styles = StyleSheet.create({
     backgroundColor: "rgba(239,68,68,0.14)",
   },
 
-  textWrap: { flex: 1, gap: 2 },
+  textWrap: { flex: 1, gap: 2, minWidth: 0 },
 
   title: {
     fontWeight: "900",
@@ -37,6 +46,7 @@ export const styles = StyleSheet.create({
     color: Colors.dangerText,
     fontSize: 12,
     opacity: 0.9,
+    lineHeight: 17,
   },
 
   btn: {
@@ -50,6 +60,10 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
   },
   btnText: { fontWeight: "900", color: Colors.text, fontSize: 12 },
+
+  btnStack: {
+    alignSelf: "flex-end",
+  },
 
   disabled: { opacity: 0.5 },
 });

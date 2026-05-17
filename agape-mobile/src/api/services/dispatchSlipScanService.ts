@@ -1,62 +1,75 @@
-import { api } from "../api";
+import {api} from "../api";
 import type {
-  BookingSessionEntryResponseDTO,
-  BookingSessionScanEntryUpsertRequestDTO,
-  BookingSessionScanValidateRequestDTO,
-  BookingSessionScanValidateResponseDTO,
-  DispatchSlipParsedDTO,
+    BookingSessionEntryResponseDTO,
+    BookingSessionScanEntryUpsertRequestDTO,
+    BookingSessionScanValidateRequestDTO,
+    BookingSessionScanValidateResponseDTO,
+    DispatchSlipParsedDTO,
 } from "@/src/models/generated";
 
 const BASE = "/api/v1/dispatch-booking-sessions";
 
 export type ParseDispatchSlipArgs = {
-  sessionId: number;
-  uri: string;
-  name: string;
-  mimeType: string;
-  partnerId?: number | null;
-  templateId?: number | null;
-  documentDate?: string | null;
-  note?: string | null;
-  ocrText?: string | null;
+    sessionId: number;
+    uri: string;
+    name?: string | null;
+    mimeType?: string | null;
+    partnerId?: number | null;
+    templateId?: number | null;
+    documentDate?: string | null;
+    note?: string | null;
 };
 
 export const dispatchSlipScanService = {
-  parse: async (args: ParseDispatchSlipArgs) => {
-    const form = new FormData();
+    parse: async (args: ParseDispatchSlipArgs) => {
+        const form = new FormData();
 
-    form.append("file", {
-      uri: args.uri,
-      name: args.name || "dispatch-slip.jpg",
-      type: args.mimeType || "image/jpeg",
-    } as any);
+        form.append("file", {
+            uri: args.uri,
+            name: args.name || "dispatch-slip.jpg",
+            type: args.mimeType || "image/jpeg",
+        } as any);
 
-    if (args.partnerId) form.append("partnerId", String(args.partnerId));
-    if (args.templateId) form.append("templateId", String(args.templateId));
-    if (args.documentDate) form.append("documentDate", String(args.documentDate));
-    if (args.note) form.append("note", String(args.note));
-    if (args.ocrText) form.append("ocrText", String(args.ocrText));
+        if (args.partnerId != null) {
+            form.append("partnerId", String(args.partnerId));
+        }
 
-    return api.upload<DispatchSlipParsedDTO>(
-      `${BASE}/${args.sessionId}/entries/scan/parse`,
-      form
-    );
-  },
+        if (args.templateId != null) {
+            form.append("templateId", String(args.templateId));
+        }
 
-  validate: (sessionId: number, payload: BookingSessionScanValidateRequestDTO) =>
-    api.request<BookingSessionScanValidateResponseDTO>(
-      `${BASE}/${sessionId}/entries/scan/validate`,
-      {
-        method: "POST",
-        body: payload,
-      }
-    ),
+        if (args.documentDate && args.documentDate.trim()) {
+            form.append("documentDate", args.documentDate.trim());
+        }
 
-  saveEntry: (sessionId: number, payload: BookingSessionScanEntryUpsertRequestDTO) =>
-    api.request<BookingSessionEntryResponseDTO>(`${BASE}/${sessionId}/entries/scan`, {
-      method: "PUT",
-      body: payload,
-    }),
+        if (args.note && args.note.trim()) {
+            form.append("note", args.note.trim());
+        }
+
+        return api.upload<DispatchSlipParsedDTO>(
+            `${BASE}/${args.sessionId}/entries/scan/parse`,
+            form,
+            {timeoutMs: 150_000}
+        );
+    },
+
+    validate: (sessionId: number, payload: BookingSessionScanValidateRequestDTO) =>
+        api.request<BookingSessionScanValidateResponseDTO>(
+            `${BASE}/${sessionId}/entries/scan/validate`,
+            {
+                method: "POST",
+                body: payload,
+            }
+        ),
+
+    saveEntry: (sessionId: number, payload: BookingSessionScanEntryUpsertRequestDTO) =>
+        api.request<BookingSessionEntryResponseDTO>(
+            `${BASE}/${sessionId}/entries/scan`,
+            {
+                method: "PUT",
+                body: payload,
+            }
+        ),
 };
 
 export default dispatchSlipScanService;

@@ -19,4 +19,6 @@ public class BookingSessionScanLineCandidateDTO {
     private String unit;
 
     private BigDecimal quantity;
+    private BigDecimal confidence;
+    private String confidenceLevel;
 }

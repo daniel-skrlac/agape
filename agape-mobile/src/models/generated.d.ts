@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-05-16 22:17:30.
+// Generated using typescript-generator version 3.2.1263 on 2026-05-17 16:53:28.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -197,6 +197,8 @@ export interface BookingSessionScanLineCandidateDTO {
     itemName: string;
     unit: string;
     quantity: number;
+    confidence: number;
+    confidenceLevel: string;
 }
 
 export interface BookingSessionScanLineDTO {
@@ -219,6 +221,8 @@ export interface BookingSessionScanLineValidationDTO {
     itemName: string;
     unit: string;
     quantity: number;
+    confidence: number;
+    confidenceLevel: string;
     itemResolved: boolean;
     quantityValid: boolean;
     mappedToTemplateDocument: boolean;
@@ -248,6 +252,65 @@ export interface BookingSessionScanValidateResponseDTO {
     lines: BookingSessionScanLineValidationDTO[];
 }
 
+export interface DispatchSlipAnalyzerDateCandidateDTO {
+    date: Date;
+    confidence: number;
+    source: string;
+}
+
+export interface DispatchSlipAnalyzerImageQualityDTO {
+    blurScore: number;
+    brightness: number;
+    contrast: number;
+    paperDetectionConfidence: number;
+    gridDetectionConfidence: number;
+    detectedCellCount: number;
+    gridSource: string;
+}
+
+export interface DispatchSlipAnalyzerPartnerCandidateDTO {
+    number: number;
+    text: string;
+    confidence: number;
+    source: string;
+}
+
+export interface DispatchSlipAnalyzerQuantityAlternativeDTO {
+    quantity: number;
+    confidence: number;
+    source: string;
+    raw: string;
+}
+
+export interface DispatchSlipAnalyzerQuantityDTO {
+    slipItemCode: string;
+    quantity: number;
+    confidence: number;
+    raw: string;
+    source: string;
+    layoutSource: string;
+    cropConfidence: number;
+    alternatives: DispatchSlipAnalyzerQuantityAlternativeDTO[];
+}
+
+export interface DispatchSlipAnalyzerResponseDTO {
+    partnerNumber: number;
+    partnerNumberConfidence: number;
+    partnerText: string;
+    partnerTextConfidence: number;
+    documentDate: Date;
+    documentDateConfidence: number;
+    quantities: { [index: string]: number };
+    quantityConfidences: { [index: string]: number };
+    quantityResults: DispatchSlipAnalyzerQuantityDTO[];
+    partnerCandidates: DispatchSlipAnalyzerPartnerCandidateDTO[];
+    dateCandidates: DispatchSlipAnalyzerDateCandidateDTO[];
+    rawText: string;
+    warnings: string[];
+    processingMs: number;
+    imageQuality: DispatchSlipAnalyzerImageQualityDTO;
+}
+
 export interface DispatchSlipParsedDTO {
     bookingSessionId: number;
     partnerId: number;
@@ -255,12 +318,16 @@ export interface DispatchSlipParsedDTO {
     templateId: number;
     warehouseId: number;
     documentDate: Date;
+    documentDateConfidence: number;
     rawText: string;
     detectedPartnerText: string;
+    partnerConfidence: number;
     partnerResolved: boolean;
     requiresManualPartner: boolean;
     allValid: boolean;
     warnings: string[];
+    processingMs: number;
+    imageQuality: DispatchSlipAnalyzerImageQualityDTO;
     lines: DispatchSlipParsedLineDTO[];
     note: string;
 }
@@ -274,6 +341,8 @@ export interface DispatchSlipParsedLineDTO {
     itemName: string;
     unit: string;
     quantity: number;
+    confidence: number;
+    confidenceLevel: string;
     itemResolved: boolean;
     quantityValid: boolean;
     requiresManualItem: boolean;

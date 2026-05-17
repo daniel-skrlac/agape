@@ -10,9 +10,14 @@ export const partnerService = {
     const qs = new URLSearchParams();
     qs.set("page", String(args.page));
     qs.set("size", String(args.size));
-    if (args.q) {
-      qs.set("q", args.q);
-      qs.set("nameContains", args.q);
+    const query = args.q.trim();
+    if (query) {
+      qs.set("q", query);
+      if (/^\d+$/.test(query)) {
+        qs.set("partnerNumber", query);
+      } else {
+        qs.set("nameContains", query);
+      }
     }
     return api.request<PagedResultDTO<PartnerResponseDTO>>(`/api/v1/partners?${qs.toString()}`, { method: "GET", signal });
   },

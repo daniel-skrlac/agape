@@ -122,6 +122,7 @@ public class PartnerRepository {
         }
 
         final String sql = """
+                SELECT * FROM (
                 SELECT
                   p.PARTNER_ID,
                   p.KORISNIK_ID,
@@ -140,7 +141,8 @@ public class PartnerRepository {
                   AND p.PARTNERID = ?
                   AND NVL(p.AKTIVAN, 1) = 1
                 ORDER BY p.PARTNER_ID DESC
-                FETCH FIRST 1 ROWS ONLY
+                )
+                WHERE ROWNUM = 1
                 """;
 
         return jdbc.queryOne(
@@ -330,6 +332,10 @@ public class PartnerRepository {
         if (f.getStatusId() != null) {
             sql.append(" AND p.STATUSID = ? ");
             params.add(f.getStatusId());
+        }
+        if (f.getPartnerNumber() != null) {
+            sql.append(" AND TO_CHAR(p.PARTNERID) LIKE ? ");
+            params.add("%" + f.getPartnerNumber() + "%");
         }
         if (Boolean.TRUE.equals(f.getActiveOnly())) {
             sql.append(" AND NVL(p.AKTIVAN,1) = 1 ");

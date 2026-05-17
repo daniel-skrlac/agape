@@ -80,8 +80,7 @@ public class DispatchBookingSessionResource {
             @RestForm("partnerId") Long partnerId,
             @RestForm("templateId") Long templateId,
             @RestForm("documentDate") String documentDate,
-            @RestForm("note") String note,
-            @RestForm("ocrText") String ocrText
+            @RestForm("note") String note
     ) {
         return Responses.from(scanEntryService.parseScanUpload(
                 sessionId,
@@ -89,8 +88,7 @@ public class DispatchBookingSessionResource {
                 partnerId,
                 templateId,
                 documentDate,
-                note,
-                ocrText
+                note
         ));
     }
 

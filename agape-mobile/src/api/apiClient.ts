@@ -22,8 +22,8 @@ export class ApiError extends Error {
 
     if (msg) return String(msg);
 
-    if (this.status === 0) return "Network error.";
-    if (this.status === 401 || this.status === 403) return "Unauthorized.";
+    if (this.status === 0) return "Greška u mreži.";
+    if (this.status === 401 || this.status === 403) return "Niste ovlašteni.";
     return this.message || `HTTP ${this.status}`;
   }
 }
@@ -129,7 +129,7 @@ export function createApiClient(config: ApiClientConfig) {
           if (sc === 401 || sc === 403) {
             await onUnauthorized?.();
           }
-          throw new ApiError(envelope.message || "Request failed", sc, envelope);
+          throw new ApiError(envelope.message || "Zahtjev nije uspio.", sc, envelope);
         }
         return envelope.data;
       }
@@ -207,13 +207,13 @@ export function createApiClient(config: ApiClientConfig) {
           if (sc === 401 || sc === 403) {
             await onUnauthorized?.();
           }
-          throw new ApiError(envelope.message || "Request failed", sc, envelope);
+          throw new ApiError(envelope.message || "Zahtjev nije uspio.", sc, envelope);
         }
         return envelope.data;
       }
 
       if (typeof json === "string") {
-        throw new ApiError(json || "Unexpected upload response.", res.status, json);
+        throw new ApiError(json || "Neočekivan odgovor kod učitavanja.", res.status, json);
       }
 
       return json as T;

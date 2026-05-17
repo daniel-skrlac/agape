@@ -14,12 +14,13 @@ public class DispatchSlipParsedLineDTO {
     private String source;
 
     private Long itemId;
-
     private String itemCode;
     private String itemName;
     private String unit;
 
     private BigDecimal quantity;
+    private BigDecimal confidence;
+    private String confidenceLevel;
 
     private Boolean itemResolved;
     private Boolean quantityValid;

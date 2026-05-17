@@ -65,6 +65,7 @@ DBC=(docker compose --env-file "$ENV_FILE" -f "$DB_COMPOSE")
 APPC=(docker compose --env-file "$ENV_FILE" -f "$APP_COMPOSE")
 
 PIDS=()
+
 cleanup() {
   echo
   section "CLEANUP"
@@ -86,6 +87,17 @@ get_container_id() {
   fi
 }
 
+service_exists() {
+  local compose_name="$1"
+  local service="$2"
+
+  if [[ "$compose_name" == "db" ]]; then
+    "${DBC[@]}" config --services | grep -Fxq "$service"
+  else
+    "${APPC[@]}" config --services | grep -Fxq "$service"
+  fi
+}
+
 wait_for_service_healthy() {
   local compose_name="$1"
   local service="$2"
@@ -102,9 +114,15 @@ wait_for_service_healthy() {
     if [[ -n "$cid" ]]; then
       local status
       status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo starting)"
+
       if [[ "$status" == "healthy" ]]; then
         green "$label is healthy."
         return 0
+      fi
+
+      if [[ "$status" == "exited" || "$status" == "dead" ]]; then
+        red "$label container is $status."
+        return 1
       fi
     fi
 
@@ -120,23 +138,14 @@ follow_logs() {
   local service="$2"
 
   step "Following logs for $compose_name/$service"
+
   if [[ "$compose_name" == "db" ]]; then
     "${DBC[@]}" logs -f --tail="$TAIL_LINES" "$service" &
   else
     "${APPC[@]}" logs -f --tail="$TAIL_LINES" "$service" &
   fi
+
   PIDS+=($!)
-}
-
-service_exists() {
-  local compose_name="$1"
-  local service="$2"
-
-  if [[ "$compose_name" == "db" ]]; then
-    "${DBC[@]}" config --services | grep -Fxq "$service"
-  else
-    "${APPC[@]}" config --services | grep -Fxq "$service"
-  fi
 }
 
 section "1) Stop stacks"
@@ -177,8 +186,20 @@ else
   log "IMPORT_DUMP=0 — skipping import."
 fi
 
-section "4) Start APP stack"
+section "4) Start APP stack (Python analyzer + API)"
 "${APPC[@]}" up -d --build
+
+if service_exists "app" "dispatch-slip-analyzer"; then
+  wait_for_service_healthy "app" "dispatch-slip-analyzer" "Dispatch slip analyzer" 90 2
+else
+  yellow "Service dispatch-slip-analyzer does not exist in docker-compose.app.yml — skipping analyzer wait."
+fi
+
+if service_exists "app" "api"; then
+  wait_for_service_healthy "app" "api" "API" 120 3
+else
+  yellow "Service api does not exist in docker-compose.app.yml — skipping API container wait."
+fi
 
 section "5) Show status"
 log "== DB stack =="
@@ -187,12 +208,21 @@ log "== DB stack =="
 log "== APP stack =="
 "${APPC[@]}" ps || true
 
-section "6) App quick check"
+section "6) Quick checks"
+
 APP_PORT="$(grep -E '^QUARKUS_HTTP_PORT=' "$ENV_FILE" | head -n1 | cut -d= -f2 || true)"
 APP_PORT="${APP_PORT:-8080}"
 
-# Give Quarkus a moment to come up before checking
-sleep 5
+ANALYZER_PORT="$(grep -E '^DISPATCH_SCAN_ANALYZER_PORT=' "$ENV_FILE" | head -n1 | cut -d= -f2 || true)"
+ANALYZER_PORT="${ANALYZER_PORT:-8091}"
+
+if service_exists "app" "dispatch-slip-analyzer"; then
+  if curl -fsS "http://127.0.0.1:${ANALYZER_PORT}/health" >/dev/null 2>&1; then
+    green "Analyzer health check passed on http://127.0.0.1:${ANALYZER_PORT}/health"
+  else
+    yellow "Analyzer health check failed on http://127.0.0.1:${ANALYZER_PORT}/health"
+  fi
+fi
 
 if curl -fsS "http://127.0.0.1:${APP_PORT}/q/health" >/dev/null 2>&1; then
   green "App health check passed on http://127.0.0.1:${APP_PORT}/q/health"
@@ -201,7 +231,7 @@ else
 fi
 
 if [[ "$APP_LOGS" == "1" ]]; then
-  section "7) Follow app logs (Ctrl+C to stop)"
+  section "7) Follow app logs: API + analyzer (Ctrl+C to stop)"
   "${APPC[@]}" logs -f --tail="$TAIL_LINES" &
   PIDS+=($!)
   wait
