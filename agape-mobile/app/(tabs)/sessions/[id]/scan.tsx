@@ -11,6 +11,7 @@ import {
     ScrollView,
     Text,
     TextInput,
+    useWindowDimensions,
     View,
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -55,6 +56,7 @@ const CameraPackage = (() => {
 })();
 
 const CameraView = CameraPackage?.CameraView ?? null;
+const DISPATCH_SLIP_GUIDE_ASPECT = 0.72;
 
 type SelectedFile = {
     uri: string;
@@ -441,7 +443,9 @@ export default function DispatchSlipScanScreen() {
     const [pickingAction, setPickingAction] = useState<PickingAction>(null);
     const [datePickerOpen, setDatePickerOpen] = useState(false);
     const [scannerSession, setScannerSession] = useState<ScannerSession | null>(null);
+    const [scannerStageSize, setScannerStageSize] = useState({ width: 0, height: 0 });
     const cameraRef = useRef<any>(null);
+    const windowSize = useWindowDimensions();
 
     const analysisPulse = useMemo(() => new Animated.Value(0), []);
     const analysisTranslate = useMemo(
@@ -459,6 +463,25 @@ export default function DispatchSlipScanScreen() {
         () => isoToDateLocal(currentPage?.documentDate) ?? todayLocalNoon(),
         [currentPage?.documentDate]
     );
+    const scannerGuideFrameSize = useMemo(() => {
+        const stageWidth = scannerStageSize.width || Math.max(260, windowSize.width - 28);
+        const stageHeight = scannerStageSize.height || Math.max(420, windowSize.height - 220);
+        const maxWidth = stageWidth * 0.94;
+        const maxHeight = stageHeight * 0.88;
+
+        let width = maxWidth;
+        let height = width / DISPATCH_SLIP_GUIDE_ASPECT;
+
+        if (height > maxHeight) {
+            height = maxHeight;
+            width = height * DISPATCH_SLIP_GUIDE_ASPECT;
+        }
+
+        return {
+            width: Math.max(240, Math.min(width, maxWidth)),
+            height: Math.max(335, Math.min(height, maxHeight)),
+        };
+    }, [scannerStageSize.height, scannerStageSize.width, windowSize.height, windowSize.width]);
 
     const openScanner = useCallback(async (mode: ScannerMode) => {
         setScreenError(null);
@@ -1193,7 +1216,19 @@ export default function DispatchSlipScanScreen() {
                             </Pressable>
                         </View>
 
-                        <View style={s.liveScannerStage}>
+                        <View
+                            style={s.liveScannerStage}
+                            onLayout={(event) => {
+                                const { width, height } = event.nativeEvent.layout;
+                                setScannerStageSize((current) => {
+                                    if (Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1) {
+                                        return current;
+                                    }
+
+                                    return { width, height };
+                                });
+                            }}
+                        >
                             {scannerSession?.capturedFile ? (
                                 <Image
                                     source={{ uri: scannerSession.capturedFile.uri }}
@@ -1217,7 +1252,7 @@ export default function DispatchSlipScanScreen() {
                             )}
 
                             <View style={s.liveGuideOverlay} pointerEvents="none">
-                                <View style={s.liveGuideFrame}>
+                                <View style={[s.liveGuideFrame, scannerGuideFrameSize]}>
                                     <View style={s.guideHeaderLine} />
                                     <View style={s.guideGridTopLine} />
                                     <View style={s.guideGridBottomLine} />
