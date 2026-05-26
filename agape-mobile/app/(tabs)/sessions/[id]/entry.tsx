@@ -345,7 +345,7 @@ function displayFromMeta(itemId: number, mergedMeta: StandaloneMetaMap) {
     .filter(Boolean)
     .join(" • ");
 
-  return { name: name || "Artikl", meta };
+  return { name: name || (itemId ? `Artikl #${itemId}` : "Artikl"), meta };
 }
 
 export default function SessionEntryEditor() {
@@ -612,10 +612,12 @@ export default function SessionEntryEditor() {
       : cleanText((existing as any)?.note);
 
     const incomingDocDate = (existing as any)?.documentDate ?? null;
+    const incomingDraftMode =
+      String((existing as any)?.draftMode ?? "FINAL") === "DRAFT" ? "DRAFT" : "FINAL";
 
     const merged = {
       ...cur,
-      draftMode: ((cur as any)?.draftMode ?? (existing as any)?.draftMode ?? "FINAL") as any,
+      draftMode: (touched.draftMode ? (cur as any)?.draftMode : incomingDraftMode) as any,
       templateId: touched.templateId ? cur.templateId : cur.templateId ?? incomingTemplateId,
       docPatches: touched.docPatches
         ? curDocPatches
@@ -1095,7 +1097,7 @@ export default function SessionEntryEditor() {
                             <View key={String(r.itemId)} style={st.simpleRow}>
                               <View style={{ flex: 1 }}>
                                 <Text style={st.itemNameStrong} numberOfLines={2}>
-                                  {r.name ? r.name : "Artikl"}
+                                  {r.name ? r.name : `Artikl #${r.itemId}`}
                                 </Text>
                                 {!!rowMeta && (
                                   <Text style={st.itemMeta} numberOfLines={1}>

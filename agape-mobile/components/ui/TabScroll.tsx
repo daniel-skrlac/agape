@@ -1,4 +1,4 @@
-import React from "react";
+import React, { forwardRef } from "react";
 import { RefreshControl, ScrollView, ScrollViewProps } from "react-native";
 import Screen from "./Screen";
 import Colors from "@/src/constants/Colors";
@@ -11,7 +11,7 @@ type Props = ScrollViewProps & {
     progressBackgroundColor?: string;
 };
 
-export default function TabScroll({
+const TabScroll = forwardRef<ScrollView, Props>(function TabScroll({
     refreshing,
     onRefresh,
     tintColor = Colors.orange,
@@ -20,9 +20,10 @@ export default function TabScroll({
     children,
     contentContainerStyle,
     ...rest
-}: Props) {
+}: Props, ref) {
     const scroll = (
         <ScrollView
+            ref={ref}
             {...rest}
             contentContainerStyle={[{ flexGrow: 1 }, contentContainerStyle]}
             refreshControl={
@@ -44,4 +45,6 @@ export default function TabScroll({
 
     if (!withScreen) return scroll;
     return <Screen>{scroll}</Screen>;
-}
+});
+
+export default TabScroll;

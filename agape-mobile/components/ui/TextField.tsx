@@ -35,7 +35,11 @@ const TextField: React.FC<TextFieldProps> = ({
           if (!editable) return;
           inputRef.current?.focus();
         }}
-        style={[styles.inputWrap, focused && styles.inputFocused, !editable && { opacity: 0.7 }]}
+        style={[
+          styles.inputWrap,
+          focused && styles.inputFocused,
+          !editable && { opacity: 0.7 },
+        ]}
       >
         <TextInput
           ref={inputRef}

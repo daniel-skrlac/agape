@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import React, { useCallback, useRef, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
@@ -19,8 +19,15 @@ import { styles } from "../../src/styles/RegisterScreen.styles";
 export default function RegisterScreen() {
   const router = useRouter();
   const form = useRegisterForm();
+  const scrollRef = useRef<ScrollView>(null);
 
   const [showPassword, setShowPassword] = useState(false);
+
+  const scrollToField = useCallback((y: number) => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y, animated: true });
+    });
+  }, []);
 
   const handleRegister = async () => {
     const res = await form.submit();
@@ -28,7 +35,14 @@ export default function RegisterScreen() {
   };
 
   return (
-    <TabScroll contentContainerStyle={styles.scroll} withScreen={false}>
+    <TabScroll
+      ref={scrollRef}
+      contentContainerStyle={styles.scroll}
+      withScreen={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      automaticallyAdjustKeyboardInsets
+    >
       <Screen edges={["top", "bottom", "left", "right"]} style={styles.screenTransparent}>
         <View style={styles.container}>
           <View style={styles.top}>
@@ -56,6 +70,7 @@ export default function RegisterScreen() {
                   placeholder={Strings.auth.fullNamePlaceholder}
                   value={form.values.fullName}
                   onChangeText={form.setFullName}
+                  onFocus={() => scrollToField(120)}
                   onBlur={() => form.markTouched("fullName")}
                   returnKeyType="next"
                 />
@@ -68,6 +83,7 @@ export default function RegisterScreen() {
                   placeholder={Strings.auth.oibPlaceholder}
                   value={form.values.oib}
                   onChangeText={form.setOib}
+                  onFocus={() => scrollToField(185)}
                   onBlur={() => form.markTouched("oib")}
                   keyboardType="number-pad"
                   returnKeyType="next"
@@ -82,6 +98,7 @@ export default function RegisterScreen() {
                   autoCapitalize="none"
                   value={form.values.username}
                   onChangeText={form.setUsername}
+                  onFocus={() => scrollToField(250)}
                   onBlur={() => form.markTouched("username")}
                   returnKeyType="next"
                 />
@@ -95,6 +112,7 @@ export default function RegisterScreen() {
                   secureTextEntry={!showPassword}
                   value={form.values.password}
                   onChangeText={form.setPassword}
+                  onFocus={() => scrollToField(315)}
                   onBlur={() => form.markTouched("password")}
                   returnKeyType="done"
                   right={

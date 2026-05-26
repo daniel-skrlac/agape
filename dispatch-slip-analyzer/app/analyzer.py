@@ -15,14 +15,17 @@ import numpy as np
 import pytesseract
 
 
+# The fixed dispatch slip form is taller/narrower than A4 in the scans that reach
+# the analyzer. Keep this aspect in sync with the frontend scanner guide.
 CANONICAL_WIDTH = 1200
-CANONICAL_HEIGHT = 1600
+CANONICAL_HEIGHT = 2132
+FORM_ASPECT = CANONICAL_WIDTH / CANONICAL_HEIGHT
 MAX_INPUT_SIDE = 1800
 
 TEXT_TIMEOUT_SECONDS = 1.25
 DIGIT_TIMEOUT_SECONDS = 0.85
 
-MIN_ACCEPT_QUANTITY_CONFIDENCE = float(os.environ.get("DISPATCH_ANALYZER_MIN_QUANTITY_CONFIDENCE", "0.80"))
+MIN_ACCEPT_QUANTITY_CONFIDENCE = float(os.environ.get("DISPATCH_ANALYZER_MIN_QUANTITY_CONFIDENCE", "0.78"))
 LOW_CONFIDENCE_WARNING_THRESHOLD = 0.82
 MIN_BLUR_SCORE = 45.0
 MIN_BRIGHTNESS = 60.0
@@ -31,7 +34,10 @@ ANALYZER_MAX_WORKERS = min(10, max(4, os.cpu_count() or 4))
 ANALYZER_EXECUTOR = ThreadPoolExecutor(max_workers=ANALYZER_MAX_WORKERS)
 CONTOUR_MAX_SIDE = int(os.environ.get("DISPATCH_ANALYZER_CONTOUR_MAX_SIDE", "700"))
 ADAPTIVE_FALLBACK_CONFIDENCE = float(os.environ.get("DISPATCH_ANALYZER_ADAPTIVE_THRESHOLD", "0.0"))
+QUANTITY_TESSERACT_ENABLED = os.environ.get("DISPATCH_ANALYZER_QUANTITY_TESSERACT", "0").strip().lower() in {"1", "true", "yes", "on"}
+DATE_COMPONENTS_ENABLED = os.environ.get("DISPATCH_ANALYZER_DATE_COMPONENTS", "0").strip().lower() in {"1", "true", "yes", "on"}
 PARTNER_NUMBER_MIN_EARLY_STOP_DIGITS = int(os.environ.get("DISPATCH_ANALYZER_PARTNER_EARLY_STOP_DIGITS", "3"))
+MAX_FALLBACK_CROP_FRACTION = float(os.environ.get("DISPATCH_ANALYZER_MAX_FALLBACK_CROP_FRACTION", "0.10"))
 
 DATE_RE = re.compile(r"\b(\d{1,2})\s*[./:\-]\s*(\d{1,2})\s*[./:\-]\s*(\d{2,4})\b")
 PARTNER_NUMBER_RE = re.compile(r"(?<!\d)(\d{2,6})(?!\d)")
@@ -89,13 +95,13 @@ class RowSpec:
     quantity_bottom: float
 
 
-# Known form geometry, not hardcoded OCR results.
-# Frontend should guide the user to align the slip to the A4 guide so these ratios are stable.
+# Known form geometry, not hardcoded OCR results. Ratios are relative to the
+# normalized dispatch slip form, not to the phone screen or A4 paper.
 ROW_SPECS = [
-    RowSpec(1, 10, 0.040, 0.188, 0.850, 0.322, 0.610, 0.975),
-    RowSpec(11, 8, 0.029, 0.330, 0.870, 0.493, 0.645, 0.975),
-    RowSpec(19, 8, 0.023, 0.516, 0.872, 0.669, 0.640, 0.975),
-    RowSpec(27, 9, 0.023, 0.696, 0.908, 0.888, 0.635, 0.975),
+    RowSpec(1, 10, 0.047, 0.156, 0.962, 0.255, 0.705, 0.985),
+    RowSpec(11, 8, 0.047, 0.283, 0.970, 0.433, 0.740, 0.985),
+    RowSpec(19, 8, 0.047, 0.465, 0.970, 0.598, 0.735, 0.985),
+    RowSpec(27, 9, 0.047, 0.631, 0.970, 0.803, 0.755, 0.985),
 ]
 
 
@@ -176,13 +182,20 @@ def analyze_dispatch_slip(image_bytes: bytes) -> dict:
     original = decode_image(image_bytes)
     quality = image_quality(original)
     document, paper_confidence = normalize_document(original)
+    grid_confidence = estimate_known_form_grid_confidence(document)
+    # A very strong known-form grid is also strong evidence that the paper is
+    # aligned well, even when the outer white border is hard to separate from
+    # the background. Keep the contour score when it is better, but do not
+    # under-report a clean, correctly aligned form.
+    paper_confidence = max(
+        paper_confidence,
+        clamp_float(0.55 + (grid_confidence * 0.43), 0.20, 0.98),
+    )
 
-    partner_number_crop = crop_norm(document, 0.025, 0.080, 0.230, 0.170)
-    partner_crop = crop_norm(document, 0.020, 0.095, 0.480, 0.190)
-    date_crop = crop_norm(document, 0.585, 0.045, 0.965, 0.155)
-    date_crop_tight = crop_norm(document, 0.620, 0.055, 0.960, 0.170)
-    date_crop_wide = crop_norm(document, 0.520, 0.030, 0.985, 0.190)
-    header_crop = crop_norm(document, 0.020, 0.030, 0.980, 0.185)
+    partner_number_crop = crop_norm(document, 0.030, 0.055, 0.245, 0.125)
+    partner_crop = crop_norm(document, 0.030, 0.070, 0.360, 0.155)
+    date_crop_wide = crop_norm(document, 0.595, 0.045, 0.985, 0.158)
+    header_crop = crop_norm(document, 0.030, 0.050, 0.970, 0.155)
 
     quantity_jobs = build_quantity_jobs(document)
 
@@ -194,7 +207,7 @@ def analyze_dispatch_slip(image_bytes: bytes) -> dict:
 
     partner_number_future = executor.submit(ocr_digits_multi, partner_number_crop)
     partner_text_future = executor.submit(ocr_text, partner_crop, "--psm 6", TEXT_TIMEOUT_SECONDS)
-    date_text_future = executor.submit(ocr_date_regions, (date_crop, date_crop_tight, date_crop_wide))
+    date_text_future = executor.submit(ocr_date_regions, (date_crop_wide,))
 
     quantity_futures = [
         executor.submit(
@@ -300,7 +313,7 @@ def analyze_dispatch_slip(image_bytes: bytes) -> dict:
             "brightness": decimal_string(quality["brightness"]),
             "contrast": decimal_string(quality["contrast"]),
             "paperDetectionConfidence": decimal_string(paper_confidence),
-            "gridDetectionConfidence": "0.85",
+            "gridDetectionConfidence": decimal_string(grid_confidence),
             "detectedCellCount": "35",
             "gridSource": "aligned_known_form_layout",
         },
@@ -319,16 +332,54 @@ def decode_image(image_bytes: bytes) -> np.ndarray:
 
 def normalize_document(image: np.ndarray) -> tuple[np.ndarray, float]:
     resized = resize_max(image, MAX_INPUT_SIDE)
-    contour = find_document_contour(resized)
+    contour_result = find_document_contour(resized)
 
-    if contour is not None:
+    if contour_result is not None:
+        contour, confidence = contour_result
         warped = four_point_warp(resized, contour)
         normalized = cv2.resize(warped, (CANONICAL_WIDTH, CANONICAL_HEIGHT), interpolation=cv2.INTER_AREA)
-        return normalized, 0.90
+        return normalized, confidence
 
-    normalized = crop_or_pad_to_aspect(resized, CANONICAL_WIDTH / CANONICAL_HEIGHT)
+    normalized = crop_or_pad_to_aspect(resized, FORM_ASPECT)
     normalized = cv2.resize(normalized, (CANONICAL_WIDTH, CANONICAL_HEIGHT), interpolation=cv2.INTER_AREA)
     return normalized, 0.45
+
+
+def estimate_known_form_grid_confidence(document: np.ndarray) -> float:
+    gray = cv2.cvtColor(document, cv2.COLOR_BGR2GRAY)
+    binary = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        31,
+        12,
+    )
+
+    h, w = binary.shape[:2]
+    row_counts = (binary > 0).sum(axis=1)
+    expected_lines = [
+        0.064, 0.129,
+        0.156, 0.255,
+        0.283, 0.433,
+        0.465, 0.598,
+        0.631, 0.803,
+        0.839, 0.889,
+    ]
+
+    hits = 0
+    for ratio in expected_lines:
+        center = int(h * ratio)
+        radius = max(3, int(h * 0.010))
+        y1 = max(0, center - radius)
+        y2 = min(h, center + radius + 1)
+        if row_counts[y1:y2].max(initial=0) > w * 0.16:
+            hits += 1
+
+    dark_fraction = float((binary > 0).sum()) / max(1, h * w)
+    density_score = 1.0 if 0.015 <= dark_fraction <= 0.180 else 0.55
+    line_score = hits / len(expected_lines)
+    return clamp_float((line_score * 0.86) + (density_score * 0.14), 0.20, 0.98)
 
 
 def resize_max(image: np.ndarray, max_side: int) -> np.ndarray:
@@ -342,7 +393,7 @@ def resize_max(image: np.ndarray, max_side: int) -> np.ndarray:
     return cv2.resize(image, (round(w * scale), round(h * scale)), interpolation=cv2.INTER_AREA)
 
 
-def find_document_contour(image: np.ndarray) -> Optional[np.ndarray]:
+def find_document_contour(image: np.ndarray) -> Optional[tuple[np.ndarray, float]]:
     # Run page-edge detection on a smaller copy, then scale the quad back.
     # This keeps the same warp quality but avoids doing Canny/contours on a huge phone image.
     original_h, original_w = image.shape[:2]
@@ -381,7 +432,14 @@ def find_document_contour(image: np.ndarray) -> Optional[np.ndarray]:
                 candidates.append((area, points))
 
     if not candidates:
-        return None
+        bright_quad = find_bright_document_quad(work)
+        if bright_quad is None:
+            return None
+
+        if scale < 1.0:
+            bright_quad = bright_quad / scale
+
+        return bright_quad.astype(np.float32), 0.72
 
     candidates.sort(key=lambda item: item[0], reverse=True)
     points = candidates[0][1]
@@ -389,7 +447,64 @@ def find_document_contour(image: np.ndarray) -> Optional[np.ndarray]:
     if scale < 1.0:
         points = points / scale
 
-    return points.astype(np.float32)
+    return points.astype(np.float32), 0.90
+
+
+def find_bright_document_quad(image: np.ndarray) -> Optional[np.ndarray]:
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    _, saturation, value = cv2.split(hsv)
+
+    brightness_cutoff = max(135, int(np.percentile(gray, 55)))
+    mask = ((gray >= brightness_cutoff) & (saturation <= 92) & (value >= 120)).astype(np.uint8) * 255
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((19, 19), np.uint8), iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8), iterations=1)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    image_area = image.shape[0] * image.shape[1]
+    candidates: list[tuple[float, np.ndarray]] = []
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < image_area * 0.22:
+            continue
+
+        rect = cv2.minAreaRect(contour)
+        box = cv2.boxPoints(rect).astype(np.float32)
+        rect_area = max(1.0, float(rect[1][0] * rect[1][1]))
+        fill_ratio = area / rect_area
+
+        if fill_ratio < 0.48:
+            continue
+        if not is_reasonable_document_quad(box):
+            continue
+
+        edge_touch_bonus = document_edge_touch_bonus(box, image.shape[:2])
+        candidates.append((area * (1.0 + edge_touch_bonus), box))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
+
+def document_edge_touch_bonus(points: np.ndarray, shape: tuple[int, int]) -> float:
+    h, w = shape
+    margin_x = w * 0.035
+    margin_y = h * 0.035
+    touches = 0
+
+    for x, y in points:
+        if x <= margin_x or x >= w - margin_x:
+            touches += 1
+        if y <= margin_y or y >= h - margin_y:
+            touches += 1
+
+    return min(0.18, touches * 0.03)
 
 def is_reasonable_document_quad(points: np.ndarray) -> bool:
     rect = order_points(points)
@@ -450,12 +565,50 @@ def crop_or_pad_to_aspect(image: np.ndarray, target_aspect: float) -> np.ndarray
 
     if current_aspect > target_aspect:
         new_w = int(h * target_aspect)
-        x = max(0, (w - new_w) // 2)
-        return image[:, x:x + new_w]
+        removed_fraction = max(0.0, (w - new_w) / max(1, w))
+        if removed_fraction <= MAX_FALLBACK_CROP_FRACTION:
+            x = max(0, (w - new_w) // 2)
+            return image[:, x:x + new_w]
+        return pad_to_aspect(image, target_aspect)
 
     new_h = int(w / target_aspect)
-    y = max(0, (h - new_h) // 2)
-    return image[y:y + new_h, :]
+    removed_fraction = max(0.0, (h - new_h) / max(1, h))
+    if removed_fraction <= MAX_FALLBACK_CROP_FRACTION:
+        y = max(0, (h - new_h) // 2)
+        return image[y:y + new_h, :]
+    return pad_to_aspect(image, target_aspect)
+
+
+def pad_to_aspect(image: np.ndarray, target_aspect: float) -> np.ndarray:
+    h, w = image.shape[:2]
+    current_aspect = w / max(1, h)
+    color = estimate_border_color(image)
+
+    if current_aspect > target_aspect:
+        new_h = max(h, int(round(w / target_aspect)))
+        pad_total = new_h - h
+        pad_top = pad_total // 2
+        pad_bottom = pad_total - pad_top
+        return cv2.copyMakeBorder(image, pad_top, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, value=color)
+
+    new_w = max(w, int(round(h * target_aspect)))
+    pad_total = new_w - w
+    pad_left = pad_total // 2
+    pad_right = pad_total - pad_left
+    return cv2.copyMakeBorder(image, 0, 0, pad_left, pad_right, cv2.BORDER_CONSTANT, value=color)
+
+
+def estimate_border_color(image: np.ndarray) -> tuple[int, int, int]:
+    h, w = image.shape[:2]
+    band = max(2, round(min(h, w) * 0.02))
+    samples = np.concatenate([
+        image[:band, :, :].reshape(-1, 3),
+        image[-band:, :, :].reshape(-1, 3),
+        image[:, :band, :].reshape(-1, 3),
+        image[:, -band:, :].reshape(-1, 3),
+    ], axis=0)
+    median = np.median(samples, axis=0)
+    return int(median[0]), int(median[1]), int(median[2])
 
 
 def image_quality(image: np.ndarray) -> dict[str, float]:
@@ -536,15 +689,17 @@ def recognize_quantity_from_cell(document: np.ndarray, code: str, cell: Rect, ro
 
     crop_confidence = estimate_crop_confidence_from_cleaned(cleaned_masks, quantity_region.shape[:2])
 
-    # Do not let Tesseract invent handwriting quantities from table noise.
-    # Component classifier is faster and safer for this fixed handwritten quantity field.
-    # Keep read_tesseract_quantity_candidates available for future experiments, but do not use it by default.
+    if should_try_tesseract_quantity(candidates, provisional, crop_confidence):
+        candidates.extend(read_tesseract_quantity_candidates(quantity_region))
 
     chosen = vote_number_candidates(candidates)
     alternatives = sorted(candidates, key=lambda item: item.confidence, reverse=True)[:5]
 
     if chosen is None:
         return QuantityDecision(code, None, 0.0, "", "none", alternatives, crop_confidence)
+
+    if has_conflicting_quantity_evidence(candidates, chosen.value):
+        chosen = NumberCandidate(chosen.value, min(chosen.confidence, 0.79), chosen.source + "_conflict", chosen.raw)
 
     return QuantityDecision(code, chosen.value, chosen.confidence, chosen.raw, chosen.source, alternatives, crop_confidence)
 
@@ -559,9 +714,10 @@ def crop_quantity_region(cell: np.ndarray, row: RowSpec, quantity_top_ratio: flo
     if y2 <= y1 + 4:
         y2 = h - max(1, int(h * 0.02))
 
-    # Avoid vertical borders; digits on this form are written inside the quantity box.
-    x1 = int(w * 0.120)
-    x2 = int(w * 0.840)
+    # Digits are often written close to the left edge of the quantity area.
+    # Keep the crop wide, then remove table borders from the mask later.
+    x1 = int(w * 0.040)
+    x2 = int(w * 0.940)
 
     return cell[y1:y2, x1:x2]
 
@@ -691,6 +847,9 @@ def read_number_candidates(mask: np.ndarray, source: str) -> list[NumberCandidat
         return []
 
     candidates: list[NumberCandidate] = []
+    open_four = classify_open_four(mask, rects)
+    if open_four is not None:
+        candidates.append(NumberCandidate(open_four.value, open_four.confidence, f"{source}_{open_four.source}", str(open_four.value)))
 
     raw = ""
     scores: list[float] = []
@@ -750,7 +909,7 @@ def digit_components(mask: np.ndarray) -> list[Rect]:
 
         if center_x < 0.06 or center_x > 0.94:
             continue
-        if center_y < 0.08:
+        if center_y < 0.14:
             continue
         if cw > w * 0.36 and ch < h * 0.18:
             continue
@@ -804,6 +963,43 @@ def bounding_rect(rects: list[Rect]) -> Optional[Rect]:
     right = max(rect.right for rect in rects)
     bottom = max(rect.bottom for rect in rects)
     return Rect(x, y, right - x, bottom - y)
+
+
+def classify_open_four(mask: np.ndarray, rects: list[Rect]) -> Optional[DigitGuess]:
+    if len(rects) != 2:
+        return None
+
+    first, second = rects
+    combined = bounding_rect(rects)
+    if combined is None:
+        return None
+
+    gap = second.x - first.right
+    if gap > max(4, combined.w * 0.30):
+        return None
+
+    aspect = combined.w / max(1.0, combined.h)
+    if aspect < 0.22 or aspect > 0.58:
+        return None
+
+    # Open handwritten 4s on this form are commonly drawn as a left slant and a
+    # right vertical stroke. Real "11" tends to be two similar vertical strokes
+    # with a wider gap and more parallel y ranges.
+    starts_staggered = abs(first.y - second.y) >= max(5, combined.h * 0.18)
+    horizontally_overlapping = gap < 0
+    second_is_vertical = second.h >= first.h * 0.35
+    first_reaches_left = first.x <= combined.x + max(3, combined.w * 0.38)
+    second_reaches_right = second.right >= combined.x + combined.w * 0.62
+
+    if not ((starts_staggered or horizontally_overlapping) and second_is_vertical and first_reaches_left and second_reaches_right):
+        return None
+
+    crop = combined.crop(mask)
+    ink = cv2.countNonZero(crop)
+    if ink < 12:
+        return None
+
+    return DigitGuess(4, 0.93, "open_four")
 
 
 def classify_digit(mask: np.ndarray, rect: Rect) -> Optional[DigitGuess]:
@@ -869,6 +1065,15 @@ def classify_digit_heuristic(mask: np.ndarray, box: Rect) -> Optional[DigitGuess
     if aspect < 0.46 and center + right > left * 1.10:
         return DigitGuess(1, 0.90, "narrow_center_right")
 
+    if is_right_slanted_one(aspect, density, left, center, right, top, middle, bottom):
+        return DigitGuess(1, 0.91, "right_slanted_stroke")
+
+    if is_left_hook_two(aspect, density, left, center, right, top, middle, bottom):
+        return DigitGuess(2, 0.86, "left_hook_two")
+
+    if is_curved_two(aspect, density, left, center, right, top, middle, bottom):
+        return DigitGuess(2, 0.86, "curved_two")
+
     if bottom > top * 1.35 and bottom > middle * 0.95 and aspect > 0.44:
         return DigitGuess(2, 0.84, "bottom_heavy")
 
@@ -876,10 +1081,91 @@ def classify_digit_heuristic(mask: np.ndarray, box: Rect) -> Optional[DigitGuess
         if left < center * 1.05:
             return DigitGuess(3, 0.82, "middle_right")
 
-    if aspect > 0.46 and middle > top * 0.55 and left > 0 and right > 0 and density < 0.62:
+    if aspect > 0.46 and middle > top * 0.55 and left > 0 and right > left * 0.45 and density < 0.62:
         return DigitGuess(4, 0.82, "cross_shape")
 
     return None
+
+
+def is_right_slanted_one(
+        aspect: float,
+        density: float,
+        left: int,
+        center: int,
+        right: int,
+        top: int,
+        middle: int,
+        bottom: int,
+) -> bool:
+    if aspect > 0.58 or density > 0.45:
+        return False
+
+    if left > max(4, center * 0.14):
+        return False
+
+    if center < max(8, top * 1.15):
+        return False
+
+    if right < max(8, top * 1.05):
+        return False
+
+    if middle < top * 0.85:
+        return False
+
+    if bottom > center * 0.95:
+        return False
+
+    return True
+
+
+def is_left_hook_two(
+        aspect: float,
+        density: float,
+        left: int,
+        center: int,
+        right: int,
+        top: int,
+        middle: int,
+        bottom: int,
+) -> bool:
+    if aspect < 0.54 or aspect > 0.74 or density > 0.46:
+        return False
+
+    if left < max(7, right * 1.55):
+        return False
+
+    if center < max(18, left * 2.0):
+        return False
+
+    if middle < top * 0.70 or bottom < top * 0.70:
+        return False
+
+    return True
+
+
+def is_curved_two(
+        aspect: float,
+        density: float,
+        left: int,
+        center: int,
+        right: int,
+        top: int,
+        middle: int,
+        bottom: int,
+) -> bool:
+    if aspect < 0.56 or aspect > 0.78 or density > 0.50:
+        return False
+
+    if top < middle * 0.90 or bottom < middle * 0.90:
+        return False
+
+    if center < max(18, left * 3.0):
+        return False
+
+    if right < max(10, left * 1.8):
+        return False
+
+    return True
 
 
 def is_single_stroke(mask: np.ndarray, box: Rect) -> bool:
@@ -1000,7 +1286,7 @@ def read_tesseract_quantity_candidates(crop: np.ndarray) -> list[NumberCandidate
         config = f"--psm {psm} --oem 1 -c tessedit_char_whitelist=0123456789 -c load_system_dawg=0 -c load_freq_dawg=0"
 
         try:
-            text = pytesseract.image_to_string(prepared, config=config, timeout=1.0)
+            text = pytesseract.image_to_string(prepared, config=config, timeout=0.35)
         except Exception:
             continue
 
@@ -1020,6 +1306,46 @@ def read_tesseract_quantity_candidates(crop: np.ndarray) -> list[NumberCandidate
     return candidates
 
 
+def should_try_tesseract_quantity(
+    candidates: list[NumberCandidate],
+    provisional: Optional[NumberCandidate],
+    crop_confidence: float,
+) -> bool:
+    if not QUANTITY_TESSERACT_ENABLED:
+        return False
+
+    if crop_confidence < 0.52:
+        return False
+
+    if provisional is None:
+        return True
+
+    if provisional.confidence < 0.86:
+        return True
+
+    values = {candidate.value for candidate in candidates if candidate.confidence >= 0.78}
+    return len(values) > 1
+
+
+def has_conflicting_quantity_evidence(candidates: list[NumberCandidate], chosen_value: int) -> bool:
+    other_values = [
+        candidate
+        for candidate in candidates
+        if candidate.value != chosen_value and candidate.confidence >= 0.78
+    ]
+
+    if not other_values:
+        return False
+
+    same_value = [
+        candidate
+        for candidate in candidates
+        if candidate.value == chosen_value and candidate.confidence >= 0.78
+    ]
+
+    return len(other_values) >= len(same_value) or max(item.confidence for item in other_values) >= 0.84
+
+
 def vote_number_candidates(candidates: list[NumberCandidate]) -> Optional[NumberCandidate]:
     candidates = [candidate for candidate in candidates if 0 < candidate.value <= 999]
 
@@ -1030,6 +1356,14 @@ def vote_number_candidates(candidates: list[NumberCandidate]) -> Optional[Number
     for candidate in candidates:
         grouped.setdefault(candidate.value, []).append(candidate)
 
+    ambiguous_two = choose_ambiguous_two(grouped)
+    if ambiguous_two is not None:
+        return ambiguous_two
+
+    local_two = choose_local_two_over_fragmented_one(grouped)
+    if local_two is not None:
+        return local_two
+
     best_value: Optional[int] = None
     best_score = 0.0
     best_raw = ""
@@ -1038,13 +1372,14 @@ def vote_number_candidates(candidates: list[NumberCandidate]) -> Optional[Number
     for value, group in grouped.items():
         max_confidence = max(candidate.confidence for candidate in group)
         avg_confidence = sum(candidate.confidence for candidate in group) / len(group)
-        agreement_bonus = min(0.22, 0.08 * (len(group) - 1))
-        score = max_confidence * 0.62 + avg_confidence * 0.25 + agreement_bonus
+        agreement_bonus = min(0.08, 0.035 * (len(group) - 1))
+        source_bonus = max(quantity_source_bonus(candidate.source) for candidate in group)
+        score = max_confidence * 0.76 + avg_confidence * 0.14 + agreement_bonus + source_bonus
 
         if value >= 10 and len(group) < 2:
             score -= 0.16
 
-        if len(grouped) >= 3 and len(group) == 1:
+        if len(grouped) >= 3 and len(group) == 1 and source_bonus < 0.060:
             score -= 0.06
 
         if score > best_score:
@@ -1062,6 +1397,71 @@ def vote_number_candidates(candidates: list[NumberCandidate]) -> Optional[Number
         source="vote_" + "_".join(best_sources[:3]),
         raw=best_raw,
     )
+
+
+def choose_ambiguous_two(grouped: dict[int, list[NumberCandidate]]) -> Optional[NumberCandidate]:
+    if 2 not in grouped or 1 not in grouped or 3 not in grouped:
+        return None
+
+    two = max(grouped[2], key=lambda item: item.confidence)
+    one = max(grouped[1], key=lambda item: item.confidence)
+    three = max(grouped[3], key=lambda item: item.confidence)
+
+    if two.confidence < 0.84 or one.confidence < 0.84 or three.confidence < 0.78:
+        return None
+
+    if "tesseract" in two.source:
+        return None
+
+    return NumberCandidate(
+        2,
+        min(0.80, two.confidence),
+        f"vote_{two.source}_ambiguous_one_three",
+        two.raw,
+    )
+
+
+def choose_local_two_over_fragmented_one(grouped: dict[int, list[NumberCandidate]]) -> Optional[NumberCandidate]:
+    if set(grouped.keys()) != {1, 2}:
+        return None
+
+    two_candidates = [
+        candidate
+        for candidate in grouped[2]
+        if "local_dark" in candidate.source and candidate.confidence >= 0.85
+    ]
+
+    if not two_candidates:
+        return None
+
+    one_candidates = grouped[1]
+    if any("local_dark" in candidate.source and candidate.confidence >= 0.84 for candidate in one_candidates):
+        return None
+
+    if len(one_candidates) < 2:
+        return None
+
+    best_two = max(two_candidates, key=lambda item: item.confidence)
+    return NumberCandidate(
+        2,
+        min(0.80, best_two.confidence),
+        f"vote_{best_two.source}_over_fragmented_one",
+        best_two.raw,
+    )
+
+
+def quantity_source_bonus(source: str) -> float:
+    if "open_four" in source:
+        return 0.070
+    if "blue" in source:
+        return 0.045
+    if "local_dark" in source:
+        return 0.040
+    if "tesseract" in source:
+        return 0.025
+    if "strong_dark" in source:
+        return 0.018
+    return 0.0
 
 
 def estimate_crop_confidence_from_cleaned(cleaned_masks: list[np.ndarray], shape: tuple[int, int]) -> float:
@@ -1217,8 +1617,24 @@ def extract_date_candidates(date_text: str, header_text: str) -> list[DateCandid
         (date_text, "date_crop", 0.86),
         (header_text, "header_crop", 0.70),
     ]:
-        for parsed in parse_all_dates(text):
-            candidates.append(DateCandidate(parsed, confidence, source))
+        normalized = normalize_text(text)
+        parts = normalized.splitlines() or [normalized]
+
+        for part in [normalized, *parts]:
+            part_source = source
+            part_confidence = confidence
+            value = part
+
+            if part.lower().startswith("component_date:"):
+                value = part.split(":", 1)[1]
+                part_source = "date_crop_components"
+                # Component reading uses our generic digit classifier. It is a
+                # useful fallback, but handwritten 2/1 shapes can be close, so
+                # full date OCR from the wider crop must remain authoritative.
+                part_confidence = 0.74
+
+            for parsed in parse_all_dates(value):
+                candidates.append(DateCandidate(parsed, part_confidence, part_source))
 
     return candidates
 
@@ -1281,19 +1697,70 @@ def choose_date(candidates: list[DateCandidate]) -> Optional[DateCandidate]:
     for candidate in candidates:
         grouped.setdefault(candidate.value, []).append(candidate)
 
+    days_by_month: dict[tuple[int, int], set[int]] = {}
+    for value in grouped:
+        days_by_month.setdefault((value.year, value.month), set()).add(value.day)
+
     best: Optional[DateCandidate] = None
     best_score = -1.0
+    scored: dict[date, float] = {}
 
     for value, group in grouped.items():
         max_confidence = max(item.confidence for item in group)
-        frequency_bonus = min(0.25, 0.10 * (len(group) - 1))
+        frequency_bonus = min(0.12, 0.045 * (len(group) - 1))
         sources = {item.source for item in group}
-        source_bonus = 0.12 if "date_crop" in sources else 0.0
+        source_bonus = 0.06 if "date_crop" in sources else 0.0
         score = max_confidence + frequency_bonus + source_bonus
+
+        same_month_days = days_by_month.get((value.year, value.month), set())
+        if value.day < 10 and any(day >= 10 for day in same_month_days):
+            # Handwritten dates often lose the first stroke of a two-digit day
+            # during OCR, e.g. 25.09 can become 05.09. Prefer the two-digit
+            # candidate when both are present, and never make the ambiguous
+            # single-digit candidate look highly certain.
+            score -= 0.16
+
+        scored[value] = score
 
         if score > best_score:
             best_score = score
-            best = DateCandidate(value, min(0.96, score), "+".join(sorted(sources)))
+            best = DateCandidate(value, score, "+".join(sorted(sources)))
+
+    if best is None:
+        return None
+
+    same_month_days = days_by_month.get((best.value.year, best.value.month), set())
+    confidence = min(0.96, best.confidence)
+
+    if len(same_month_days) > 1:
+        close_competitor = any(
+            value != best.value
+            and value.year == best.value.year
+            and value.month == best.value.month
+            and scored.get(value, 0.0) >= best_score - 0.18
+            for value in scored
+        )
+
+        if close_competitor:
+            confidence = min(confidence, 0.80)
+        else:
+            confidence = min(confidence, 0.84)
+
+        if best.value.day < 10 and any(day >= 10 for day in same_month_days):
+            confidence = min(confidence, 0.72)
+
+    if best.value.day < 10 and "date_crop_components" not in best.source:
+        confidence = min(confidence, 0.72)
+
+    if best.source == "date_crop_components":
+        confidence = min(confidence, 0.70)
+
+    # Date is intentionally read with a fast, single-crop OCR path. Keep the
+    # value useful, but do not present it as near-certain when a human still
+    # needs to confirm the slip before saving.
+    confidence = min(confidence, 0.80)
+
+    best = DateCandidate(best.value, confidence, best.source)
 
     return best
 
@@ -1348,30 +1815,148 @@ def ocr_date_regions(images: tuple[np.ndarray, ...]) -> str:
     texts: list[str] = []
 
     for image in images:
+        if DATE_COMPONENTS_ENABLED:
+            for digits in read_date_component_candidates(image):
+                texts.append(f"component_date:{digits}")
+
         text = ocr_date(image)
         if text:
             texts.append(text)
-        if parse_all_dates("\n".join(texts)):
-            break
 
     return normalize_text("\n".join(texts))
 
 def ocr_date(image: np.ndarray) -> str:
     texts: list[str] = []
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    enlarged = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    plan = [(enlarged, 7), (enlarged, 6)]
 
-    for prepared in text_preprocess_variants(image):
-        for psm in (7, 6):
-            try:
-                config = f"--psm {psm} --oem 1 -c tessedit_char_whitelist=0123456789./:- -c load_system_dawg=0 -c load_freq_dawg=0"
-                text = pytesseract.image_to_string(prepared, lang="hrv+eng", config=config, timeout=DIGIT_TIMEOUT_SECONDS)
-                texts.append(text)
-            except Exception:
-                continue
+    for prepared, psm in plan:
+        try:
+            config = f"--psm {psm} --oem 1 -c tessedit_char_whitelist=0123456789./:- -c load_system_dawg=0 -c load_freq_dawg=0"
+            text = pytesseract.image_to_string(prepared, lang="hrv+eng", config=config, timeout=DIGIT_TIMEOUT_SECONDS)
+            texts.append(text)
+        except Exception:
+            continue
 
-            if parse_all_dates("\n".join(texts)):
-                return normalize_text("\n".join(texts))
+        if parse_all_dates("\n".join(texts)):
+            return normalize_text("\n".join(texts))
+
+    blurred = cv2.GaussianBlur(enlarged, (3, 3), 0)
+    _, otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    for psm in (7,):
+        try:
+            config = f"--psm {psm} --oem 1 -c tessedit_char_whitelist=0123456789./:- -c load_system_dawg=0 -c load_freq_dawg=0"
+            text = pytesseract.image_to_string(otsu, lang="hrv+eng", config=config, timeout=DIGIT_TIMEOUT_SECONDS)
+            texts.append(text)
+        except Exception:
+            continue
+
+        if parse_all_dates("\n".join(texts)):
+            return normalize_text("\n".join(texts))
 
     return normalize_text("\n".join(texts))
+
+
+def read_date_component_candidates(image: np.ndarray) -> list[str]:
+    candidates: list[tuple[str, float]] = []
+
+    for mask_name, mask in build_date_digit_masks(image):
+        clean = clean_date_digit_mask(mask)
+        rects = date_digit_components(clean)
+
+        if len(rects) < 6 or len(rects) > 10:
+            continue
+
+        raw = ""
+        scores: list[float] = []
+
+        for rect in rects:
+            guess = classify_digit(clean, rect)
+            if guess is None:
+                raw = ""
+                break
+            raw += str(guess.value)
+            scores.append(guess.confidence)
+
+        if not raw:
+            continue
+
+        if not parse_all_dates(raw):
+            continue
+
+        candidates.append((raw, min(scores) if scores else 0.0))
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    for raw, _ in sorted(candidates, key=lambda item: item[1], reverse=True):
+        if raw in seen:
+            continue
+        seen.add(raw)
+        out.append(raw)
+
+    return out[:3]
+
+
+def build_date_digit_masks(crop: np.ndarray) -> list[tuple[str, np.ndarray]]:
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    background = np.percentile(blurred, 76)
+    local_dark = np.where(blurred < background - 7, 255, 0).astype(np.uint8)
+
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    blue = ((h >= 80) & (h <= 155) & (s >= 20) & (v <= 248)).astype(np.uint8) * 255
+
+    _, strong_dark = cv2.threshold(gray, 155, 255, cv2.THRESH_BINARY_INV)
+
+    return [
+        ("blue_date", blue),
+        ("local_dark_date", local_dark),
+        ("strong_dark_date", strong_dark),
+    ]
+
+
+def clean_date_digit_mask(mask: np.ndarray) -> np.ndarray:
+    clean = clean_quantity_mask(mask)
+    h, w = clean.shape[:2]
+
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(14, round(w * 0.34)), 1))
+    horizontal = cv2.morphologyEx(clean, cv2.MORPH_OPEN, horizontal_kernel)
+    clean = cv2.bitwise_and(clean, cv2.bitwise_not(horizontal))
+
+    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(10, round(h * 0.72))))
+    vertical = cv2.morphologyEx(clean, cv2.MORPH_OPEN, vertical_kernel)
+    clean = cv2.bitwise_and(clean, cv2.bitwise_not(vertical))
+
+    return clean
+
+
+def date_digit_components(mask: np.ndarray) -> list[Rect]:
+    count, _, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    h, w = mask.shape[:2]
+    rects: list[Rect] = []
+
+    for idx in range(1, count):
+        x, y, cw, ch, area = stats[idx]
+
+        if area < 6:
+            continue
+        if ch < max(5, h * 0.16) or ch > h * 0.92:
+            continue
+        if cw < 2 or cw > w * 0.20:
+            continue
+
+        center_y = (y + ch / 2.0) / max(1, h)
+        if center_y < 0.16 or center_y > 0.88:
+            continue
+
+        rects.append(Rect(int(x), int(y), int(cw), int(ch)))
+
+    rects.sort(key=lambda rect: rect.x)
+    return merge_digit_fragments(rects)
 
 
 def has_likely_partner_number(value: str) -> bool:
@@ -1474,4 +2059,8 @@ def decimal_string(value: float) -> str:
 
 
 def clamp(value: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(maximum, value))
+
+
+def clamp_float(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))

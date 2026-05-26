@@ -4,10 +4,12 @@ import {
     Animated,
     Easing,
     Image,
+    InteractionManager,
     Keyboard,
     Modal,
     Platform,
     Pressable,
+    RefreshControl,
     ScrollView,
     Text,
     TextInput,
@@ -17,17 +19,19 @@ import {
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { ErrorCard } from "@/components/ErrorCard";
+import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
+import { CenterSheet } from "@/components/CenterSheet";
 import NavigationHeader from "@/components/NavigationHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import Screen from "@/components/ui/Screen";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import Colors from "@/src/constants/Colors";
 import type {
-    BookingSessionScanLineValidationDTO,
     BookingSessionScanValidateResponseDTO,
     DispatchSlipParsedDTO,
     ItemDescriptorResponseDTO,
@@ -38,7 +42,6 @@ import { useBookingSession } from "@/src/api/hooks/sessions/useBookingSessions";
 import {
     useParseDispatchSlip,
     useSaveDispatchSlipScanEntry,
-    useValidateDispatchSlipScan,
 } from "@/src/api/hooks/scans/useDispatchSlipScans";
 import { partnerService } from "@/src/api/services/partnerService";
 import { itemDirectoryService } from "@/src/api/services/itemDirectoryService";
@@ -56,7 +59,7 @@ const CameraPackage = (() => {
 })();
 
 const CameraView = CameraPackage?.CameraView ?? null;
-const DISPATCH_SLIP_GUIDE_ASPECT = 0.72;
+const DISPATCH_SLIP_GUIDE_ASPECT = 1200 / 2132;
 
 type SelectedFile = {
     uri: string;
@@ -83,6 +86,9 @@ type EditableScanLine = {
     warning?: string | null;
     confidence?: number | null;
     confidenceLevel?: string | null;
+    scannedQuantity?: string | null;
+    scannedConfidence?: number | null;
+    scannedConfidenceLevel?: string | null;
 };
 
 type ScanPage = {
@@ -102,10 +108,12 @@ type ScanPage = {
     validatedKey: string | null;
     lastValidation: BookingSessionScanValidateResponseDTO | null;
     imageLoading: boolean;
+    imageLoadedUri: string | null;
 };
 
 type AssuranceLevel = "high" | "medium" | "low";
 type PickingAction = "addCamera" | "addFile" | "replaceCamera" | "replaceFile" | null;
+type UploadSource = "gallery" | "files";
 type ScannerMode = "add" | "replace";
 type ScannerSession = {
     mode: ScannerMode;
@@ -113,6 +121,9 @@ type ScannerSession = {
     ready: boolean;
     error: string | null;
 };
+
+const LOCAL_DRAFT_VERSION = 1;
+const LOCAL_DRAFT_FOLDER = "agape-dispatch-scan-drafts";
 
 function firstParam(v: unknown) {
     return Array.isArray(v) ? v[0] : v;
@@ -150,6 +161,37 @@ function toQuantityInput(v: unknown) {
     const n = Number(String(v).replace(",", "."));
     if (!Number.isFinite(n) || n <= 0) return "";
     return String(v);
+}
+
+function steppedQuantityInput(value: unknown, delta: number) {
+    const current = Number(String(value ?? "").replace(",", "."));
+    const next = Math.max(0, (Number.isFinite(current) ? current : 0) + delta);
+
+    if (next <= 0) {
+        return "";
+    }
+
+    return Number.isInteger(next) ? String(next) : String(Number(next.toFixed(3)));
+}
+
+function positiveQuantityNumber(value: unknown) {
+    const n = Number(String(value ?? "").replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function quantityEditPatch(line: EditableScanLine, quantity: string): Partial<EditableScanLine> {
+    const nextValue = positiveQuantityNumber(quantity);
+    const scannedValue = positiveQuantityNumber(line.scannedQuantity);
+    const matchesScannedValue = nextValue != null
+        && scannedValue != null
+        && Math.abs(nextValue - scannedValue) < 0.000001;
+
+    return {
+        quantity,
+        confidence: matchesScannedValue ? line.scannedConfidence ?? null : null,
+        confidenceLevel: matchesScannedValue ? line.scannedConfidenceLevel ?? null : null,
+        valid: null,
+    };
 }
 
 function confidenceValue(v: unknown): number | null {
@@ -257,16 +299,6 @@ function sourceLabel(source?: string | null) {
     return "Očitano";
 }
 
-function gridSourceLabel(source?: string | null) {
-    const normalized = String(source ?? "").trim().toLowerCase();
-    if (!normalized) return "nije dostupno";
-    if (normalized.includes("known") || normalized.includes("layout") || normalized.includes("fixed")) return "poznati obrazac";
-    if (normalized.includes("detected") || normalized.includes("grid")) return "prepoznata mreža";
-    if (normalized.includes("fallback")) return "rezervna procjena";
-    if (normalized.includes("opencv")) return "analiza slike";
-    return "analiza slike";
-}
-
 function lineSubtitle(line: EditableScanLine) {
     return [
         line.itemCode ? `Šifra artikla: ${line.itemCode}` : null,
@@ -276,52 +308,35 @@ function lineSubtitle(line: EditableScanLine) {
 }
 
 function linesFromParsed(parsed: DispatchSlipParsedDTO): EditableScanLine[] {
-    return (((parsed as any)?.lines ?? []) as any[]).map((line) => ({
-        slipItemCode: line?.slipItemCode ?? null,
-        source: line?.source ?? null,
-        documentId: cleanNumber(line?.documentId),
-        itemId: cleanNumber(line?.itemId),
-        itemCode: line?.itemCode ?? null,
-        itemName: line?.itemName ?? null,
-        unit: line?.unit ?? null,
-        quantity: toQuantityInput(line?.quantity),
-        itemResolved: line?.itemResolved ?? (cleanNumber(line?.itemId) != null),
-        quantityValid: line?.quantityValid ?? Number(line?.quantity ?? 0) > 0,
-        requiresManualItem: !!line?.requiresManualItem,
-        requiresManualQuantity: !!line?.requiresManualQuantity,
-        valid: line?.valid ?? null,
-        warning: line?.warning ?? null,
-        confidence: confidenceValue(line?.confidence),
-        confidenceLevel: normalizeConfidenceLevel(line?.confidenceLevel),
-    }));
-}
+    return (((parsed as any)?.lines ?? []) as any[])
+        .filter((line) => Number(line?.quantity ?? 0) > 0)
+        .map((line) => {
+            const quantity = toQuantityInput(line?.quantity);
+            const confidence = confidenceValue(line?.confidence);
+            const confidenceLevel = normalizeConfidenceLevel(line?.confidenceLevel);
 
-function linesFromValidation(
-    validation: BookingSessionScanValidateResponseDTO,
-    previousLines?: EditableScanLine[]
-): EditableScanLine[] {
-    return (((validation as any)?.lines ?? []) as BookingSessionScanLineValidationDTO[]).map((line: any, index) => {
-        const previous = previousLines?.[index];
-
-        return {
-            slipItemCode: line?.slipItemCode ?? previous?.slipItemCode ?? null,
-            source: line?.source ?? previous?.source ?? null,
-            documentId: cleanNumber(line?.documentId),
-            itemId: cleanNumber(line?.itemId),
-            itemCode: line?.itemCode ?? previous?.itemCode ?? null,
-            itemName: line?.itemName ?? previous?.itemName ?? null,
-            unit: line?.unit ?? previous?.unit ?? null,
-            quantity: toQuantityInput(line?.quantity ?? previous?.quantity),
-            itemResolved: !!line?.itemResolved,
-            quantityValid: !!line?.quantityValid,
-            requiresManualItem: !!line?.requiresManualItem,
-            requiresManualQuantity: !!line?.requiresManualQuantity,
-            valid: !!line?.valid,
-            warning: line?.warning ?? null,
-            confidence: confidenceValue(line?.confidence ?? previous?.confidence),
-            confidenceLevel: normalizeConfidenceLevel(line?.confidenceLevel ?? previous?.confidenceLevel),
-        };
-    });
+            return {
+                slipItemCode: line?.slipItemCode ?? null,
+                source: line?.source ?? null,
+                documentId: cleanNumber(line?.documentId),
+                itemId: cleanNumber(line?.itemId),
+                itemCode: line?.itemCode ?? null,
+                itemName: line?.itemName ?? null,
+                unit: line?.unit ?? null,
+                quantity,
+                itemResolved: line?.itemResolved ?? (cleanNumber(line?.itemId) != null),
+                quantityValid: line?.quantityValid ?? Number(line?.quantity ?? 0) > 0,
+                requiresManualItem: !!line?.requiresManualItem,
+                requiresManualQuantity: false,
+                valid: line?.valid ?? null,
+                warning: line?.warning ?? null,
+                confidence,
+                confidenceLevel,
+                scannedQuantity: quantity,
+                scannedConfidence: confidence,
+                scannedConfidenceLevel: confidenceLevel,
+            };
+        });
 }
 
 function makeValidationKey(page: Pick<ScanPage, "partnerId" | "templateId" | "documentDate" | "note" | "lines">) {
@@ -343,10 +358,6 @@ function makeValidationKey(page: Pick<ScanPage, "partnerId" | "templateId" | "do
     });
 }
 
-function isPageValidated(page: ScanPage) {
-    return !!page.validatedKey && page.validatedKey === makeValidationKey(page) && !!page.lastValidation?.allValid;
-}
-
 function assuranceStyle(level: AssuranceLevel) {
     if (level === "high") return s.assuranceHigh;
     if (level === "medium") return s.assuranceMedium;
@@ -366,23 +377,31 @@ function pageStats(page: ScanPage | null) {
     const positive = lines.filter((line) => quantityValue(line) > 0).length;
     const ready = lines.filter((line) => quantityValue(line) > 0 && cleanNumber(line.itemId)).length;
     const unresolved = lines.filter((line) => quantityValue(line) > 0 && !cleanNumber(line.itemId)).length;
-    const missingQuantities = lines.filter((line) => cleanNumber(line.itemId) && quantityValue(line) <= 0).length;
+    const missingQuantities = lines.filter(
+        (line) => !!line.requiresManualQuantity && cleanNumber(line.itemId) && quantityValue(line) <= 0
+    ).length;
     const warnings = lines.filter((line) => !!line.warning).length;
     const lowConfidence = lines.filter(
         (line) => quantityValue(line) > 0 && confidenceLevelFromValues(line.confidence, line.confidenceLevel) === "low"
     ).length;
-    const validated = page ? isPageValidated(page) : false;
 
-    const level: AssuranceLevel = validated
-        ? "high"
-        : unresolved || warnings || lowConfidence
+    const level: AssuranceLevel = unresolved || warnings || lowConfidence
             ? "low"
-            : linked || positive
-                ? "medium"
+            : ready
+                ? "high"
+                : linked || positive
+                    ? "medium"
                 : "medium";
 
     const percent = total ? Math.round((linked / total) * 100) : 0;
-    return { total, positive, linked, ready, unresolved, missingQuantities, warnings, lowConfidence, level, percent, validated };
+    return { total, positive, linked, ready, unresolved, missingQuantities, warnings, lowConfidence, level, percent };
+}
+
+function pageReadyForSave(page: ScanPage) {
+    if (!page.parsed) return false;
+    if (!page.partnerId) return false;
+    if (!page.lines.some((line) => quantityValue(line) > 0)) return false;
+    return page.lines.every((line) => quantityValue(line) <= 0 || !!cleanNumber(line.itemId));
 }
 
 function fileFromImageAsset(asset: ImagePicker.ImagePickerAsset): SelectedFile {
@@ -415,6 +434,125 @@ function fileFromDocumentAsset(asset: DocumentPicker.DocumentPickerAsset): Selec
     };
 }
 
+function sanitizeDraftKey(value: string) {
+    return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function localDraftPath(sessionId: number, partnerId: number | null, templateId: number | null) {
+    if (!FileSystem.documentDirectory || !Number.isFinite(sessionId)) return null;
+
+    const key = sanitizeDraftKey([
+        "dispatch-scan",
+        `session-${sessionId}`,
+        `partner-${partnerId ?? "all"}`,
+        `template-${templateId ?? "none"}`,
+    ].join("-"));
+
+    return `${FileSystem.documentDirectory}${LOCAL_DRAFT_FOLDER}/${key}.json`;
+}
+
+async function ensureLocalDraftFolder() {
+    if (!FileSystem.documentDirectory) return null;
+
+    const folder = `${FileSystem.documentDirectory}${LOCAL_DRAFT_FOLDER}`;
+    await FileSystem.makeDirectoryAsync(folder, { intermediates: true }).catch(() => {});
+    return folder;
+}
+
+function serializablePage(page: ScanPage): ScanPage {
+    return {
+        ...page,
+        imageLoading: false,
+        imageLoadedUri: page.file.uri,
+    };
+}
+
+function restoreScanPage(raw: any): ScanPage | null {
+    if (!raw?.file?.uri) return null;
+
+    return {
+        id: String(raw.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+        file: {
+            uri: String(raw.file.uri),
+            name: String(raw.file.name || `otpremnica-${Date.now()}.jpg`),
+            mimeType: String(raw.file.mimeType || "image/jpeg"),
+            width: raw.file.width ?? null,
+            height: raw.file.height ?? null,
+        },
+        parsed: raw.parsed ?? null,
+        partnerId: cleanNumber(raw.partnerId),
+        selectedPartner: raw.selectedPartner ?? null,
+        partnerNameHint: cleanParamText(raw.partnerNameHint),
+        templateId: cleanNumber(raw.templateId),
+        documentDate: toDateInput(raw.documentDate),
+        note: String(raw.note ?? "Skenirano sa papira"),
+        rawText: String(raw.rawText ?? ""),
+        partnerConfidence: confidenceValue(raw.partnerConfidence),
+        documentDateConfidence: confidenceValue(raw.documentDateConfidence),
+        lines: Array.isArray(raw.lines)
+            ? raw.lines.map((line: any) => ({
+                ...line,
+                quantity: String(line?.quantity ?? ""),
+                confidence: confidenceValue(line?.confidence),
+                confidenceLevel: normalizeConfidenceLevel(line?.confidenceLevel),
+            })).filter((line: EditableScanLine) => quantityValue(line) > 0 || line.source === "RUCNO")
+            : [],
+        validatedKey: raw.validatedKey ?? null,
+        lastValidation: raw.lastValidation ?? null,
+        imageLoading: false,
+        imageLoadedUri: String(raw.imageLoadedUri ?? raw.file.uri ?? ""),
+    };
+}
+
+async function readLocalDraft(path: string | null) {
+    if (!path) return null;
+
+    try {
+        const text = await FileSystem.readAsStringAsync(path);
+        const parsed = JSON.parse(text);
+        if (parsed?.version !== LOCAL_DRAFT_VERSION || !Array.isArray(parsed?.pages)) return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+async function writeLocalDraft(path: string | null, pages: ScanPage[], currentPageIndex: number) {
+    if (!path) return;
+    await ensureLocalDraftFolder();
+
+    const payload = {
+        version: LOCAL_DRAFT_VERSION,
+        savedAt: new Date().toISOString(),
+        currentPageIndex,
+        pages: pages.map(serializablePage),
+    };
+
+    await FileSystem.writeAsStringAsync(path, JSON.stringify(payload));
+}
+
+async function deleteLocalDraft(path: string | null) {
+    if (!path) return;
+    await FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {});
+}
+
+async function scanFileAvailable(file: SelectedFile) {
+    if (!file.uri.startsWith("file:")) return true;
+
+    try {
+        const info = await FileSystem.getInfoAsync(file.uri);
+        return !!info.exists;
+    } catch {
+        return false;
+    }
+}
+
+async function restoreScanPageIfAvailable(raw: any) {
+    const page = restoreScanPage(raw);
+    if (!page) return null;
+    return await scanFileAvailable(page.file) ? page : null;
+}
+
 export default function DispatchSlipScanScreen() {
     const params = useLocalSearchParams<{
         id: string;
@@ -431,7 +569,6 @@ export default function DispatchSlipScanScreen() {
 
     const sessionQ = useBookingSession(sessionId);
     const parseM = useParseDispatchSlip();
-    const validateM = useValidateDispatchSlipScan(sessionId);
     const saveM = useSaveDispatchSlipScanEntry(sessionId);
 
     const [pages, setPages] = useState<ScanPage[]>([]);
@@ -444,8 +581,20 @@ export default function DispatchSlipScanScreen() {
     const [datePickerOpen, setDatePickerOpen] = useState(false);
     const [scannerSession, setScannerSession] = useState<ScannerSession | null>(null);
     const [scannerStageSize, setScannerStageSize] = useState({ width: 0, height: 0 });
+    const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 });
+    const [draftLoaded, setDraftLoaded] = useState(false);
+    const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+    const [uploadSourceOpen, setUploadSourceOpen] = useState(false);
+    const [pendingUploadSource, setPendingUploadSource] = useState<UploadSource | null>(null);
+    const [gestureRefreshing, setGestureRefreshing] = useState(false);
     const cameraRef = useRef<any>(null);
+    const imageLoadTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    const gestureRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const windowSize = useWindowDimensions();
+    const draftPath = useMemo(
+        () => localDraftPath(sessionId, initialPartnerId, initialTemplateId),
+        [initialPartnerId, initialTemplateId, sessionId]
+    );
 
     const analysisPulse = useMemo(() => new Animated.Value(0), []);
     const analysisTranslate = useMemo(
@@ -455,7 +604,7 @@ export default function DispatchSlipScanScreen() {
 
     const currentPage = pages[currentPageIndex] ?? null;
     const warehouseId = cleanNumber((sessionQ.data as any)?.warehouseId);
-    const analyzing = parseM.isPending || validateM.isPending;
+    const analyzing = parseM.isPending;
     const busy = analyzing || saveM.isPending || !!pickingAction;
     const totalSlides = pages.length + 1;
     const stats = useMemo(() => pageStats(currentPage), [currentPage]);
@@ -463,11 +612,29 @@ export default function DispatchSlipScanScreen() {
         () => isoToDateLocal(currentPage?.documentDate) ?? todayLocalNoon(),
         [currentPage?.documentDate]
     );
+    const onGestureRefresh = useCallback(() => {
+        if (gestureRefreshTimerRef.current) {
+            clearTimeout(gestureRefreshTimerRef.current);
+        }
+        setGestureRefreshing(true);
+        gestureRefreshTimerRef.current = setTimeout(() => {
+            gestureRefreshTimerRef.current = null;
+            setGestureRefreshing(false);
+        }, 260);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (gestureRefreshTimerRef.current) {
+                clearTimeout(gestureRefreshTimerRef.current);
+            }
+        };
+    }, []);
     const scannerGuideFrameSize = useMemo(() => {
         const stageWidth = scannerStageSize.width || Math.max(260, windowSize.width - 28);
         const stageHeight = scannerStageSize.height || Math.max(420, windowSize.height - 220);
         const maxWidth = stageWidth * 0.94;
-        const maxHeight = stageHeight * 0.88;
+        const maxHeight = stageHeight * 0.94;
 
         let width = maxWidth;
         let height = width / DISPATCH_SLIP_GUIDE_ASPECT;
@@ -478,10 +645,31 @@ export default function DispatchSlipScanScreen() {
         }
 
         return {
-            width: Math.max(240, Math.min(width, maxWidth)),
+            width: Math.max(190, Math.min(width, maxWidth)),
             height: Math.max(335, Math.min(height, maxHeight)),
         };
     }, [scannerStageSize.height, scannerStageSize.width, windowSize.height, windowSize.width]);
+    const previewGuideFrameSize = useMemo(() => {
+        const stageWidth = previewStageSize.width || Math.max(260, windowSize.width - 56);
+        const stageHeight = previewStageSize.height || 490;
+        const imageWidth = Number(currentPage?.file.width ?? 0);
+        const imageHeight = Number(currentPage?.file.height ?? 0);
+        const imageAspect = imageWidth > 0 && imageHeight > 0
+            ? imageWidth / imageHeight
+            : DISPATCH_SLIP_GUIDE_ASPECT;
+        let displayedWidth = stageWidth;
+        let displayedHeight = displayedWidth / imageAspect;
+
+        if (displayedHeight > stageHeight) {
+            displayedHeight = stageHeight;
+            displayedWidth = displayedHeight * imageAspect;
+        }
+
+        return {
+            width: Math.max(140, Math.min(displayedWidth, stageWidth)),
+            height: Math.max(260, Math.min(displayedHeight, stageHeight)),
+        };
+    }, [currentPage?.file.height, currentPage?.file.width, previewStageSize.height, previewStageSize.width, windowSize.width]);
 
     const openScanner = useCallback(async (mode: ScannerMode) => {
         setScreenError(null);
@@ -526,6 +714,33 @@ export default function DispatchSlipScanScreen() {
         }));
     }, [updatePage]);
 
+    const setPageImageLoading = useCallback((pageId: string, loading: boolean) => {
+        const existing = imageLoadTimersRef.current[pageId];
+        if (existing) {
+            clearTimeout(existing);
+            delete imageLoadTimersRef.current[pageId];
+        }
+
+        updatePage(pageId, (page) => {
+            if (loading && page.imageLoadedUri === page.file.uri) {
+                return { ...page, imageLoading: false };
+            }
+
+            return {
+                ...page,
+                imageLoading: loading,
+                imageLoadedUri: loading ? page.imageLoadedUri : page.file.uri,
+            };
+        });
+
+        if (loading) {
+            imageLoadTimersRef.current[pageId] = setTimeout(() => {
+                delete imageLoadTimersRef.current[pageId];
+                updatePage(pageId, (page) => ({ ...page, imageLoading: false }));
+            }, 2200);
+        }
+    }, [updatePage]);
+
     const makePage = useCallback((file: SelectedFile): ScanPage => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
@@ -542,7 +757,8 @@ export default function DispatchSlipScanScreen() {
         lines: [],
         validatedKey: null,
         lastValidation: null,
-        imageLoading: file.mimeType.startsWith("image/"),
+        imageLoading: false,
+        imageLoadedUri: null,
     }), [initialPartnerId, initialTemplateId, routePartnerNameHint]);
 
     const resetPageForFile = useCallback((page: ScanPage, file: SelectedFile): ScanPage => ({
@@ -555,7 +771,8 @@ export default function DispatchSlipScanScreen() {
         lines: [],
         validatedKey: null,
         lastValidation: null,
-        imageLoading: file.mimeType.startsWith("image/"),
+        imageLoading: false,
+        imageLoadedUri: null,
     }), []);
 
     useEffect(() => {
@@ -609,6 +826,55 @@ export default function DispatchSlipScanScreen() {
         setDatePickerOpen(false);
     }, [currentPage?.id]);
 
+    useEffect(() => {
+        let alive = true;
+        setDraftLoaded(false);
+
+        void (async () => {
+            const draft = await readLocalDraft(draftPath);
+            if (!alive) return;
+
+            const restoredPages = Array.isArray(draft?.pages)
+                ? (await Promise.all(draft.pages.map(restoreScanPageIfAvailable))).filter(Boolean) as ScanPage[]
+                : [];
+
+            if (restoredPages.length) {
+                setPages(restoredPages);
+                setCurrentPageIndex(Math.max(0, Math.min(Number(draft?.currentPageIndex ?? 0), restoredPages.length)));
+            } else if (draft?.pages?.length) {
+                void deleteLocalDraft(draftPath);
+            }
+
+            setDraftLoaded(true);
+        })();
+
+        return () => {
+            alive = false;
+        };
+    }, [draftPath]);
+
+    useEffect(() => {
+        return () => {
+            Object.values(imageLoadTimersRef.current).forEach(clearTimeout);
+            imageLoadTimersRef.current = {};
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!draftLoaded) return;
+
+        const handle = setTimeout(() => {
+            if (!pages.length) {
+                void deleteLocalDraft(draftPath);
+                return;
+            }
+
+            void writeLocalDraft(draftPath, pages, currentPageIndex).catch(() => {});
+        }, 350);
+
+        return () => clearTimeout(handle);
+    }, [currentPageIndex, draftLoaded, draftPath, pages]);
+
     const onDocumentDateChange = useCallback((event: DateTimePickerEvent, date?: Date) => {
         if (Platform.OS === "android") {
             setDatePickerOpen(false);
@@ -630,19 +896,31 @@ export default function DispatchSlipScanScreen() {
         await openScanner("add");
     }, [openScanner]);
 
-    const retakeCurrentPage = useCallback(async () => {
-        if (!currentPage) return;
+    const removePage = useCallback((pageId: string) => {
+        setPages((prev) => {
+            const removedIndex = prev.findIndex((page) => page.id === pageId);
+            if (removedIndex < 0) return prev;
 
-        await openScanner("replace");
-    }, [currentPage, openScanner]);
+            const timer = imageLoadTimersRef.current[pageId];
+            if (timer) {
+                clearTimeout(timer);
+                delete imageLoadTimersRef.current[pageId];
+            }
 
-    const removePage = useCallback((index: number) => {
-        const nextPages = pages.filter((_, i) => i !== index);
+            const nextPages = prev.filter((page) => page.id !== pageId);
 
-        setPages(nextPages);
-        setCurrentPageIndex(Math.max(0, Math.min(currentPageIndex, nextPages.length - 1)));
+            setCurrentPageIndex((current) => {
+                if (!nextPages.length) return 0;
+                if (current > removedIndex) return current - 1;
+                return Math.min(current, nextPages.length - 1);
+            });
+
+            return nextPages;
+        });
+
+        setPreviewOpen(false);
         setScreenError(null);
-    }, [currentPageIndex, pages]);
+    }, []);
 
     const updateLine = useCallback((index: number, patch: Partial<EditableScanLine>) => {
         if (!currentPage) return;
@@ -659,6 +937,20 @@ export default function DispatchSlipScanScreen() {
             lines: currentPage.lines.filter((_, i) => i !== index),
         });
     }, [currentPage, invalidatePage]);
+
+    const stepLineQuantity = useCallback((pageId: string, index: number, delta: number) => {
+        updatePage(pageId, (page) => ({
+            ...page,
+            lines: page.lines.map((line, i) => i === index
+                ? {
+                    ...line,
+                    ...quantityEditPatch(line, steppedQuantityInput(line.quantity, delta)),
+                }
+                : line),
+            validatedKey: null,
+            lastValidation: null,
+        }));
+    }, [updatePage]);
 
     const addManualLine = useCallback(() => {
         if (!currentPage) return;
@@ -731,29 +1023,6 @@ export default function DispatchSlipScanScreen() {
         });
     }, [sessionId, updatePage]);
 
-    const buildValidatePayload = useCallback((page: ScanPage) => ({
-        partnerId: page.partnerId as any,
-        templateId: (page.templateId || null) as any,
-        documentDate: nullableDateInput(page.documentDate) as any,
-        note: page.note,
-        lines: page.lines.map((line) => {
-            const quantity = quantityValue(line);
-
-            return {
-                documentId: cleanNumber(line.documentId) as any,
-                slipItemCode: line.slipItemCode ?? undefined,
-                source: line.source ?? undefined,
-                itemId: cleanNumber(line.itemId) as any,
-                itemCode: line.itemCode ?? undefined,
-                itemName: line.itemName ?? undefined,
-                unit: line.unit ?? undefined,
-                quantity: quantity > 0 ? quantity : null,
-                confidence: confidenceValue(line.confidence) as any,
-                confidenceLevel: normalizeConfidenceLevel(line.confidenceLevel) as any,
-            };
-        }) as any,
-    }), []);
-
     const analyzePage = useCallback(async (pageToAnalyze: ScanPage) => {
         try {
             setScreenError(null);
@@ -798,53 +1067,6 @@ export default function DispatchSlipScanScreen() {
         })();
     }, [analyzePage, makePage, pages.length]);
 
-    const replaceCurrentFileAndAnalyze = useCallback((file: SelectedFile) => {
-        if (!currentPage) return;
-
-        const nextPage = resetPageForFile(currentPage, file);
-        setPages((prev) => prev.map((page) => (page.id === currentPage.id ? nextPage : page)));
-        setScreenError(null);
-        void analyzePage(nextPage);
-    }, [analyzePage, currentPage, resetPageForFile]);
-
-    const pickDocument = useCallback(async () => {
-        setScreenError(null);
-        setPickingAction("addFile");
-
-        try {
-            const res = await DocumentPicker.getDocumentAsync({
-                type: "image/*",
-                copyToCacheDirectory: true,
-                multiple: true,
-            });
-
-            if (res.canceled || !res.assets?.length) return;
-            appendFilesAndAnalyze(res.assets.map(fileFromDocumentAsset));
-        } finally {
-            setPickingAction(null);
-        }
-    }, [appendFilesAndAnalyze]);
-
-    const reuploadCurrentPage = useCallback(async () => {
-        if (!currentPage) return;
-
-        setScreenError(null);
-        setPickingAction("replaceFile");
-
-        try {
-            const res = await DocumentPicker.getDocumentAsync({
-                type: "image/*",
-                copyToCacheDirectory: true,
-                multiple: false,
-            });
-
-            if (res.canceled || !res.assets?.[0]) return;
-            replaceCurrentFileAndAnalyze(fileFromDocumentAsset(res.assets[0]));
-        } finally {
-            setPickingAction(null);
-        }
-    }, [currentPage, replaceCurrentFileAndAnalyze]);
-
     const commitScannerFile = useCallback((file: SelectedFile) => {
         const mode = scannerSession?.mode ?? "add";
 
@@ -866,6 +1088,90 @@ export default function DispatchSlipScanScreen() {
         setScannerSession(null);
         void analyzePage(nextPage);
     }, [analyzePage, currentPage, makePage, resetPageForFile, scannerSession?.mode]);
+
+    const openUploadSourcePicker = useCallback(() => {
+        if (busy) return;
+        setUploadSourceOpen(true);
+    }, [busy]);
+
+    const handleUploadedFiles = useCallback((files: SelectedFile[]) => {
+        if (!files.length) return;
+
+        if (scannerSession) {
+            commitScannerFile(files[0]);
+            return;
+        }
+
+        appendFilesAndAnalyze(files);
+    }, [appendFilesAndAnalyze, commitScannerFile, scannerSession]);
+
+    const launchUploadPicker = useCallback(async (source: UploadSource) => {
+        const action: PickingAction = scannerSession?.mode === "replace" ? "replaceFile" : "addFile";
+        setPickingAction(action);
+        setScreenError(null);
+
+        try {
+            if (source === "gallery") {
+                const res = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsMultipleSelection: !scannerSession,
+                    selectionLimit: scannerSession ? 1 : 0,
+                    quality: 1,
+                });
+
+                if (!res.canceled && res.assets?.length) {
+                    handleUploadedFiles(res.assets.map(fileFromImageAsset));
+                }
+
+                return;
+            }
+
+            const res = await DocumentPicker.getDocumentAsync({
+                type: "image/*",
+                copyToCacheDirectory: true,
+                multiple: !scannerSession,
+            });
+
+            if (!res.canceled && res.assets?.length) {
+                handleUploadedFiles(res.assets.map(fileFromDocumentAsset));
+            }
+        } catch (e) {
+            setScreenError(toUserMessage(
+                e,
+                source === "gallery"
+                    ? "Greška pri učitavanju iz galerije."
+                    : "Greška pri učitavanju datoteke."
+            ));
+        } finally {
+            setPickingAction(null);
+        }
+    }, [handleUploadedFiles, scannerSession]);
+
+    const queueUploadPicker = useCallback((source: UploadSource) => {
+        if (busy) return;
+
+        setScreenError(null);
+        setPendingUploadSource(source);
+        setUploadSourceOpen(false);
+    }, [busy]);
+
+    const runPendingUploadPicker = useCallback(() => {
+        if (!pendingUploadSource) return;
+
+        const source = pendingUploadSource;
+        setPendingUploadSource(null);
+
+        InteractionManager.runAfterInteractions(() => {
+            setTimeout(() => {
+                void launchUploadPicker(source);
+            }, Platform.OS === "ios" ? 120 : 40);
+        });
+    }, [launchUploadPicker, pendingUploadSource]);
+
+    useEffect(() => {
+        if (Platform.OS === "ios" || uploadSourceOpen || !pendingUploadSource) return;
+        runPendingUploadPicker();
+    }, [pendingUploadSource, runPendingUploadPicker, uploadSourceOpen]);
 
     const captureScannerPhoto = useCallback(async () => {
         if (!scannerSession || scannerSession.error || scannerSession.capturedFile) return;
@@ -894,67 +1200,11 @@ export default function DispatchSlipScanScreen() {
         }
     }, [scannerSession]);
 
-    const pickGalleryFromScanner = useCallback(async () => {
-        if (!scannerSession) return;
-
-        setScreenError(null);
-        setPickingAction(scannerSession.mode === "replace" ? "replaceFile" : "addFile");
-
-        try {
-            const res = await DocumentPicker.getDocumentAsync({
-                type: "image/*",
-                copyToCacheDirectory: true,
-                multiple: false,
-            });
-
-            if (res.canceled || !res.assets?.[0]) return;
-            commitScannerFile(fileFromDocumentAsset(res.assets[0]));
-        } finally {
-            setPickingAction(null);
-        }
-    }, [commitScannerFile, scannerSession]);
-
-    const validateCurrentPage = useCallback(async () => {
+    const analyzeCurrentPage = useCallback(async () => {
         if (!currentPage) return;
-
-        try {
-            setScreenError(null);
-
-            const res = await validateM.mutateAsync(buildValidatePayload(currentPage));
-            const nextLines = linesFromValidation(res, currentPage.lines);
-            const nextDate = toDateInput((res as any)?.documentDate ?? currentPage.documentDate);
-            const nextPartnerName = cleanParamText((res as any)?.partnerName);
-
-            updatePage(currentPage.id, (page) => {
-                const nextPage = {
-                    ...page,
-                    lines: nextLines,
-                    documentDate: nextDate,
-                    partnerNameHint: nextPartnerName ?? page.partnerNameHint,
-                    lastValidation: res,
-                };
-
-                return {
-                    ...nextPage,
-                    validatedKey: res.allValid ? makeValidationKey(nextPage) : null,
-                };
-            });
-        } catch (e) {
-            updatePage(currentPage.id, (page) => ({ ...page, validatedKey: null, lastValidation: null }));
-            setScreenError(toUserMessage(e, "Greška pri validaciji stranice."));
-        }
-    }, [buildValidatePayload, currentPage, updatePage, validateM]);
-
-    const parseOrValidate = useCallback(async () => {
-        if (!currentPage) return;
-
-        if (currentPage.parsed) {
-            await validateCurrentPage();
-            return;
-        }
 
         await parseCurrentPage();
-    }, [currentPage, parseCurrentPage, validateCurrentPage]);
+    }, [currentPage, parseCurrentPage]);
 
     const pickPartnerForScan = useCallback((partner: PartnerResponseDTO, close: () => void) => {
         if (!currentPage) return;
@@ -996,10 +1246,10 @@ export default function DispatchSlipScanScreen() {
 
     const currentValidationError = useMemo(() => {
         if (!currentPage) return pages.length ? null : "Dodaj barem jednu stranicu otpremnice.";
-        if (!currentPage.parsed) return "Analiziraj stranicu prije spremanja.";
+        if (!currentPage.parsed) return "Pričekaj analizu stranice prije spremanja.";
         if (!currentPage.partnerId) return "Odaberi partnera prije spremanja.";
         if (!currentPage.lines.some((line) => quantityValue(line) > 0)) return "Unesi barem jednu pozitivnu količinu.";
-        if (!isPageValidated(currentPage)) return "Nakon izmjena ponovno validiraj stranicu.";
+        if (!pageReadyForSave(currentPage)) return "Poveži artikle za sve pozitivne količine prije spremanja.";
         return null;
     }, [currentPage, pages.length]);
 
@@ -1010,10 +1260,10 @@ export default function DispatchSlipScanScreen() {
             const page = pages[i];
             const hasPositive = page.lines.some((line) => quantityValue(line) > 0);
 
-            if (!page.parsed) return `Stranica ${i + 1}: prvo pokreni analizu.`;
+            if (!page.parsed) return `Stranica ${i + 1}: pričekaj analizu.`;
             if (!page.partnerId) return `Stranica ${i + 1}: odaberi partnera.`;
             if (!hasPositive) return `Stranica ${i + 1}: unesi barem jednu količinu.`;
-            if (!isPageValidated(page)) return `Stranica ${i + 1}: ponovno validiraj nakon izmjena.`;
+            if (!pageReadyForSave(page)) return `Stranica ${i + 1}: poveži artikle za pozitivne količine.`;
         }
 
         return null;
@@ -1083,6 +1333,10 @@ export default function DispatchSlipScanScreen() {
                 });
             }
 
+            await deleteLocalDraft(draftPath);
+            setPages([]);
+            setCurrentPageIndex(0);
+
             if (lockedPartnerContext && initialPartnerId && groups.size === 1) {
                 router.replace({
                     pathname: "/(tabs)/sessions/[id]/entry" as const,
@@ -1099,7 +1353,24 @@ export default function DispatchSlipScanScreen() {
         } catch (e) {
             setScreenError(toUserMessage(e, "Greška pri spremanju stranica."));
         }
-    }, [initialPartnerId, lockedPartnerContext, pages, routePartnerNameHint, saveAllError, saveM, sessionId]);
+    }, [draftPath, initialPartnerId, lockedPartnerContext, pages, routePartnerNameHint, saveAllError, saveM, sessionId]);
+
+    const resetLocalDraft = useCallback(async () => {
+        setScreenError(null);
+        setResetConfirmOpen(false);
+        setPreviewOpen(false);
+        setItemPickerIndex(null);
+        setPartnerPickerOpen(false);
+        setDatePickerOpen(false);
+        setPages([]);
+        setCurrentPageIndex(0);
+        await deleteLocalDraft(draftPath);
+    }, [draftPath]);
+
+    const confirmResetLocalDraft = useCallback(() => {
+        if (!pages.length || busy) return;
+        setResetConfirmOpen(true);
+    }, [busy, pages.length]);
 
     const goBackToPreviousContext = useCallback(() => {
         if (lockedPartnerContext && initialPartnerId) {
@@ -1117,16 +1388,6 @@ export default function DispatchSlipScanScreen() {
         router.replace({ pathname: "/(tabs)/sessions/[id]" as const, params: { id: String(sessionId) } });
     }, [initialPartnerId, lockedPartnerContext, routePartnerNameHint, sessionId]);
 
-    const actionLabel = parseM.isPending
-        ? "Analiziram..."
-        : validateM.isPending
-            ? "Validiram..."
-            : currentPage?.parsed
-                ? currentPage.lastValidation
-                    ? "Ponovno validiraj stranicu"
-                    : "Validiraj stranicu"
-                : "Analiziraj stranicu";
-
     const currentPartnerLabel = partnerLabel(
         currentPage?.selectedPartner ?? null,
         currentPage?.partnerId ?? null,
@@ -1136,7 +1397,22 @@ export default function DispatchSlipScanScreen() {
     return (
         <Screen style={{ backgroundColor: Colors.bg }} edges={["left", "right"]}>
             <View style={s.wrap}>
-                <NavigationHeader title="Skeniraj otpremnicu" onBackPress={goBackToPreviousContext} />
+                <NavigationHeader
+                    title="Skeniraj otpremnicu"
+                    onBackPress={goBackToPreviousContext}
+                    right={pages.length ? (
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Resetiraj lokalni nacrt"
+                            style={[s.headerResetButton, busy && s.headerResetButtonDisabled]}
+                            onPress={confirmResetLocalDraft}
+                            disabled={busy}
+                            hitSlop={10}
+                        >
+                            <FontAwesome name="refresh" size={17} color={busy ? "#94a3b8" : "#b91c1c"} />
+                        </Pressable>
+                    ) : null}
+                />
 
                 <SearchPickerSheet<PartnerResponseDTO>
                     visible={partnerPickerOpen}
@@ -1187,6 +1463,20 @@ export default function DispatchSlipScanScreen() {
                             </View>
                         </Pressable>
                     )}
+                />
+
+                <CenterConfirmSheet
+                    visible={resetConfirmOpen}
+                    title="Resetiraj lokalni nacrt?"
+                    description="Ovo briše trenutno učitane stranice i ručne izmjene samo na ovom uređaju."
+                    confirmText="Resetiraj"
+                    danger
+                    loading={busy}
+                    onClose={() => {
+                        if (!busy) setResetConfirmOpen(false);
+                    }}
+                    onConfirm={resetLocalDraft}
+                    closeOnBackdrop={!busy}
                 />
 
                 <Modal visible={previewOpen} transparent animationType="fade" onRequestClose={() => setPreviewOpen(false)}>
@@ -1255,11 +1545,15 @@ export default function DispatchSlipScanScreen() {
                                 <View style={[s.liveGuideFrame, scannerGuideFrameSize]}>
                                     <View style={s.guideHeaderLine} />
                                     <View style={s.guideGridTopLine} />
+                                    <View style={s.guideGridSecondLine} />
+                                    <View style={s.guideGridThirdLine} />
                                     <View style={s.guideGridBottomLine} />
                                 </View>
-                                <Text style={s.liveGuideText}>
-                                    Poravnaj otpremnicu unutar okvira za bolje očitanje.
-                                </Text>
+                                {!scannerSession?.capturedFile && (
+                                    <Text style={s.liveGuideText}>
+                                        Poravnaj otpremnicu unutar okvira za bolje očitanje.
+                                    </Text>
+                                )}
                             </View>
                         </View>
 
@@ -1293,29 +1587,20 @@ export default function DispatchSlipScanScreen() {
                                     <FontAwesome name="camera" size={15} color="#fff" />
                                     <Text style={s.scannerActionText}>Slikaj ponovno</Text>
                                 </Pressable>
-                                <Pressable style={s.scannerActionButton} onPress={pickGalleryFromScanner} disabled={busy}>
+                                <Pressable style={s.scannerActionButton} onPress={openUploadSourcePicker} disabled={busy}>
                                     {pickingAction === "addFile" || pickingAction === "replaceFile" ? (
                                         <ActivityIndicator color="#fff" />
                                     ) : (
                                         <>
                                             <FontAwesome name="upload" size={15} color="#fff" />
-                                            <Text style={s.scannerActionText}>Učitaj iz galerije</Text>
+                                            <Text style={s.scannerActionText}>Učitaj drugi</Text>
                                         </>
                                     )}
                                 </Pressable>
                             </View>
                         ) : (
                             <View style={s.scannerCaptureBar}>
-                                <Pressable style={s.scannerSmallAction} onPress={pickGalleryFromScanner} disabled={busy}>
-                                    {pickingAction === "addFile" || pickingAction === "replaceFile" ? (
-                                        <ActivityIndicator color="#fff" />
-                                    ) : (
-                                        <>
-                                            <FontAwesome name="upload" size={15} color="#fff" />
-                                            <Text style={s.scannerSmallActionText}>Galerija</Text>
-                                        </>
-                                    )}
-                                </Pressable>
+                                <View style={s.scannerSmallActionSpacer} />
                                 <Pressable
                                     style={[
                                         s.captureButton,
@@ -1339,11 +1624,55 @@ export default function DispatchSlipScanScreen() {
                     </View>
                 </Modal>
 
+                <CenterSheet
+                    visible={uploadSourceOpen}
+                    title="Učitaj otpremnicu"
+                    onClose={() => {
+                        if (!busy) setUploadSourceOpen(false);
+                    }}
+                    onDismiss={runPendingUploadPicker}
+                    closeOnBackdrop={!busy}
+                    disableClose={busy}
+                >
+                    <View style={s.uploadChoiceList}>
+                        <Pressable style={s.uploadChoiceButton} onPress={() => queueUploadPicker("gallery")} disabled={busy}>
+                            <View style={s.uploadChoiceIcon}>
+                                <FontAwesome name="image" size={18} color={Colors.orange} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={s.uploadChoiceTitle}>Galerija</Text>
+                                <Text style={s.uploadChoiceSub}>Odaberi sliku iz Photos galerije.</Text>
+                            </View>
+                            <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
+                        </Pressable>
+
+                        <Pressable style={s.uploadChoiceButton} onPress={() => queueUploadPicker("files")} disabled={busy}>
+                            <View style={s.uploadChoiceIcon}>
+                                <FontAwesome name="folder-open" size={17} color={Colors.orange} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={s.uploadChoiceTitle}>Datoteke</Text>
+                                <Text style={s.uploadChoiceSub}>Odaberi iz Files, iCloud Drive ili drugog mjesta.</Text>
+                            </View>
+                            <FontAwesome name="chevron-right" size={14} color={Colors.sub} />
+                        </Pressable>
+                    </View>
+                </CenterSheet>
+
                 <ScrollView
                     contentContainerStyle={s.content}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
                     onScrollBeginDrag={Keyboard.dismiss}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={gestureRefreshing}
+                            onRefresh={onGestureRefresh}
+                            tintColor={Colors.orange}
+                            colors={[Colors.orange]}
+                            progressBackgroundColor={Colors.light.background}
+                        />
+                    }
                 >
                     {!!(screenError || sessionQ.error) && (
                         <ErrorCard
@@ -1355,7 +1684,7 @@ export default function DispatchSlipScanScreen() {
                             onAction={() => {
                                 if (screenError && currentPage) {
                                     setScreenError(null);
-                                    void parseOrValidate();
+                                    void analyzeCurrentPage();
                                     return;
                                 }
 
@@ -1367,7 +1696,6 @@ export default function DispatchSlipScanScreen() {
 
                     <View style={s.card}>
                         <Text style={s.title}>Stranice otpremnice</Text>
-                        <Text style={s.sub}>Dodaj jednu ili više stranica, provjeri partnera, količine i artikle, pa spremi sve zajedno.</Text>
 
                         <View style={s.scannerShell}>
                             <View style={s.scannerMain}>
@@ -1375,15 +1703,41 @@ export default function DispatchSlipScanScreen() {
                                     <Pressable
                                         style={s.scannerPreview}
                                         onPress={() => currentPage.file.mimeType.startsWith("image/") && setPreviewOpen(true)}
+                                        onLayout={(event) => {
+                                            const { width, height } = event.nativeEvent.layout;
+                                            setPreviewStageSize((current) => {
+                                                if (Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1) {
+                                                    return current;
+                                                }
+
+                                                return { width, height };
+                                            });
+                                        }}
                                     >
                                         {currentPage.file.mimeType.startsWith("image/") ? (
                                             <Image
                                                 source={{ uri: currentPage.file.uri }}
                                                 style={s.previewImage}
                                                 resizeMode="contain"
-                                                onLoadStart={() => updatePage(currentPage.id, (page) => ({ ...page, imageLoading: true }))}
-                                                onLoadEnd={() => updatePage(currentPage.id, (page) => ({ ...page, imageLoading: false }))}
-                                                onError={() => updatePage(currentPage.id, (page) => ({ ...page, imageLoading: false }))}
+                                                onLoad={(event: any) => {
+                                                    const source = event?.nativeEvent?.source;
+                                                    const width = Number(source?.width ?? 0);
+                                                    const height = Number(source?.height ?? 0);
+
+                                                    if (
+                                                        width > 0 &&
+                                                        height > 0 &&
+                                                        (currentPage.file.width !== width || currentPage.file.height !== height)
+                                                    ) {
+                                                        updatePage(currentPage.id, (page) => ({
+                                                            ...page,
+                                                            file: { ...page.file, width, height },
+                                                        }));
+                                                    }
+                                                }}
+                                                onLoadStart={() => setPageImageLoading(currentPage.id, true)}
+                                                onLoadEnd={() => setPageImageLoading(currentPage.id, false)}
+                                                onError={() => setPageImageLoading(currentPage.id, false)}
                                             />
                                         ) : (
                                             <View style={s.pdfPreview}>
@@ -1392,15 +1746,14 @@ export default function DispatchSlipScanScreen() {
                                             </View>
                                         )}
 
-                                        <View style={s.alignmentGuideOverlay} pointerEvents="none">
-                                            <View style={s.alignmentGuideFrame}>
+                                        <View style={s.previewGuideOverlay} pointerEvents="none">
+                                            <View style={[s.alignmentGuideFrame, previewGuideFrameSize]}>
                                                 <View style={s.guideHeaderLine} />
                                                 <View style={s.guideGridTopLine} />
+                                                <View style={s.guideGridSecondLine} />
+                                                <View style={s.guideGridThirdLine} />
                                                 <View style={s.guideGridBottomLine} />
                                             </View>
-                                            <Text style={s.alignmentGuideText}>
-                                                Poravnaj otpremnicu unutar okvira za bolje očitanje.
-                                            </Text>
                                         </View>
 
                                         {currentPage.imageLoading && (
@@ -1418,42 +1771,12 @@ export default function DispatchSlipScanScreen() {
 
                                         <Pressable
                                             style={s.deletePageButton}
-                                            onPress={() => removePage(currentPageIndex)}
+                                            onPress={() => removePage(currentPage.id)}
                                             disabled={busy}
                                         >
                                             <FontAwesome name="trash" size={16} color="#fff" />
                                         </Pressable>
 
-                                        <View style={s.replacePageActions}>
-                                            <Pressable
-                                                style={s.replacePageButton}
-                                                onPress={retakeCurrentPage}
-                                                disabled={busy}
-                                            >
-                                                {pickingAction === "replaceCamera" ? (
-                                                    <ActivityIndicator />
-                                                ) : (
-                                                    <>
-                                                        <FontAwesome name="camera" size={14} color={Colors.text} />
-                                                        <Text style={s.replacePageButtonText}>Slikaj ponovno</Text>
-                                                    </>
-                                                )}
-                                            </Pressable>
-                                            <Pressable
-                                                style={s.replacePageButton}
-                                                onPress={reuploadCurrentPage}
-                                                disabled={busy}
-                                            >
-                                                {pickingAction === "replaceFile" ? (
-                                                    <ActivityIndicator />
-                                                ) : (
-                                                    <>
-                                                        <FontAwesome name="upload" size={14} color={Colors.text} />
-                                                        <Text style={s.replacePageButtonText}>Učitaj drugi</Text>
-                                                    </>
-                                                )}
-                                            </Pressable>
-                                        </View>
                                     </Pressable>
                                 ) : (
                                     <View style={s.emptyScanner}>
@@ -1472,6 +1795,8 @@ export default function DispatchSlipScanScreen() {
                                             <View style={s.emptyGuideFrame}>
                                                 <View style={s.guideHeaderLine} />
                                                 <View style={s.guideGridTopLine} />
+                                                <View style={s.guideGridSecondLine} />
+                                                <View style={s.guideGridThirdLine} />
                                                 <View style={s.guideGridBottomLine} />
                                             </View>
                                             <Text style={s.emptyGuideText}>
@@ -1489,7 +1814,7 @@ export default function DispatchSlipScanScreen() {
                                                     </>
                                                 )}
                                             </Pressable>
-                                            <Pressable style={s.emptyScannerSecondaryButton} onPress={pickDocument} disabled={busy}>
+                                            <Pressable style={s.emptyScannerSecondaryButton} onPress={openUploadSourcePicker} disabled={busy}>
                                                 {pickingAction === "addFile" ? (
                                                     <ActivityIndicator />
                                                 ) : (
@@ -1552,21 +1877,6 @@ export default function DispatchSlipScanScreen() {
                             </Pressable>
                         </ScrollView>
 
-                        <View style={s.actions}>
-                            <Pressable style={s.secondary} onPress={pickCamera} disabled={busy}>
-                                {pickingAction === "addCamera" ? <ActivityIndicator /> : <Text style={s.secondaryText}>Slikaj</Text>}
-                            </Pressable>
-                            <Pressable style={s.secondary} onPress={pickDocument} disabled={busy}>
-                                {pickingAction === "addFile" ? <ActivityIndicator /> : <Text style={s.secondaryText}>Učitaj datoteke</Text>}
-                            </Pressable>
-                        </View>
-
-                        <PrimaryButton
-                            label={actionLabel}
-                            onPress={parseOrValidate}
-                            loading={analyzing}
-                            disabled={!currentPage || busy || currentPage.imageLoading}
-                        />
                     </View>
 
                     {!!currentPage?.parsed && (
@@ -1592,7 +1902,7 @@ export default function DispatchSlipScanScreen() {
                                     </View>
                                     <View style={s.scoreDetails}>
                                         <View style={s.metricRow}>
-                                            <Text style={s.metricLabel}>Redova na stranici</Text>
+                                            <Text style={s.metricLabel}>Broj artikala na stranici</Text>
                                             <Text style={s.metricValue}>{stats.total}</Text>
                                         </View>
                                         <View style={s.metricRow}>
@@ -1680,11 +1990,6 @@ export default function DispatchSlipScanScreen() {
                                                 </Text>
                                             </View>
                                         </View>
-                                        {!!(currentPage.parsed as any).imageQuality.gridSource && (
-                                            <Text style={s.qualitySource}>
-                                                Izvor mreže: {gridSourceLabel((currentPage.parsed as any).imageQuality.gridSource)}
-                                            </Text>
-                                        )}
                                         {(lowConfidence((currentPage.parsed as any).imageQuality.paperDetectionConfidence) ||
                                             lowConfidence((currentPage.parsed as any).imageQuality.gridDetectionConfidence)) && (
                                             <Text style={s.warning}>
@@ -1849,19 +2154,33 @@ export default function DispatchSlipScanScreen() {
                                             {!!lineSubtitle(line) && <Text style={s.sub}>{lineSubtitle(line)}</Text>}
                                             {!!line.warning && <Text style={s.warning}>{line.warning}</Text>}
 
-                                            <TextInput
-                                                style={s.qtyInput}
-                                                value={line.quantity}
-                                                onChangeText={(value) => updateLine(index, {
-                                                    quantity: value,
-                                                    confidence: 1,
-                                                    confidenceLevel: "HIGH",
-                                                    valid: null,
-                                                })}
-                                                keyboardType="decimal-pad"
-                                                placeholder="Količina"
-                                                placeholderTextColor={Colors.sub}
-                                            />
+                                            <View style={s.qtyControlRow}>
+                                                <Pressable
+                                                    style={[
+                                                        s.qtyStepperButton,
+                                                        quantityValue(line) <= 0 && s.qtyStepperButtonDisabled,
+                                                    ]}
+                                                    onPress={() => stepLineQuantity(currentPage.id, index, -1)}
+                                                    disabled={busy || quantityValue(line) <= 0}
+                                                >
+                                                    <FontAwesome name="minus" size={13} color={quantityValue(line) <= 0 ? "#94a3b8" : Colors.text} />
+                                                </Pressable>
+                                                <TextInput
+                                                    style={[s.qtyInput, s.qtyInputWithStepper]}
+                                                    value={line.quantity}
+                                                    onChangeText={(value) => updateLine(index, quantityEditPatch(line, value))}
+                                                    keyboardType="decimal-pad"
+                                                    placeholder="Količina"
+                                                    placeholderTextColor={Colors.sub}
+                                                />
+                                                <Pressable
+                                                    style={s.qtyStepperButton}
+                                                    onPress={() => stepLineQuantity(currentPage.id, index, 1)}
+                                                    disabled={busy}
+                                                >
+                                                    <FontAwesome name="plus" size={13} color={Colors.text} />
+                                                </Pressable>
+                                            </View>
 
                                             <View style={s.itemActionRow}>
                                                 <Pressable
@@ -1883,10 +2202,10 @@ export default function DispatchSlipScanScreen() {
                                             </View>
 
                                             {needsManual ? (
-                                                <Text style={s.warning}>Artikl nije pronađen za ovu šifru. Odaberi artikl pa ponovno validiraj.</Text>
+                                                <Text style={s.warning}>Artikl nije pronađen za ovu šifru. Odaberi artikl.</Text>
                                             ) : null}
                                             {needsQuantity ? (
-                                                <Text style={s.warning}>Artikl je povezan. Upiši količinu pa ponovno validiraj.</Text>
+                                                <Text style={s.warning}>Artikl je povezan. Upiši količinu.</Text>
                                             ) : null}
                                             {readyLine && scanConfidenceLevel !== "high" ? (
                                                 <Text style={s.warning}>Provjeri količinu jer prepoznavanje nije potpuno sigurno.</Text>

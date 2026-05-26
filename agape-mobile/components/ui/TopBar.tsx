@@ -9,7 +9,7 @@ export default function TopBar() {
     const [fontsLoaded] = useFonts({ DancingScript_700Bold });
 
     return (
-        <SafeAreaView edges={["top"]} style={styles.safe}>
+        <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: "transparent" }]}>
             <View style={styles.bar}>
                 <View style={styles.titleWrap}>
                     <Text
@@ -38,15 +38,21 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
     },
     titleWrap: {
-        paddingTop: 2,
-        paddingBottom: 6,
+        minHeight: 54,
+        paddingTop: 4,
+        paddingBottom: 8,
+        paddingHorizontal: 10,
+        overflow: "visible",
+        alignItems: "center",
+        justifyContent: "center",
     },
     title: {
         fontSize: 30,
-        lineHeight: 40,
+        lineHeight: 52,
         color: ORANGE,
         letterSpacing: 0.2,
-        ...(Platform.OS === "android" ? { includeFontPadding: false } : null),
+        textAlign: "center",
+        ...(Platform.OS === "android" ? { includeFontPadding: true } : null),
     },
     divider: {
         height: StyleSheet.hairlineWidth,

@@ -9,7 +9,11 @@ public final class DispatchSlipUploadFileUtil {
 
     private static final Set<String> ALLOWED_TYPES = Set.of(
             "image/jpeg",
-            "image/png"
+            "image/jpg",
+            "image/png",
+            "image/heic",
+            "image/heif",
+            "image/webp"
     );
 
     private DispatchSlipUploadFileUtil() {

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
@@ -12,7 +12,6 @@ import TabScroll from "@/components/ui/TabScroll";
 
 import Strings from "@/src/constants/Strings";
 import Colors from "@/src/constants/Colors";
-
 import { getToken } from "../../src/api/sessionStore";
 import { ErrorCard } from "@/components/ErrorCard";
 import { styles } from "../../src/styles/LoginScreen.styles";
@@ -21,9 +20,16 @@ import { useLoginForm } from "../../src/api/hooks/auth/useLoginForm";
 export default function Index() {
     const router = useRouter();
     const form = useLoginForm();
+    const scrollRef = useRef<ScrollView>(null);
 
     const [checkingAuth, setCheckingAuth] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
+
+    const scrollToField = useCallback((y: number) => {
+        requestAnimationFrame(() => {
+            scrollRef.current?.scrollTo({ y, animated: true });
+        });
+    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -61,7 +67,14 @@ export default function Index() {
     }
 
     return (
-        <TabScroll contentContainerStyle={styles.scroll} withScreen={false}>
+        <TabScroll
+            ref={scrollRef}
+            contentContainerStyle={styles.scroll}
+            withScreen={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
+        >
             <Screen edges={["top", "bottom", "left", "right"]} style={styles.screenTransparent}>
                 <View style={styles.container}>
                     <View style={styles.top}>
@@ -90,6 +103,7 @@ export default function Index() {
                                     autoCapitalize="none"
                                     value={form.values.username}
                                     onChangeText={form.setUsername}
+                                    onFocus={() => scrollToField(150)}
                                     onBlur={() => form.markTouched("username")}
                                     returnKeyType="next"
                                 />
@@ -103,6 +117,7 @@ export default function Index() {
                                     secureTextEntry={!showPassword}
                                     value={form.values.password}
                                     onChangeText={form.setPassword}
+                                    onFocus={() => scrollToField(215)}
                                     onBlur={() => form.markTouched("password")}
                                     returnKeyType="done"
                                     right={

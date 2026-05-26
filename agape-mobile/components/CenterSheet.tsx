@@ -6,6 +6,7 @@ export function CenterSheet({
   visible,
   title,
   onClose,
+  onDismiss,
   children,
   width = 360,
   closeOnBackdrop = false,
@@ -14,6 +15,7 @@ export function CenterSheet({
   visible: boolean;
   title: string;
   onClose: () => void;
+  onDismiss?: () => void;
   children: React.ReactNode;
   width?: number;
   closeOnBackdrop?: boolean;
@@ -33,6 +35,7 @@ export function CenterSheet({
       visible={visible}
       transparent
       animationType="fade"
+      onDismiss={onDismiss}
       onRequestClose={canClose ? onClose : undefined}
     >
       <View style={s.backdropWrap}>

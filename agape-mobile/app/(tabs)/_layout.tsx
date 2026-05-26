@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Tabs, useRouter } from "expo-router";
 
@@ -57,7 +57,6 @@ function HomeTabButton({ children, onPress, accessibilityState }: any) {
 
 export default function TabLayout() {
   const router = useRouter();
-  useColorScheme();
 
   const [checking, setChecking] = useState(true);
   const [hasToken, setHasToken] = useState(false);

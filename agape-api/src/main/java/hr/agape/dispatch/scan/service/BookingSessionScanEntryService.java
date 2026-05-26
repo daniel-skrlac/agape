@@ -656,6 +656,17 @@ public class BookingSessionScanEntryService {
         if (number < 1000) {
             out.add(number + 1000);
         }
+
+        if (number >= 1000 && number % 10 == 0) {
+            int withoutTrailingZero = number / 10;
+            if (withoutTrailingZero >= 100) {
+                out.add(withoutTrailingZero);
+
+                if (withoutTrailingZero < 1000) {
+                    out.add(withoutTrailingZero + 1000);
+                }
+            }
+        }
     }
 
     private PartnerResponseDTO findSinglePartnerByName(String term, Long userId) {

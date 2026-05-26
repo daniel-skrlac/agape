@@ -759,7 +759,11 @@ export default function SessionDetailIndex() {
       const note = cleanDescription(e?.note);
 
       return (
-        <View style={st.card}>
+        <Pressable
+          style={[st.card, !canEdit && { opacity: 0.82 }]}
+          disabled={!canEdit}
+          onPress={() => openEntry(pid, entryNameHint(e))}
+        >
           <View style={st.cardTop}>
             <View style={st.left}>
               <View style={st.avatar}>
@@ -814,7 +818,7 @@ export default function SessionDetailIndex() {
               <Text style={st.rowBtnDangerText}>{delEntryM.isPending && deletePid === pid ? "…" : "Obriši"}</Text>
             </Pressable>
           </View>
-        </View>
+        </Pressable>
       );
     },
     [partnerName, canEdit, openEntry, delEntryM.isPending, finalizeM.isPending, validateBusy, askDelete, deletePid]
@@ -934,19 +938,6 @@ export default function SessionDetailIndex() {
                     <Text style={st.h2}>Unosi</Text>
                     <Text style={st.h2sub}>Po partneru</Text>
                   </View>
-
-                  {status === "DRAFT" ? (
-                    <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <Pressable style={st.smallPill} onPress={openScan} disabled={finalizeM.isPending || validateBusy}>
-                        <FontAwesome name="camera" size={12} color={Colors.text} />
-                        <Text style={st.smallPillText}>Skeniraj</Text>
-                      </Pressable>
-                      <Pressable style={st.smallPill} onPress={openPartnerPicker} disabled={finalizeM.isPending || validateBusy}>
-                        <FontAwesome name="plus" size={12} color={Colors.text} />
-                        <Text style={st.smallPillText}>+ Partner</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
                 </View>
               </View>
             }

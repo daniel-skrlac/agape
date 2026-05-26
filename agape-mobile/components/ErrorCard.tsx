@@ -28,16 +28,15 @@ export function ErrorCard({
   disabled,
   iconName = "exclamation-triangle",
   titleLines = 1,
-  messageLines = 1,
   actionPlacement = "right",
-  selectableMessage = false,
+  selectableMessage = true,
 }: Props) {
-  const stacked = actionPlacement === "bottom";
-  const resolvedMessageLines = messageLines == null || messageLines <= 0 ? undefined : messageLines;
+  const shouldStack = actionPlacement === "bottom" || message.length > 72;
+  const resolvedMessageLines = undefined;
 
   return (
-    <View style={[s.wrap, stacked && s.wrapStack]}>
-      <View style={s.row}>
+    <View style={[s.wrap, shouldStack && s.wrapStack]}>
+      <View style={[s.row, shouldStack && s.rowStack]}>
         <View style={s.icon}>
           <FontAwesome name={iconName} size={14} color={Colors.dangerText} />
         </View>
@@ -53,7 +52,7 @@ export function ErrorCard({
           </Text>
         </View>
 
-        {!!onAction && !stacked ? (
+        {!!onAction && !shouldStack ? (
           <Pressable
             style={[s.btn, disabled && s.disabled]}
             onPress={disabled ? undefined : onAction}
@@ -65,7 +64,7 @@ export function ErrorCard({
         ) : null}
       </View>
 
-      {!!onAction && stacked ? (
+      {!!onAction && shouldStack ? (
         <Pressable
           style={[s.btn, s.btnStack, disabled && s.disabled]}
           onPress={disabled ? undefined : onAction}

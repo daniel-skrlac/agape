@@ -10,6 +10,8 @@ import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.scan.dto.BookingSessionScanEntryUpsertRequestDTO;
 import hr.agape.dispatch.scan.util.BookingSessionScanEntryUtil;
 import hr.agape.dispatch.service.DispatchBookingService;
+import hr.agape.item.dto.ItemDescriptorResponseDTO;
+import hr.agape.item.service.ItemDirectoryService;
 import hr.agape.partner.dto.PartnerResponseDTO;
 import hr.agape.partner.service.PartnerService;
 import hr.agape.template.domain.DispatchBookingSessionEntity;
@@ -37,9 +39,12 @@ import jakarta.transaction.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static hr.agape.common.util.DateTimeUtil.ZAGREB;
@@ -63,6 +68,7 @@ public class DispatchBookingSessionService {
     private final BookingSessionMapper mapper;
 
     private final PartnerService partnerService;
+    private final ItemDirectoryService itemDirectoryService;
 
     @Inject
     public DispatchBookingSessionService(
@@ -72,7 +78,8 @@ public class DispatchBookingSessionService {
             DispatchBookingSessionEntryRepository entryRepo,
             DispatchTemplateRepository templateRepo, TemplateBookingRequestBuilder bookingRequestBuilder,
             DispatchBookingService oracleBooking,
-            BookingSessionMapper mapper, PartnerService partnerService
+            BookingSessionMapper mapper, PartnerService partnerService,
+            ItemDirectoryService itemDirectoryService
     ) {
         this.authUtil = authUtil;
         this.jsonUtil = jsonUtil;
@@ -84,6 +91,7 @@ public class DispatchBookingSessionService {
         this.oracleBooking = oracleBooking;
         this.mapper = mapper;
         this.partnerService = partnerService;
+        this.itemDirectoryService = itemDirectoryService;
     }
 
     public ServiceResponseDTO<PagedResultDTO<BookingSessionResponseDTO>> listSessions(BookingSessionsQueryDTO q) {
@@ -487,6 +495,9 @@ public class DispatchBookingSessionService {
                 .toList();
 
         Map<Long, PartnerResponseDTO> partnerById = partnerService.findPartnersByIds(partnerIds);
+        Map<Long, ItemDescriptorResponseDTO> itemById = itemDirectoryService.findItemsByIds(
+                collectEntryItemIds(entries).stream().toList()
+        );
 
         return entries.stream()
                 .map(entry -> {
@@ -499,8 +510,146 @@ public class DispatchBookingSessionService {
                         }
                     }
 
+                    dto.setDocPatches(enrichItemMetadata(dto.getDocPatches(), itemById));
+                    dto.setExtraItems(enrichItemMetadata(dto.getExtraItems(), itemById));
+
                     return dto;
                 })
                 .toList();
+    }
+
+    private Set<Long> collectEntryItemIds(List<DispatchBookingSessionEntryEntity> entries) {
+        Set<Long> ids = new LinkedHashSet<>();
+
+        for (DispatchBookingSessionEntryEntity entry : entries) {
+            collectItemIds(jsonUtil.readObjectOrNull(entry.getDocPatchesJson()), ids);
+            collectItemIds(jsonUtil.readObjectOrNull(entry.getExtraItemsJson()), ids);
+        }
+
+        return ids;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void collectItemIds(Object value, Set<Long> ids) {
+        if (value == null) {
+            return;
+        }
+
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                collectItemIds(item, ids);
+            }
+            return;
+        }
+
+        if (!(value instanceof Map<?, ?> map)) {
+            return;
+        }
+
+        Long itemId = toLong(firstPresent(
+                map.get("itemId"),
+                map.get("item_id"),
+                map.get("id")
+        ));
+
+        if (itemId != null && itemId > 0) {
+            ids.add(itemId);
+        }
+
+        Object addItems = firstPresent(
+                map.get("addItems"),
+                map.get("add_items"),
+                map.get("setItems"),
+                map.get("set_items"),
+                map.get("items"),
+                map.get("lines")
+        );
+
+        collectItemIds(addItems, ids);
+
+        if (itemId == null) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Long keyId = toLong(entry.getKey());
+                if (keyId != null && keyId > 0 && !(entry.getValue() instanceof Map<?, ?>)) {
+                    ids.add(keyId);
+                }
+            }
+        }
+    }
+
+    private Object enrichItemMetadata(Object value, Map<Long, ItemDescriptorResponseDTO> itemById) {
+        if (value == null || itemById == null || itemById.isEmpty()) {
+            return value;
+        }
+
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(item -> enrichItemMetadata(item, itemById))
+                    .toList();
+        }
+
+        if (!(value instanceof Map<?, ?> map)) {
+            return value;
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        map.forEach((key, itemValue) -> out.put(String.valueOf(key), enrichItemMetadata(itemValue, itemById)));
+
+        Long itemId = toLong(firstPresent(
+                map.get("itemId"),
+                map.get("item_id"),
+                map.get("id")
+        ));
+
+        if (itemId != null && itemId > 0) {
+            ItemDescriptorResponseDTO item = itemById.get(itemId);
+            if (item != null) {
+                out.putIfAbsent("itemId", item.getItemId());
+                putIfPresent(out, "itemName", item.getName());
+                putIfPresent(out, "name", item.getName());
+                putIfPresent(out, "itemCode", item.getCode());
+                putIfPresent(out, "code", item.getCode());
+                putIfPresent(out, "unit", item.getUnit());
+                putIfPresent(out, "barcode", item.getBarcode());
+            }
+        }
+
+        return out;
+    }
+
+    private Object firstPresent(Object... values) {
+        for (Object value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private Long toLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        try {
+            if (value instanceof Number number) {
+                return number.longValue();
+            }
+
+            String raw = String.valueOf(value).trim();
+            if (raw.isBlank()) {
+                return null;
+            }
+
+            return Long.valueOf(raw);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void putIfPresent(Map<String, Object> out, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            out.putIfAbsent(key, value);
+        }
     }
 }

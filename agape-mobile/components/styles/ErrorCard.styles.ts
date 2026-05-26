@@ -24,6 +24,10 @@ export const styles = StyleSheet.create({
     gap: 10,
   },
 
+  rowStack: {
+    alignItems: "flex-start",
+  },
+
   icon: {
     width: 30,
     height: 30,
