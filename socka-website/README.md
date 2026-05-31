@@ -1,15 +1,15 @@
 # Socka Website
 
-Astro web stranica za Socijalnu samoposlugu "Kruh sv. Antuna" Varaždin.
+Astro website for Socijalna samoposluga "Kruh sv. Antuna" Varaždin.
 
-## Pokretanje
+## Running the project
 
 ```bash
 npm install
 npm run dev
 ```
 
-Ako si prije obrisao `socka-website` folder dok je terminal bio unutra, prvo izađi u parent folder:
+If you previously deleted the `socka-website` folder while your terminal was inside it, first move back to the parent folder:
 
 ```bash
 cd ~/Desktop/agape/agape
@@ -18,40 +18,40 @@ npm install
 npm run dev
 ```
 
-## Uređivanje osnovnih podataka
+## Editing basic information
 
-Glavni podaci, kontakt i društvene mreže su u:
+Main website information, contact details, and social media links are located in:
 
 ```text
 src/lib/site.ts
 ```
 
-## Dodavanje obavijesti
+## Adding announcements
 
-Obavijesti su Markdown datoteke u:
+Announcements are Markdown files located in:
 
 ```text
 src/content/obavijesti/
 ```
 
-Svaka obavijest mora imati `image`, `title`, `description`, `pubDate` i `draft: false`.
+Each announcement must include `image`, `title`, `description`, `pubDate`, and `draft: false`.
 
-Template je ovdje:
+The announcement template is located here:
 
 ```text
 templates/obavijest-template.md
 ```
 
-## Slike za obavijesti
+## Announcement images
 
-Slike se mogu staviti u:
+Announcement images can be placed in:
 
 ```text
 public/images/obavijesti/
 ```
 
-U obavijesti se zatim referenciraju kao:
+Inside an announcement file, the image can then be referenced like this:
 
 ```yaml
-image: "/images/obavijesti/naziv-slike.jpg"
+image: "/images/obavijesti/image-name.jpg"
 ```
