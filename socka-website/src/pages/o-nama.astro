@@ -1,0 +1,23 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+import SectionTitle from '../components/SectionTitle.astro';
+import ContentFrame from '../components/ContentFrame.astro';
+---
+<BaseLayout title="O nama">
+  <PageHero
+    eyebrow="O projektu"
+    title="Ovdje predstavite ljude, projekt i priču iza Socijalne samoposluge."
+    text="Stranica je pripremljena kao čist okvir za sadržaj koji ćete naknadno urediti."
+  />
+  <section class="section-tight">
+    <div class="container">
+      <SectionTitle eyebrow="Sadržaj" title="Predloženi blokovi za stranicu O nama." />
+      <div class="content-grid">
+        <ContentFrame eyebrow="Priča" title="Kako je nastao projekt" text="Ovdje dodajte kratak uvod o nastanku i razvoju projekta." number="01" />
+        <ContentFrame eyebrow="Zajednica" title="Tko sudjeluje" text="Ovdje navedite organizacije, volontere i partnere koji sudjeluju." number="02" />
+        <ContentFrame eyebrow="Rad" title="Kako djelujemo" text="Ovdje objasnite osnovni način rada i kome je projekt namijenjen." number="03" />
+      </div>
+    </div>
+  </section>
+</BaseLayout>

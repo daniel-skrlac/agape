@@ -1,0 +1,37 @@
+---
+import { navigation, site } from '../lib/site';
+const year = new Date().getFullYear();
+---
+<footer class="site-footer">
+  <div class="container footer-panel">
+    <div class="footer-brand">
+      <img src="/images/logo.jpg" alt="Logo Socijalne samoposluge" width="58" height="58" />
+      <div>
+        <strong>{site.name}</strong>
+        <p>{site.description}</p>
+      </div>
+    </div>
+
+    <div class="footer-links">
+      <h2>Stranice</h2>
+      <ul>
+        {navigation.map((item) => <li><a href={item.href}>{item.label}</a></li>)}
+      </ul>
+    </div>
+
+    <div class="footer-links">
+      <h2>Društvene mreže</h2>
+      <ul>
+        <li><a href={site.social.facebook} target="_blank" rel="noreferrer">Facebook</a></li>
+        <li><a href={site.social.instagram} target="_blank" rel="noreferrer">Instagram</a></li>
+        <li><a href={site.social.tiktok} target="_blank" rel="noreferrer">TikTok</a></li>
+        <li><a href={site.social.whatsapp} target="_blank" rel="noreferrer">WhatsApp grupa</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container footer-bottom">
+    <span>© {year} {site.shortName}</span>
+    <span>Stranica u izradi — sadržaj se može uređivati kroz Astro projekt.</span>
+  </div>
+</footer>

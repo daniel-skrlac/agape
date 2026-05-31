@@ -1,0 +1,125 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import SectionTitle from '../components/SectionTitle.astro';
+import NoticeCard from '../components/NoticeCard.astro';
+import ContentFrame from '../components/ContentFrame.astro';
+import SocialLinks from '../components/SocialLinks.astro';
+import { contentAreas, site } from '../lib/site';
+import { getPublishedNotices, noticeSlug } from '../lib/notices';
+
+const notices = (await getPublishedNotices()).slice(0, 3);
+---
+<BaseLayout title="Početna" description={site.description}>
+  <section class="hero">
+    <div class="container hero__grid">
+      <div>
+        <p class="eyebrow">Varaždin • zajednica • solidarnost</p>
+        <h1>Mjesto gdje pomoć postaje <span class="gradient-text">konkretna.</span></h1>
+        <p class="lead">
+          Web stranica za Socijalnu samoposlugu “Kruh sv. Antuna” zamišljena je kao jasno, toplo i pregledno mjesto za obavijesti, informacije i uključivanje ljudi dobre volje.
+        </p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="/obavijesti/">Pogledaj obavijesti</a>
+          <a class="btn btn--secondary" href="/kontakt/">Kontakt i uključivanje</a>
+        </div>
+        <p class="hero__note">Sadržaj je pripremljen kao okvir — tekstove, fotografije i detalje možete dodavati naknadno.</p>
+      </div>
+
+      <div class="hero-board" aria-label="Okviri za budući sadržaj">
+        <div class="hero-board__inner">
+          <article class="hero-tile hero-tile--accent">
+            <span class="hero-tile__label">Okvir sadržaja</span>
+            <h2>Prostor za glavnu poruku</h2>
+            <p>Ovdje kasnije možete dodati kratku poruku, aktualni poziv ili najvažniju informaciju.</p>
+            <div class="hero-tile__lines" aria-hidden="true"><span></span><span></span><span></span></div>
+          </article>
+          <div class="hero-stats">
+            <div class="stat"><strong>01</strong><span>Obavijesti i akcije</span></div>
+            <div class="stat"><strong>02</strong><span>Volonteri i pomoć</span></div>
+            <div class="stat"><strong>03</strong><span>Kontakt i mreže</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="container notice-strip">
+      <div class="notice-strip__panel">
+        <div class="notice-strip__intro">
+          <p class="eyebrow">Aktualno</p>
+          <h2>Obavijesti na jednom mjestu.</h2>
+          <p>Kratke objave s fotografijom, naslovom i poveznicom na detalje.</p>
+          <a class="btn btn--secondary" href="/obavijesti/">Sve obavijesti</a>
+        </div>
+        <div class="notice-grid">
+          {notices.map((notice) => (
+            <NoticeCard
+              href={`/obavijesti/${noticeSlug(notice.id)}/`}
+              title={notice.data.title}
+              description={notice.data.description}
+              pubDate={notice.data.pubDate}
+              image={notice.data.image}
+              imageAlt={notice.data.imageAlt}
+              category={notice.data.category}
+              featured={notice.data.featured}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <SectionTitle
+        eyebrow="Struktura stranice"
+        title="Jednostavni okviri koje kasnije puniš sadržajem."
+        text="Početna stranica ostaje čista i pregledna, a detalji se dodaju na posebne stranice i kroz obavijesti."
+        align="center"
+      />
+      <div class="content-grid">
+        {contentAreas.map((item, index) => (
+          <ContentFrame eyebrow={item.eyebrow} title={item.title} text={item.text} number={`0${index + 1}`} />
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container split-section">
+      <div class="highlight-panel">
+        <p class="eyebrow">Toplo, ali profesionalno</p>
+        <h2>Stranica treba pozvati ljude, ali ostati ozbiljna i jasna.</h2>
+        <p>
+          Dizajn je zamišljen da bude energičan i moderan, bez dječjih elemenata i bez prenatrpanosti početne stranice.
+        </p>
+        <a class="btn btn--primary" href="/volonteri/">Volonteri</a>
+      </div>
+      <div class="soft-list">
+        <article>
+          <h3>Obavijesti s fotografijom</h3>
+          <p>Svaka obavijest može imati svoju sliku, kratak opis i detaljnu stranicu.</p>
+        </article>
+        <article>
+          <h3>Čista početna stranica</h3>
+          <p>Na početnoj su samo najvažniji blokovi, bez previše detalja i bez velikih fotografija.</p>
+        </article>
+        <article>
+          <h3>Društvene mreže</h3>
+          <p>Facebook, Instagram, TikTok i WhatsApp grupa mogu se urediti na jednom mjestu u konfiguraciji.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container">
+      <SectionTitle
+        eyebrow="Povezivanje"
+        title="Kanali za zajednicu."
+        text="Linkovi su pripremljeni, a stvarne URL-ove možeš promijeniti u src/lib/site.ts."
+        align="center"
+      />
+      <SocialLinks />
+    </div>
+  </section>
+</BaseLayout>

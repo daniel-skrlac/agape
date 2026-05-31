@@ -11,10 +11,13 @@ import hr.agape.document.repository.DocumentHeaderRepository;
 import hr.agape.document.repository.DocumentLineRepository;
 import hr.agape.document.repository.DocumentRepository;
 import hr.agape.document.repository.DocumentTypeRepository;
+import hr.agape.document.repository.LegacyBookingPreparationRepository;
+import hr.agape.document.repository.LegacyDocumentHeaderNormalizerRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -26,6 +29,8 @@ public class DispatchBookingTransactionService {
     private final DocumentHeaderRepository headerRepo;
     private final DocumentLineRepository lineRepo;
     private final DocumentRepository documentRepository;
+    private final LegacyBookingPreparationRepository legacyBookingPreparationRepository;
+    private final LegacyDocumentHeaderNormalizerRepository legacyDocumentHeaderNormalizerRepository;
     private final DispatchDocumentConfig dispatchDocumentConfig;
     private final DispatchStornoDocumentConfig dispatchStornoDocumentConfig;
     private final DocumentTypeRepository documentTypeRepository;
@@ -37,6 +42,8 @@ public class DispatchBookingTransactionService {
             DocumentHeaderRepository headerRepo,
             DocumentLineRepository lineRepo,
             DocumentRepository documentRepository,
+            LegacyBookingPreparationRepository legacyBookingPreparationRepository,
+            LegacyDocumentHeaderNormalizerRepository legacyDocumentHeaderNormalizerRepository,
             DispatchDocumentConfig dispatchDocumentConfig,
             DispatchStornoDocumentConfig dispatchStornoDocumentConfig,
             DocumentTypeRepository documentTypeRepository,
@@ -46,6 +53,8 @@ public class DispatchBookingTransactionService {
         this.headerRepo = headerRepo;
         this.lineRepo = lineRepo;
         this.documentRepository = documentRepository;
+        this.legacyBookingPreparationRepository = legacyBookingPreparationRepository;
+        this.legacyDocumentHeaderNormalizerRepository = legacyDocumentHeaderNormalizerRepository;
         this.dispatchDocumentConfig = dispatchDocumentConfig;
         this.dispatchStornoDocumentConfig = dispatchStornoDocumentConfig;
         this.documentTypeRepository = documentTypeRepository;
@@ -53,95 +62,148 @@ public class DispatchBookingTransactionService {
         this.jdbc = jdbc;
     }
 
-    /**
-     * Draft creation MUST be one Oracle session to match legacy behavior.
-     * Also run RECALC to fill SD_STAVKE + SD_GLAVA computed fields (old app behavior).
-     */
-    public DocumentHeaderEntity createDraft(DocumentHeaderEntity headerInput, List<DocumentItemLineDTO> lines) throws SQLException {
+    public DocumentHeaderEntity createDraft(
+            DocumentHeaderEntity headerInput,
+            List<DocumentItemLineDTO> lines
+    ) throws SQLException {
         return jdbc.withConnection(c -> {
-            boolean prevAuto = c.getAutoCommit();
+            boolean previousAutoCommit = c.getAutoCommit();
             c.setAutoCommit(false);
+
             try {
                 String operatorOibDigits = agapeConfig.operater().oib();
 
                 documentRepository.initLegacyContext(c, headerInput.getDocumentId(), operatorOibDigits);
 
                 DocumentHeaderEntity created = headerRepo.insert(c, headerInput);
-
                 lineRepo.insert(c, created.getId(), lines);
 
+                legacyBookingPreparationRepository.prepareDraftForBooking(c, created.getId());
+                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, created.getId());
+
+                DocumentHeaderEntity prepared = headerRepo.findHeader(c, created.getId());
+
                 c.commit();
-                return created;
+                return prepared != null ? prepared : created;
             } catch (SQLException e) {
-                try {
-                    c.rollback();
-                } catch (SQLException ignored) {
-                }
+                rollbackQuietly(c);
                 throw e;
             } finally {
-                try {
-                    c.setAutoCommit(prevAuto);
-                } catch (SQLException ignored) {
-                }
+                restoreAutoCommitQuietly(c, previousAutoCommit);
             }
         });
     }
 
-    /**
-     * REQUIRED:
-     * Update draft lines + header in ONE TX.
-     */
-    public DocumentHeaderEntity updateDraft(Long headerId, Long partnerId, String note, List<DocumentItemLineDTO> newLines) throws SQLException {
+    public DocumentHeaderEntity updateDraft(
+            Long headerId,
+            Long partnerId,
+            String note,
+            List<DocumentItemLineDTO> newLines
+    ) throws SQLException {
         return jdbc.withConnection(c -> {
-            boolean prevAuto = c.getAutoCommit();
+            boolean previousAutoCommit = c.getAutoCommit();
             c.setAutoCommit(false);
+
             try {
+                DocumentHeaderEntity existing = headerRepo.findHeader(c, headerId);
+                if (existing == null || Boolean.TRUE.equals(existing.getPosted())) {
+                    rollbackQuietly(c);
+                    return null;
+                }
+
+                String operatorOibDigits = agapeConfig.operater().oib();
+
+                documentRepository.initLegacyContext(c, existing.getDocumentId(), operatorOibDigits);
+
                 lineRepo.deleteByHeader(c, headerId);
                 lineRepo.insert(c, headerId, newLines);
 
                 DocumentHeaderEntity updated = headerRepo.updateDraftHeader(c, headerId, partnerId, note);
                 if (updated == null) {
-                    c.rollback();
+                    rollbackQuietly(c);
                     return null;
                 }
 
+                legacyBookingPreparationRepository.prepareDraftForBooking(c, headerId);
+                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, headerId);
+
+                DocumentHeaderEntity prepared = headerRepo.findHeader(c, headerId);
+
                 c.commit();
-                return updated;
+                return prepared != null ? prepared : updated;
             } catch (SQLException e) {
-                try {
-                    c.rollback();
-                } catch (SQLException ignored) {
-                }
+                rollbackQuietly(c);
                 throw e;
             } finally {
-                try {
-                    c.setAutoCommit(prevAuto);
-                } catch (SQLException ignored) {
-                }
+                restoreAutoCommitQuietly(c, previousAutoCommit);
             }
         });
     }
 
     @Transactional(NOT_SUPPORTED)
     public void postViaProcedure(DocumentHeaderEntity documentHeaderEntity, String actorOibDigits) throws SQLException {
-        String operatorOibDigits = agapeConfig.operater().oib();
+        if (documentHeaderEntity == null || documentHeaderEntity.getId() == null) {
+            throw new SQLException("Cannot post: missing SD_GLAVA header.");
+        }
 
-        documentRepository.bookDocument(
-                documentHeaderEntity.getId(),
-                documentHeaderEntity.getDocumentId(),
-                operatorOibDigits,
-                actorOibDigits,
-                dispatchDocumentConfig.knjizitiNaSkladiste(),
-                dispatchDocumentConfig.knjizitiUkPopisa(),
-                dispatchDocumentConfig.knjizitiNormative(),
-                dispatchDocumentConfig.generirajZapisnik(),
-                dispatchDocumentConfig.azurirajProdajne(),
-                dispatchDocumentConfig.azurirajNabavne()
-        );
+        if (documentHeaderEntity.getDocumentId() == null) {
+            throw new SQLException("Cannot post: missing DOKUMENT_ID. SD_GLAVA.ID=" + documentHeaderEntity.getId());
+        }
+
+        String operatorOibDigits = agapeConfig.operater().oib();
+        String bookingOibDigits = firstNonBlank(actorOibDigits, operatorOibDigits);
+
+        DocumentSlotTypeView slot = documentTypeRepository.findDocumentSlot(documentHeaderEntity.getDocumentId())
+                .orElseThrow(() -> new SQLException(
+                        "Cannot post: unknown document slot DOKUMENT_ID=" + documentHeaderEntity.getDocumentId()
+                ));
+
+        jdbc.withConnectionVoid(c -> {
+            boolean previousAutoCommit = c.getAutoCommit();
+            c.setAutoCommit(false);
+
+            try {
+                documentRepository.initLegacyContext(c, documentHeaderEntity.getDocumentId(), bookingOibDigits);
+
+                /*
+                 * Always prepare before posting. This also repairs old drafts that were created
+                 * before the preparation code existed.
+                 */
+                legacyBookingPreparationRepository.prepareDraftForBooking(c, documentHeaderEntity.getId());
+                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, documentHeaderEntity.getId());
+
+                documentRepository.bookDocument(
+                        c,
+                        documentHeaderEntity.getId(),
+                        documentHeaderEntity.getDocumentId(),
+                        bookingOibDigits,
+                        bookingOibDigits,
+                        nz(slot.getKnjizitiNaSkladiste()),
+                        nz(slot.getKnjizitiUkPopisa()),
+                        nz(slot.getKnjizitiNormative()),
+                        dispatchDocumentConfig.generirajZapisnik(),
+                        dispatchDocumentConfig.azurirajProdajne(),
+                        dispatchDocumentConfig.azurirajNabavne()
+                );
+
+                /*
+                 * KNJIZI_MK_DOKUMENT commits internally. This final step only applies safe,
+                 * non-business normalization that does not override legacy totals.
+                 */
+                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, documentHeaderEntity.getId());
+
+                c.commit();
+            } catch (SQLException e) {
+                rollbackQuietly(c);
+                throw e;
+            } finally {
+                restoreAutoCommitQuietly(c, previousAutoCommit);
+            }
+        });
     }
 
     @Transactional(NOT_SUPPORTED)
-    public void cancelViaProcedure(Long headerId, Long actorOib,String cancelReason) throws SQLException {
+    public void cancelViaProcedure(Long headerId, Long actorOib, String cancelReason) throws SQLException {
         documentRepository.cancelDocument(
                 headerId,
                 dispatchStornoDocumentConfig.naSkladiste(),
@@ -159,80 +221,68 @@ public class DispatchBookingTransactionService {
 
     public boolean deleteDraft(Long headerId) throws SQLException {
         return jdbc.withConnection(c -> {
-            boolean prevAuto = c.getAutoCommit();
+            boolean previousAutoCommit = c.getAutoCommit();
             c.setAutoCommit(false);
 
             try {
-                final String lockSql = "SELECT 1 FROM SD_GLAVA WHERE ID = ? FOR UPDATE";
+                final String lockSql = "SELECT 1 FROM SD_GLAVA WHERE ID = ? FOR UPDATE NOWAIT";
                 try (var ps = c.prepareStatement(lockSql)) {
                     ps.setLong(1, headerId);
                     try (var rs = ps.executeQuery()) {
                         if (!rs.next()) {
-                            c.rollback();
+                            rollbackQuietly(c);
                             return false;
                         }
                     }
                 }
 
                 lineRepo.deleteByHeader(c, headerId);
-
                 int deleted = headerRepo.deleteDraftHeader(c, headerId);
 
                 if (deleted == 0) {
-                    c.rollback();
+                    rollbackQuietly(c);
                     return false;
                 }
 
                 c.commit();
                 return true;
-
             } catch (SQLException e) {
-                try { c.rollback(); } catch (SQLException ignored) {}
+                rollbackQuietly(c);
                 throw e;
             } finally {
-                try { c.setAutoCommit(prevAuto); } catch (SQLException ignored) {}
+                restoreAutoCommitQuietly(c, previousAutoCommit);
             }
         });
     }
 
-    /**
-     * REQUIRED:
-     * Cancel already posted document (simple UPDATE).
-     */
     @Deprecated
     @Transactional(Transactional.TxType.REQUIRED)
     public DocumentHeaderEntity cancelPosted(Long headerId, Long actorOib, String reason) throws SQLException {
         return headerRepo.cancelDispatch(headerId, actorOib, reason);
     }
 
-    @Transactional(NOT_SUPPORTED)
-    @Deprecated
-    public void postViaProcedure(DocumentHeaderEntity documentHeaderEntity, String actorOibDigits,
-                                 @SuppressWarnings("unused") String a) throws SQLException {
-        String operatorOibDigits = agapeConfig.operater().oib();
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        return second;
+    }
 
-        DocumentSlotTypeView slot = documentTypeRepository.findDocumentSlot(documentHeaderEntity.getDocumentId())
-                .orElseThrow(() -> new SQLException("Cannot post: unknown " +
-                        "document slot DOKUMENT_ID=" + documentHeaderEntity.getDocumentId()));
+    private static int nz(Integer value) {
+        return value != null ? value : 0;
+    }
 
-        int knjizitiNaSkladiste = slot.getKnjizitiNaSkladiste();
-        int knjizitiUkPopisa = slot.getKnjizitiUkPopisa();
-        int knjizitiNormative = slot.getKnjizitiNormative();
-        int generirajZapisnik = slot.getKnjizitiNormative();
-        int azurirajProdajne = slot.getKnjizitiNormative();
-        int azurirajNabavne = slot.getKnjizitiNormative();
+    private static void rollbackQuietly(Connection c) {
+        try {
+            c.rollback();
+        } catch (SQLException ignored) {
+        }
+    }
 
-        documentRepository.bookDocument(
-                documentHeaderEntity.getId(),
-                documentHeaderEntity.getDocumentId(),
-                operatorOibDigits,
-                actorOibDigits,
-                knjizitiNaSkladiste,
-                knjizitiUkPopisa,
-                knjizitiNormative,
-                generirajZapisnik,
-                azurirajProdajne,
-                azurirajNabavne
-        );
+    private static void restoreAutoCommitQuietly(Connection c, boolean previousAutoCommit) {
+        try {
+            c.setAutoCommit(previousAutoCommit);
+        } catch (SQLException ignored) {
+        }
     }
 }

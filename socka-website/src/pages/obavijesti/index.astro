@@ -1,0 +1,30 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHero from '../../components/PageHero.astro';
+import NoticeCard from '../../components/NoticeCard.astro';
+import { getPublishedNotices, noticeSlug } from '../../lib/notices';
+const notices = await getPublishedNotices();
+---
+<BaseLayout title="Obavijesti">
+  <PageHero
+    eyebrow="Novosti i pozivi"
+    title="Sve obavijesti na jednom mjestu."
+    text="Ovdje se objavljuju akcije prikupljanja, potrebe za artiklima, pozivi volonterima i druge važne informacije."
+  />
+  <section class="section-tight">
+    <div class="container notice-grid">
+      {notices.map((notice) => (
+        <NoticeCard
+          href={`/obavijesti/${noticeSlug(notice.id)}/`}
+          title={notice.data.title}
+          description={notice.data.description}
+          pubDate={notice.data.pubDate}
+          image={notice.data.image}
+          imageAlt={notice.data.imageAlt}
+          category={notice.data.category}
+          featured={notice.data.featured}
+        />
+      ))}
+    </div>
+  </section>
+</BaseLayout>

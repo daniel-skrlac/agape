@@ -1,0 +1,55 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+import SocialLinks from '../components/SocialLinks.astro';
+import { site } from '../lib/site';
+---
+<BaseLayout title="Kontakt">
+  <PageHero
+    eyebrow="Kontakt i društvene mreže"
+    title="Povežite se sa Socijalnom samoposlugom."
+    text="Ovdje možete urediti kontakt podatke, društvene mreže i osnovne upute za javljanje."
+  />
+  <section class="section-tight">
+    <div class="container contact-grid">
+      <div class="contact-card">
+        <dl>
+          <div>
+            <dt>Adresa</dt>
+            <dd>{site.address}</dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd><a href={`mailto:${site.email}`}>{site.email}</a></dd>
+          </div>
+          <div>
+            <dt>Telefon</dt>
+            <dd><a href={`tel:${site.phone}`}>{site.phone}</a></dd>
+          </div>
+        </dl>
+      </div>
+      <div class="form-card">
+        <form class="form-grid">
+          <div class="field">
+            <label for="name">Ime i prezime</label>
+            <input id="name" name="name" placeholder="Vaše ime" />
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" placeholder="vas@email.com" />
+          </div>
+          <div class="field">
+            <label for="message">Poruka</label>
+            <textarea id="message" name="message" placeholder="Ovdje unesite poruku..."></textarea>
+          </div>
+          <button class="btn btn--primary" type="button">Forma je pripremljena za kasnije spajanje</button>
+        </form>
+      </div>
+    </div>
+  </section>
+  <section class="section-tight">
+    <div class="container">
+      <SocialLinks />
+    </div>
+  </section>
+</BaseLayout>

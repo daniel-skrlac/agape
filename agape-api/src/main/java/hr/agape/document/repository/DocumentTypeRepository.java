@@ -84,40 +84,39 @@ public class DocumentTypeRepository {
 
     public Optional<DocumentSlotTypeView> findDocumentSlotByCodeAndWarehouse(Long warehouseId, String documentCode) throws SQLException {
         final String sql = """
-        SELECT *
-        FROM (
-            SELECT
-                r.DOKUMENT_ID,
-                z.SD_SIFREZ_ID,
-                z.DOKUMENTID,
-                z.NAZIVDOKUMENTA,
-                z.ULAZIZLAZ,
-                z.MIJENJAZALIHU,
-                z.KNJIZITINASKLADISTE,
-                z.KNJIZITIUKPOPISA,
-                z.KNJIZITINORMATIVE,
-                z.KNJIZITISASTAVNICU,
-                z.TIPPRODAJNIHCIJENA,
-                z.TIPNABAVNECIJENE,
-                z.TIPKNJIGEPOPISA,
-                z.TIPKARTICE,
-                z.TIPBAZA
-            FROM SD_SIFREG r
-            JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
-            WHERE (? IS NULL OR r.SKLADISTE_ID = ?)
-              AND UPPER(z.DOKUMENTID) = UPPER(?)
-            ORDER BY r.DOKUMENT_ID ASC, z.SD_SIFREZ_ID ASC
-        )
-        WHERE ROWNUM = 1
-        """;
+                SELECT *
+                  FROM (
+                        SELECT
+                            r.DOKUMENT_ID,
+                            z.SD_SIFREZ_ID,
+                            z.DOKUMENTID,
+                            z.NAZIVDOKUMENTA,
+                            z.ULAZIZLAZ,
+                            z.MIJENJAZALIHU,
+                            z.KNJIZITINASKLADISTE,
+                            z.KNJIZITIUKPOPISA,
+                            z.KNJIZITINORMATIVE,
+                            z.KNJIZITISASTAVNICU,
+                            z.TIPPRODAJNIHCIJENA,
+                            z.TIPNABAVNECIJENE,
+                            z.TIPKNJIGEPOPISA,
+                            z.TIPKARTICE,
+                            z.TIPBAZA
+                        FROM SD_SIFREG r
+                        JOIN SD_SIFREZ z
+                          ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                       WHERE r.SKLADISTE_ID = ?
+                         AND TRIM(UPPER(z.DOKUMENTID)) = TRIM(UPPER(?))
+                       ORDER BY r.DOKUMENT_ID ASC, z.SD_SIFREZ_ID ASC
+                       )
+                 WHERE ROWNUM = 1
+                """;
 
         DocumentSlotTypeView view = jdbc.queryOne(
                 sql,
                 ps -> {
-                    int i = 1;
-                    ps.setObject(i++, warehouseId);
-                    ps.setObject(i++, warehouseId);
-                    ps.setString(i++, documentCode);
+                    ps.setLong(1, warehouseId);
+                    ps.setString(2, documentCode);
                 },
                 rs -> DocumentSlotTypeView.builder()
                         .documentId(rs.getInt("DOKUMENT_ID"))
@@ -173,18 +172,18 @@ public class DocumentTypeRepository {
         };
 
         String sql = """
-            WITH dids AS (
-                SELECT DISTINCT r.DOKUMENT_ID AS DID
-                FROM SD_SIFREG r
-                JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
-                WHERE ( ? IS NULL OR r.SKLADISTE_ID = ? )
-                  AND (
-                       ? IS NULL OR ? = '' OR
-                       LOWER(z.NAZIVDOKUMENTA) LIKE ? OR
-                       LOWER(z.DOKUMENTID) LIKE ? OR
-                       TO_CHAR(r.DOKUMENT_ID) LIKE ?
-                  )
-            """;
+                WITH dids AS (
+                    SELECT DISTINCT r.DOKUMENT_ID AS DID
+                    FROM SD_SIFREG r
+                    JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                    WHERE ( ? IS NULL OR r.SKLADISTE_ID = ? )
+                      AND (
+                           ? IS NULL OR ? = '' OR
+                           LOWER(z.NAZIVDOKUMENTA) LIKE ? OR
+                           LOWER(z.DOKUMENTID) LIKE ? OR
+                           TO_CHAR(r.DOKUMENT_ID) LIKE ?
+                      )
+                """;
 
         if (hasExcludeCodes) {
             // exclude by document code (z.DOKUMENTID)
@@ -197,34 +196,34 @@ public class DocumentTypeRepository {
         }
 
         sql += """
-            )
-            SELECT r2.DOKUMENT_ID,
-                   z.SD_SIFREZ_ID,
-                   z.DOKUMENTID,
-                   z.NAZIVDOKUMENTA,
-                   z.ULAZIZLAZ,
-                   z.MIJENJAZALIHU,
-                   z.KNJIZITINASKLADISTE,
-                   z.KNJIZITIUKPOPISA,
-                   z.KNJIZITINORMATIVE,
-                   z.KNJIZITISASTAVNICU,
-                   z.TIPPRODAJNIHCIJENA,
-                   z.TIPNABAVNECIJENE,
-                   z.TIPKNJIGEPOPISA,
-                   z.TIPKARTICE,
-                   z.TIPBAZA
-              FROM dids x
-              JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
-              JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
-             WHERE ( ? IS NULL OR r2.SKLADISTE_ID = ? )
-               AND r2.SD_SIFREZ_ID = (
-                    SELECT MIN(r3.SD_SIFREZ_ID)
-                      FROM SD_SIFREG r3
-                     WHERE r3.DOKUMENT_ID = x.DID
-                       AND ( ? IS NULL OR r3.SKLADISTE_ID = ? )
-               )
-             ORDER BY LOWER(z.NAZIVDOKUMENTA), r2.DOKUMENT_ID
-            """;
+                )
+                SELECT r2.DOKUMENT_ID,
+                       z.SD_SIFREZ_ID,
+                       z.DOKUMENTID,
+                       z.NAZIVDOKUMENTA,
+                       z.ULAZIZLAZ,
+                       z.MIJENJAZALIHU,
+                       z.KNJIZITINASKLADISTE,
+                       z.KNJIZITIUKPOPISA,
+                       z.KNJIZITINORMATIVE,
+                       z.KNJIZITISASTAVNICU,
+                       z.TIPPRODAJNIHCIJENA,
+                       z.TIPNABAVNECIJENE,
+                       z.TIPKNJIGEPOPISA,
+                       z.TIPKARTICE,
+                       z.TIPBAZA
+                  FROM dids x
+                  JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
+                  JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
+                 WHERE ( ? IS NULL OR r2.SKLADISTE_ID = ? )
+                   AND r2.SD_SIFREZ_ID = (
+                        SELECT MIN(r3.SD_SIFREZ_ID)
+                          FROM SD_SIFREG r3
+                         WHERE r3.DOKUMENT_ID = x.DID
+                           AND ( ? IS NULL OR r3.SKLADISTE_ID = ? )
+                   )
+                 ORDER BY LOWER(z.NAZIVDOKUMENTA), r2.DOKUMENT_ID
+                """;
 
         final String like = hasQ ? "%" + q.toLowerCase().trim() + "%" : null;
         final String qq = hasQ ? q.trim() : null;

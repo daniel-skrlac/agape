@@ -1,0 +1,26 @@
+---
+import { getCollection, render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatDate, noticeSlug } from '../../lib/notices';
+
+export async function getStaticPaths() {
+  const notices = await getCollection('obavijesti', ({ data }) => !data.draft);
+  return notices.map((entry) => ({
+    params: { slug: noticeSlug(entry.id) },
+    props: { entry }
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+<BaseLayout title={entry.data.title} description={entry.data.description}>
+  <section class="section-tight">
+    <article class="article-content">
+      <img src={entry.data.image} alt={entry.data.imageAlt || entry.data.title} />
+      <p class="article-meta">{entry.data.category} • {formatDate(entry.data.pubDate)}</p>
+      <h1>{entry.data.title}</h1>
+      <Content />
+    </article>
+  </section>
+</BaseLayout>

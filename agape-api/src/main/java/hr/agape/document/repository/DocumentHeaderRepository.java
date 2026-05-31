@@ -31,8 +31,34 @@ public class DocumentHeaderRepository {
         this.jdbc = jdbc;
     }
 
-    public DocumentHeaderEntity insert(DocumentHeaderEntity h, boolean ignoredPostNow) throws SQLException {
-        return jdbc.withConnection(c -> doInsertHeader(c, h));
+    private static final String FIND_HEADER_SQL = """
+            SELECT
+              g.ID,
+              g.DOKUMENT_ID,
+              g.DOKUMENTBR,
+              g.DATUM_DOKUMENTA,
+              g.PARTNER_ID,
+              g.IZRADIO,
+              g.DATUM_IZRADE,
+              g.KNJIZENO,
+              g.KNJIZIO,
+              g.DATUM_KNJIZENJA,
+              g.STORNIRAO,
+              g.DATUM_STORNO,
+              g.NAPOMENA
+            FROM SD_GLAVA g
+            WHERE g.ID = ?
+            """;
+
+    public DocumentHeaderEntity findHeader(Long id) throws SQLException {
+        return jdbc.queryOne(FIND_HEADER_SQL, ps -> ps.setLong(1, id), DocumentHeaderRepository::mapRowToEntity);
+    }
+
+    public DocumentHeaderEntity findHeader(Connection c, Long id) throws SQLException {
+        return jdbc.query(c, FIND_HEADER_SQL, ps -> ps.setLong(1, id), DocumentHeaderRepository::mapRowToEntity)
+                .stream()
+                .findFirst()
+                .orElse(null);
     }
 
     public DocumentHeaderEntity insert(Connection c, DocumentHeaderEntity h) throws SQLException {
@@ -53,13 +79,15 @@ public class DocumentHeaderRepository {
                        IZRADIO,
                        SIFRATEKSTA,
                        BROJSTAVAKA,
+                       BROJJEDINICAV,
+                       RABATSTOPA,
                        DOKUMENTBR,
                        KNJIZENO,
                        KNJIZIO,
                        DATUM_KNJIZENJA,
                        DATUM_IZRADE,
                        NAPOMENA)
-                    VALUES (?, ?, ?, ?, ?, ?, NULL, 0, NULL, NULL, SYSDATE, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 0, NULL, 0, NULL, NULL, SYSDATE, ?)
                     RETURNING ID,
                               DOKUMENTBR,
                               DATUM_DOKUMENTA,
@@ -83,8 +111,11 @@ public class DocumentHeaderRepository {
                     Jdbc.setLong(ps, 4, h.getCreatedBy());
                     Jdbc.setString(ps, 5, h.getTextType() != null ? h.getTextType().dbValue() : null);
 
-                    if (h.getItemCount() != null) ps.setInt(6, h.getItemCount());
-                    else ps.setNull(6, Types.NUMERIC);
+                    if (h.getItemCount() != null) {
+                        ps.setInt(6, h.getItemCount());
+                    } else {
+                        ps.setNull(6, Types.NUMERIC);
+                    }
 
                     Jdbc.setClobString(ps, 7, h.getNote());
 
@@ -152,11 +183,11 @@ public class DocumentHeaderRepository {
 
     public int deleteDraftHeader(Connection c, Long headerId) throws SQLException {
         final String sql = """
-            DELETE FROM SD_GLAVA
-             WHERE ID = ?
-               AND KNJIZENO = 0
-               AND STORNIRAO IS NULL
-            """;
+                DELETE FROM SD_GLAVA
+                 WHERE ID = ?
+                   AND KNJIZENO = 0
+                   AND STORNIRAO IS NULL
+                """;
 
         return jdbc.update(c, sql, ps -> Jdbc.setLong(ps, 1, headerId));
     }
@@ -187,29 +218,6 @@ public class DocumentHeaderRepository {
             Jdbc.setLong(ps, 1, actorOib);
             Jdbc.setLong(ps, 2, headerId);
         });
-    }
-
-    public DocumentHeaderEntity findHeader(Long id) throws SQLException {
-        final String sql = """
-                SELECT
-                  g.ID,
-                  g.DOKUMENT_ID,
-                  g.DOKUMENTBR,
-                  g.DATUM_DOKUMENTA,
-                  g.PARTNER_ID,
-                  g.IZRADIO,
-                  g.DATUM_IZRADE,
-                  g.KNJIZENO,
-                  g.KNJIZIO,
-                  g.DATUM_KNJIZENJA,
-                  g.STORNIRAO,
-                  g.DATUM_STORNO,
-                  g.NAPOMENA
-                FROM SD_GLAVA g
-                WHERE g.ID = ?
-                """;
-
-        return jdbc.queryOne(sql, ps -> ps.setLong(1, id), DocumentHeaderRepository::mapRowToEntity);
     }
 
     /**
@@ -256,7 +264,7 @@ public class DocumentHeaderRepository {
         });
 
         if (updated == 0) return null;
-        return findHeader(headerId);
+        return findHeader(c, headerId);
     }
 
     public DocumentHeaderEntity cancelDispatch(Long headerId, Long actorOib, String reason) throws SQLException {

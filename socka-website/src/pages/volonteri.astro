@@ -1,0 +1,23 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+import SectionTitle from '../components/SectionTitle.astro';
+import ContentFrame from '../components/ContentFrame.astro';
+---
+<BaseLayout title="Volonteri">
+  <PageHero
+    eyebrow="Uključi se"
+    title="Stranica za volontere i sve koji žele pomoći."
+    text="Ovdje možete dodati informacije o prijavi, vrstama pomoći, očekivanjima i kontaktu za nove volontere."
+  />
+  <section class="section-tight">
+    <div class="container">
+      <SectionTitle eyebrow="Volonterski sadržaj" title="Okviri za informacije koje će ljudima pomoći da se lakše uključe." />
+      <div class="content-grid">
+        <ContentFrame eyebrow="Prijava" title="Kako se prijaviti" text="Dodajte jasan postupak prijave za nove volontere." number="01" />
+        <ContentFrame eyebrow="Aktivnosti" title="Gdje je pomoć potrebna" text="Objasnite tipične volonterske zadatke i termine." number="02" />
+        <ContentFrame eyebrow="Kontakt" title="Kome se javiti" text="Dodajte kontakt osobu, e-mail, telefon ili WhatsApp grupu." number="03" />
+      </div>
+    </div>
+  </section>
+</BaseLayout>
