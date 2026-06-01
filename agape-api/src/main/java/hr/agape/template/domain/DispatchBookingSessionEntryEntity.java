@@ -20,6 +20,8 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.time.LocalDate;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -58,4 +60,7 @@ public class DispatchBookingSessionEntryEntity extends PanacheEntityBase {
 
     @Column(name = "note", columnDefinition = "text")
     private String note;
+
+    @Column(name = "document_date")
+    private LocalDate documentDate;
 }

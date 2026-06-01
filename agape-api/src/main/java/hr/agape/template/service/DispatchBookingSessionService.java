@@ -268,6 +268,7 @@ public class DispatchBookingSessionService {
             e.setTemplateId(req.getTemplateId());
             e.setDraftMode(req.getDraftMode());
             e.setNote(req.getNote());
+            e.setDocumentDate(req.getDocumentDate());
 
             e.setDocPatchesJson(jsonUtil.write(req.getDocPatches() == null ? List.of() : req.getDocPatches()));
             e.setExtraItemsJson(jsonUtil.write(req.getExtraItems() == null ? List.of() : req.getExtraItems()));
@@ -390,6 +391,7 @@ public class DispatchBookingSessionService {
                                 s.getWarehouseId(),
                                 e.getPartnerId(),
                                 draft,
+                                e.getDocumentDate(),
                                 e.getNote(),
                                 patches,
                                 extraItems,
@@ -431,6 +433,7 @@ public class DispatchBookingSessionService {
         request.setWarehouseId(warehouseId);
         request.setPartnerId(entry.getPartnerId());
         request.setDraft(entry.getDraftMode().asDraftFlag());
+        request.setDocumentDate(entry.getDocumentDate());
         request.setNote(entry.getNote());
 
         List<DispatchRequestDTO.DispatchItemRequest> items = extraItems.stream()

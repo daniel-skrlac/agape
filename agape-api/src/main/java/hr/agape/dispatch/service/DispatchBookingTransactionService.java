@@ -12,7 +12,6 @@ import hr.agape.document.repository.DocumentLineRepository;
 import hr.agape.document.repository.DocumentRepository;
 import hr.agape.document.repository.DocumentTypeRepository;
 import hr.agape.document.repository.LegacyBookingPreparationRepository;
-import hr.agape.document.repository.LegacyDocumentHeaderNormalizerRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -30,7 +29,6 @@ public class DispatchBookingTransactionService {
     private final DocumentLineRepository lineRepo;
     private final DocumentRepository documentRepository;
     private final LegacyBookingPreparationRepository legacyBookingPreparationRepository;
-    private final LegacyDocumentHeaderNormalizerRepository legacyDocumentHeaderNormalizerRepository;
     private final DispatchDocumentConfig dispatchDocumentConfig;
     private final DispatchStornoDocumentConfig dispatchStornoDocumentConfig;
     private final DocumentTypeRepository documentTypeRepository;
@@ -43,7 +41,6 @@ public class DispatchBookingTransactionService {
             DocumentLineRepository lineRepo,
             DocumentRepository documentRepository,
             LegacyBookingPreparationRepository legacyBookingPreparationRepository,
-            LegacyDocumentHeaderNormalizerRepository legacyDocumentHeaderNormalizerRepository,
             DispatchDocumentConfig dispatchDocumentConfig,
             DispatchStornoDocumentConfig dispatchStornoDocumentConfig,
             DocumentTypeRepository documentTypeRepository,
@@ -54,7 +51,6 @@ public class DispatchBookingTransactionService {
         this.lineRepo = lineRepo;
         this.documentRepository = documentRepository;
         this.legacyBookingPreparationRepository = legacyBookingPreparationRepository;
-        this.legacyDocumentHeaderNormalizerRepository = legacyDocumentHeaderNormalizerRepository;
         this.dispatchDocumentConfig = dispatchDocumentConfig;
         this.dispatchStornoDocumentConfig = dispatchStornoDocumentConfig;
         this.documentTypeRepository = documentTypeRepository;
@@ -79,7 +75,6 @@ public class DispatchBookingTransactionService {
                 lineRepo.insert(c, created.getId(), lines);
 
                 legacyBookingPreparationRepository.prepareDraftForBooking(c, created.getId());
-                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, created.getId());
 
                 DocumentHeaderEntity prepared = headerRepo.findHeader(c, created.getId());
 
@@ -125,7 +120,6 @@ public class DispatchBookingTransactionService {
                 }
 
                 legacyBookingPreparationRepository.prepareDraftForBooking(c, headerId);
-                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, headerId);
 
                 DocumentHeaderEntity prepared = headerRepo.findHeader(c, headerId);
 
@@ -170,7 +164,6 @@ public class DispatchBookingTransactionService {
                  * before the preparation code existed.
                  */
                 legacyBookingPreparationRepository.prepareDraftForBooking(c, documentHeaderEntity.getId());
-                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, documentHeaderEntity.getId());
 
                 documentRepository.bookDocument(
                         c,
@@ -185,12 +178,6 @@ public class DispatchBookingTransactionService {
                         dispatchDocumentConfig.azurirajProdajne(),
                         dispatchDocumentConfig.azurirajNabavne()
                 );
-
-                /*
-                 * KNJIZI_MK_DOKUMENT commits internally. This final step only applies safe,
-                 * non-business normalization that does not override legacy totals.
-                 */
-                legacyDocumentHeaderNormalizerRepository.normalizeDispatchHeader(c, documentHeaderEntity.getId());
 
                 c.commit();
             } catch (SQLException e) {

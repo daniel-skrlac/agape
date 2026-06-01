@@ -62,6 +62,10 @@ public final class DispatchSlipTextParser {
         return out;
     }
 
+    public static List<BookingSessionScanLineCandidateDTO> buildExtraCandidates(String rawText) {
+        return extractExtraTextLines(rawText);
+    }
+
     public static List<String> partnerSearchTerms(String rawText) {
         String text = normalizeRawText(rawText);
         if (text == null) {

@@ -9,6 +9,7 @@ import hr.agape.template.dto.TemplateBookItemDTO;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -24,6 +25,7 @@ public class TemplateBookingRequestBuilder {
             Long warehouseId,
             Long partnerId,
             boolean draft,
+            LocalDate documentDate,
             String entryNote,
             List<TemplateBookDocPatchDTO> docPatches,
             List<TemplateBookItemDTO> extraItems,
@@ -48,7 +50,7 @@ public class TemplateBookingRequestBuilder {
                 throw new IllegalArgumentException("Document " + doc.getDocumentId() + " has no items after overrides.");
             }
 
-            out.add(toDispatchRequest(warehouseId, partnerId, draft, entryNote, doc, qtyByItemId));
+            out.add(toDispatchRequest(warehouseId, partnerId, draft, documentDate, entryNote, doc, qtyByItemId));
         }
 
         return out;
@@ -159,6 +161,7 @@ public class TemplateBookingRequestBuilder {
             Long warehouseId,
             Long partnerId,
             boolean draft,
+            LocalDate documentDate,
             String entryNote,
             DispatchTemplateDocEntity doc,
             Map<Long, BigDecimal> qtyByItemId
@@ -168,6 +171,7 @@ public class TemplateBookingRequestBuilder {
         dr.setPartnerId(partnerId);
         dr.setWarehouseId(warehouseId);
         dr.setDraft(draft);
+        dr.setDocumentDate(documentDate);
 
         dr.setNote(resolveNote(entryNote, doc));
 

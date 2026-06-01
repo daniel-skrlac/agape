@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-05-29 21:09:50.
+// Generated using typescript-generator version 3.2.1263 on 2026-06-01 18:08:17.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -478,6 +478,7 @@ export interface BookingSessionEntryResponseDTO {
     docPatches: any;
     extraItems: any;
     note: string;
+    documentDate: Date;
 }
 
 export interface BookingSessionEntryUpsertRequestDTO {

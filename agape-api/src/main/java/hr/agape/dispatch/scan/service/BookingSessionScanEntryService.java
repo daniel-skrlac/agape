@@ -152,7 +152,7 @@ public class BookingSessionScanEntryService {
                     : parsedPartner == null ? null : parsedPartner.getId();
 
             List<BookingSessionScanLineCandidateDTO> candidates = mergeQuantitiesWithCandidates(
-                    DispatchSlipTextParser.buildCandidates(rawText),
+                    DispatchSlipTextParser.buildExtraCandidates(rawText),
                     analysis.getQuantities(),
                     analysis.getQuantityConfidences(),
                     analysis.getQuantityResults()
@@ -189,7 +189,14 @@ public class BookingSessionScanEntryService {
             parsed.setPartnerResolved(effectivePartnerId != null);
             parsed.setRequiresManualPartner(effectivePartnerId == null);
 
-            parsed.setWarnings(mergeWarnings(parsed.getWarnings(), analysis, resolvedDocumentDate, documentDate));
+            parsed.setWarnings(mergeWarnings(
+                    parsed.getWarnings(),
+                    analysis,
+                    resolvedDocumentDate,
+                    documentDate,
+                    session.getWarehouseId(),
+                    validation.getLines()
+            ));
 
             return ServiceResponseDirector.successOk(parsed, "Scan parsed.");
         } catch (IllegalArgumentException e) {
@@ -617,7 +624,7 @@ public class BookingSessionScanEntryService {
         addPartnerNumber(numberCandidates, parsePartnerNumberFromText(rawText));
 
         for (Integer candidate : numberCandidates) {
-            PartnerResponseDTO byNumber = partnerService.findByPartnerNumber(userId, candidate);
+            PartnerResponseDTO byNumber = partnerService.findByPartnerNumber(candidate);
             if (byNumber != null) {
                 return byNumber;
             }
@@ -876,7 +883,9 @@ public class BookingSessionScanEntryService {
             List<String> parsedWarnings,
             DispatchSlipAnalyzerResponseDTO analysis,
             LocalDate resolvedDocumentDate,
-            String providedDocumentDate
+            String providedDocumentDate,
+            Long warehouseId,
+            List<BookingSessionScanLineValidationDTO> validatedLines
     ) {
         List<String> warnings = new ArrayList<>();
 
@@ -902,11 +911,32 @@ public class BookingSessionScanEntryService {
             warnings.add("Prepoznati datum nije dovoljno siguran. Odaberi datum ručno.");
         }
 
+        if (hasOnlyUnresolvedFixedLayoutLines(validatedLines)) {
+            warnings.add("Artikli iz obrasca nisu pronađeni u odabranom skladištu"
+                    + (warehouseId == null ? "." : " #" + warehouseId + ".")
+                    + " Provjeri skladište ili ručno poveži artikle.");
+        }
+
         return warnings.stream()
                 .filter(Objects::nonNull)
                 .filter(value -> !value.isBlank())
                 .distinct()
                 .toList();
+    }
+
+    private boolean hasOnlyUnresolvedFixedLayoutLines(List<BookingSessionScanLineValidationDTO> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return false;
+        }
+
+        List<BookingSessionScanLineValidationDTO> fixedLayoutLines = lines.stream()
+                .filter(Objects::nonNull)
+                .filter(line -> DispatchSlipTextParser.SOURCE_FIXED_LAYOUT.equals(line.getSource()))
+                .filter(line -> line.getQuantity() != null && line.getQuantity().signum() > 0)
+                .toList();
+
+        return !fixedLayoutLines.isEmpty()
+                && fixedLayoutLines.stream().noneMatch(line -> line.getItemId() != null);
     }
 
     private String translateAnalyzerWarning(String warning) {

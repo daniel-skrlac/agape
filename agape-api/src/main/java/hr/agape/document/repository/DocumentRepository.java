@@ -280,11 +280,6 @@ public class DocumentRepository {
                                GRESKA
                           FROM KNJIZI_LOG
                          WHERE ID_DOKUMENTA = ?
-                            OR DOKUMENT_ID = (
-                                SELECT DOKUMENT_ID
-                                  FROM SD_GLAVA
-                                 WHERE ID = ?
-                            )
                          ORDER BY DATUM DESC, ID DESC
                        )
                  WHERE ROWNUM = 1
@@ -292,7 +287,6 @@ public class DocumentRepository {
 
         try (PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setLong(1, sdGlavaId);
-            ps.setLong(2, sdGlavaId);
 
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {

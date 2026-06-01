@@ -23,53 +23,32 @@ public class DocumentTypeRepository {
 
     public Optional<DocumentSlotTypeView> findDocumentSlot(Long documentId) throws SQLException {
         final String sql = """
-                    SELECT *
-                    FROM (
-                        SELECT
-                            r.DOKUMENT_ID,
-                            z.SD_SIFREZ_ID,
-                            z.DOKUMENTID,
-                            z.NAZIVDOKUMENTA,
-                            z.ULAZIZLAZ,
-                            z.MIJENJAZALIHU,
-                            z.REZERVACIJE,
-                            z.KNJIZITINASKLADISTE,
-                            z.KNJIZITIUKPOPISA,
-                            z.KNJIZITINORMATIVE,
-                            z.KNJIZITISASTAVNICU,
-                            z.TIPPRODAJNIHCIJENA,
-                            z.TIPNABAVNECIJENE,
-                            z.TIPKNJIGEPOPISA,
-                            z.TIPKARTICE,
-                            z.TIPBAZA
-                        FROM SD_SIFREG r
-                        JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
-                        WHERE r.DOKUMENT_ID = ?
-                    )
-                    WHERE ROWNUM = 1
+                SELECT
+                    r.DOKUMENT_ID,
+                    z.SD_SIFREZ_ID,
+                    z.DOKUMENTID,
+                    z.NAZIVDOKUMENTA,
+                    z.ULAZIZLAZ,
+                    z.MIJENJAZALIHU,
+                    z.REZERVACIJE,
+                    z.KNJIZITINASKLADISTE,
+                    z.KNJIZITIUKPOPISA,
+                    z.KNJIZITINORMATIVE,
+                    z.KNJIZITISASTAVNICU,
+                    z.TIPPRODAJNIHCIJENA,
+                    z.TIPNABAVNECIJENE,
+                    z.TIPKNJIGEPOPISA,
+                    z.TIPKARTICE,
+                    z.TIPBAZA
+                  FROM SD_SIFREG r
+                  JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                 WHERE r.DOKUMENT_ID = ?
                 """;
 
         DocumentSlotTypeView view = jdbc.queryOne(
                 sql,
                 ps -> ps.setLong(1, documentId),
-                rs -> DocumentSlotTypeView.builder()
-                        .documentId(rs.getInt("DOKUMENT_ID"))
-                        .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
-                        .documentCode(rs.getString("DOKUMENTID"))
-                        .displayName(rs.getString("NAZIVDOKUMENTA"))
-                        .inOutFlag(rs.getInt("ULAZIZLAZ"))
-                        .changesStock(rs.getInt("MIJENJAZALIHU"))
-                        .rezervacije(rs.getInt("REZERVACIJE"))
-                        .knjizitiNaSkladiste(rs.getInt("KNJIZITINASKLADISTE"))
-                        .knjizitiUkPopisa(rs.getInt("KNJIZITIUKPOPISA"))
-                        .knjizitiNormative(rs.getInt("KNJIZITINORMATIVE"))
-                        .knjizitiSastavnicu(rs.getInt("KNJIZITISASTAVNICU"))
-                        .tipProdajnihCijena(rs.getInt("TIPPRODAJNIHCIJENA"))
-                        .tipNabavneCijene(rs.getInt("TIPNABAVNECIJENE"))
-                        .tipKnjigePopisa(rs.getInt("TIPKNJIGEPOPISA"))
-                        .tipKartice(rs.getInt("TIPKARTICE"))
-                        .tipBaza(rs.getInt("TIPBAZA"))
-                        .build()
+                DocumentTypeRepository::mapDocumentSlot
         );
 
         return Optional.ofNullable(view);
@@ -84,60 +63,48 @@ public class DocumentTypeRepository {
 
     public Optional<DocumentSlotTypeView> findDocumentSlotByCodeAndWarehouse(Long warehouseId, String documentCode) throws SQLException {
         final String sql = """
-                SELECT *
-                  FROM (
-                        SELECT
-                            r.DOKUMENT_ID,
-                            z.SD_SIFREZ_ID,
-                            z.DOKUMENTID,
-                            z.NAZIVDOKUMENTA,
-                            z.ULAZIZLAZ,
-                            z.MIJENJAZALIHU,
-                            z.KNJIZITINASKLADISTE,
-                            z.KNJIZITIUKPOPISA,
-                            z.KNJIZITINORMATIVE,
-                            z.KNJIZITISASTAVNICU,
-                            z.TIPPRODAJNIHCIJENA,
-                            z.TIPNABAVNECIJENE,
-                            z.TIPKNJIGEPOPISA,
-                            z.TIPKARTICE,
-                            z.TIPBAZA
-                        FROM SD_SIFREG r
-                        JOIN SD_SIFREZ z
-                          ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
-                       WHERE r.SKLADISTE_ID = ?
-                         AND TRIM(UPPER(z.DOKUMENTID)) = TRIM(UPPER(?))
-                       ORDER BY r.DOKUMENT_ID ASC, z.SD_SIFREZ_ID ASC
-                       )
-                 WHERE ROWNUM = 1
+                SELECT
+                    r.DOKUMENT_ID,
+                    z.SD_SIFREZ_ID,
+                    z.DOKUMENTID,
+                    z.NAZIVDOKUMENTA,
+                    z.ULAZIZLAZ,
+                    z.MIJENJAZALIHU,
+                    z.REZERVACIJE,
+                    z.KNJIZITINASKLADISTE,
+                    z.KNJIZITIUKPOPISA,
+                    z.KNJIZITINORMATIVE,
+                    z.KNJIZITISASTAVNICU,
+                    z.TIPPRODAJNIHCIJENA,
+                    z.TIPNABAVNECIJENE,
+                    z.TIPKNJIGEPOPISA,
+                    z.TIPKARTICE,
+                    z.TIPBAZA
+                  FROM SD_SIFREG r
+                  JOIN SD_SIFREZ z
+                    ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                 WHERE r.SKLADISTE_ID = ?
+                   AND TRIM(UPPER(z.DOKUMENTID)) = TRIM(UPPER(?))
+                 ORDER BY r.DOKUMENT_ID ASC, z.SD_SIFREZ_ID ASC
                 """;
 
-        DocumentSlotTypeView view = jdbc.queryOne(
+        List<DocumentSlotTypeView> matches = jdbc.query(
                 sql,
                 ps -> {
                     ps.setLong(1, warehouseId);
                     ps.setString(2, documentCode);
                 },
-                rs -> DocumentSlotTypeView.builder()
-                        .documentId(rs.getInt("DOKUMENT_ID"))
-                        .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
-                        .documentCode(rs.getString("DOKUMENTID"))
-                        .displayName(rs.getString("NAZIVDOKUMENTA"))
-                        .inOutFlag(rs.getInt("ULAZIZLAZ"))
-                        .changesStock(rs.getInt("MIJENJAZALIHU"))
-                        .knjizitiNaSkladiste(rs.getInt("KNJIZITINASKLADISTE"))
-                        .knjizitiUkPopisa(rs.getInt("KNJIZITIUKPOPISA"))
-                        .knjizitiNormative(rs.getInt("KNJIZITINORMATIVE"))
-                        .knjizitiSastavnicu(rs.getInt("KNJIZITISASTAVNICU"))
-                        .tipProdajnihCijena(rs.getInt("TIPPRODAJNIHCIJENA"))
-                        .tipNabavneCijene(rs.getInt("TIPNABAVNECIJENE"))
-                        .tipKnjigePopisa(rs.getInt("TIPKNJIGEPOPISA"))
-                        .tipKartice(rs.getInt("TIPKARTICE"))
-                        .tipBaza(rs.getInt("TIPBAZA"))
-                        .build()
+                DocumentTypeRepository::mapDocumentSlot
         );
 
-        return Optional.ofNullable(view);
+        if (matches.size() > 1) {
+            throw new SQLException(
+                    "Ambiguous legacy document mapping for warehouseId=" + warehouseId
+                            + ", documentCode=" + documentCode
+            );
+        }
+
+        return matches.stream().findFirst();
     }
 
     public List<DocumentSlotTypeView> listDocumentSlots(
@@ -449,5 +416,26 @@ public class DocumentTypeRepository {
                         .tipBaza(rs.getInt("TIPBAZA"))
                         .build()
         );
+    }
+
+    private static DocumentSlotTypeView mapDocumentSlot(java.sql.ResultSet rs) throws SQLException {
+        return DocumentSlotTypeView.builder()
+                .documentId(rs.getInt("DOKUMENT_ID"))
+                .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
+                .documentCode(rs.getString("DOKUMENTID"))
+                .displayName(rs.getString("NAZIVDOKUMENTA"))
+                .inOutFlag(rs.getInt("ULAZIZLAZ"))
+                .changesStock(rs.getInt("MIJENJAZALIHU"))
+                .rezervacije(rs.getInt("REZERVACIJE"))
+                .knjizitiNaSkladiste(rs.getInt("KNJIZITINASKLADISTE"))
+                .knjizitiUkPopisa(rs.getInt("KNJIZITIUKPOPISA"))
+                .knjizitiNormative(rs.getInt("KNJIZITINORMATIVE"))
+                .knjizitiSastavnicu(rs.getInt("KNJIZITISASTAVNICU"))
+                .tipProdajnihCijena(rs.getInt("TIPPRODAJNIHCIJENA"))
+                .tipNabavneCijene(rs.getInt("TIPNABAVNECIJENE"))
+                .tipKnjigePopisa(rs.getInt("TIPKNJIGEPOPISA"))
+                .tipKartice(rs.getInt("TIPKARTICE"))
+                .tipBaza(rs.getInt("TIPBAZA"))
+                .build();
     }
 }

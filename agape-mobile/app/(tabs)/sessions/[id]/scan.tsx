@@ -892,6 +892,17 @@ export default function DispatchSlipScanScreen() {
         });
     }, [currentPage, invalidatePage]);
 
+    const setDocumentDateToToday = useCallback(() => {
+        if (!currentPage) return;
+
+        Keyboard.dismiss();
+        setDatePickerOpen(false);
+        invalidatePage(currentPage.id, {
+            documentDate: dateToIsoLocal(todayLocalNoon()),
+            documentDateConfidence: 1,
+        });
+    }, [currentPage, invalidatePage]);
+
     const pickCamera = useCallback(async () => {
         await openScanner("add");
     }, [openScanner]);
@@ -2033,22 +2044,32 @@ export default function DispatchSlipScanScreen() {
                                 </View>
 
                                 <View style={s.dateBlock}>
-                                    <Pressable
-                                        style={[s.dateField, datePickerOpen && s.dateFieldActive]}
-                                        onPress={() => {
-                                            Keyboard.dismiss();
-                                            setDatePickerOpen(true);
-                                        }}
-                                        disabled={busy}
-                                    >
-                                        <View>
-                                            <Text style={s.dateLabel}>Datum sa papira</Text>
-                                            <Text style={[s.dateValue, !currentPage.documentDate && s.dateValueEmpty]}>
-                                                {fmtHrFromIso(currentPage.documentDate) || "Odaberi datum"}
-                                            </Text>
-                                        </View>
-                                        <FontAwesome name="calendar" size={18} color={Colors.text} />
-                                    </Pressable>
+                                    <View style={s.dateFieldRow}>
+                                        <Pressable
+                                            style={[s.dateField, datePickerOpen && s.dateFieldActive]}
+                                            onPress={() => {
+                                                Keyboard.dismiss();
+                                                setDatePickerOpen(true);
+                                            }}
+                                            disabled={busy}
+                                        >
+                                            <View>
+                                                <Text style={s.dateLabel}>Datum sa papira</Text>
+                                                <Text style={[s.dateValue, !currentPage.documentDate && s.dateValueEmpty]}>
+                                                    {fmtHrFromIso(currentPage.documentDate) || "Odaberi datum"}
+                                                </Text>
+                                            </View>
+                                            <FontAwesome name="calendar" size={18} color={Colors.text} />
+                                        </Pressable>
+                                        <Pressable
+                                            style={s.todayDateButton}
+                                            onPress={setDocumentDateToToday}
+                                            disabled={busy}
+                                        >
+                                            <FontAwesome name="calendar-check-o" size={16} color={Colors.orange} />
+                                            <Text style={s.todayDateButtonText}>Danas</Text>
+                                        </Pressable>
+                                    </View>
 
                                     {hasConfidence(currentPage.documentDateConfidence) && (
                                         <View style={[s.confidenceBadge, assuranceStyle(confidenceLevelFromValues(currentPage.documentDateConfidence))]}>

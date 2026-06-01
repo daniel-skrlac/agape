@@ -6,6 +6,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.sql.SQLException;
+import java.util.List;
 
 @ApplicationScoped
 public class DocumentSlotRepository {
@@ -30,20 +31,16 @@ public class DocumentSlotRepository {
         }
 
         final String sql = """
-                SELECT DOKUMENT_ID
-                  FROM (
-                        SELECT r.DOKUMENT_ID
-                          FROM SD_SIFREG r
-                          JOIN SD_SIFREZ z
-                            ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
-                         WHERE r.SKLADISTE_ID = ?
-                           AND TRIM(UPPER(z.DOKUMENTID)) = TRIM(UPPER(?))
-                         ORDER BY r.DOKUMENT_ID
-                       )
-                 WHERE ROWNUM = 1
+                SELECT r.DOKUMENT_ID
+                  FROM SD_SIFREG r
+                  JOIN SD_SIFREZ z
+                    ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                 WHERE r.SKLADISTE_ID = ?
+                   AND TRIM(UPPER(z.DOKUMENTID)) = TRIM(UPPER(?))
+                 ORDER BY r.DOKUMENT_ID
                 """;
 
-        return jdbc.queryOne(
+        List<Long> matches = jdbc.query(
                 sql,
                 ps -> {
                     ps.setLong(1, warehouseId);
@@ -54,6 +51,8 @@ public class DocumentSlotRepository {
                     return rs.wasNull() ? null : value;
                 }
         );
+
+        return requireUniqueMatch(matches, warehouseId, documentCode);
     }
 
     public Long resolveDispatchDocumentIdForWarehouse(Long warehouseId) throws SQLException {
@@ -71,16 +70,12 @@ public class DocumentSlotRepository {
 
         final String sql = """
                 SELECT SD_SIFREZ_ID
-                  FROM (
-                        SELECT SD_SIFREZ_ID
-                          FROM SD_SIFREZ
-                         WHERE TRIM(UPPER(DOKUMENTID)) = TRIM(UPPER(?))
-                         ORDER BY SD_SIFREZ_ID
-                       )
-                 WHERE ROWNUM = 1
+                  FROM SD_SIFREZ
+                 WHERE TRIM(UPPER(DOKUMENTID)) = TRIM(UPPER(?))
+                 ORDER BY SD_SIFREZ_ID
                 """;
 
-        return jdbc.queryOne(
+        List<Long> matches = jdbc.query(
                 sql,
                 ps -> ps.setString(1, dokumentKod),
                 rs -> {
@@ -88,6 +83,11 @@ public class DocumentSlotRepository {
                     return rs.wasNull() ? null : value;
                 }
         );
+
+        if (matches.size() > 1) {
+            throw new SQLException("Ambiguous legacy document type code=" + dokumentKod + ". Use warehouse-specific resolution.");
+        }
+        return matches.isEmpty() ? null : matches.getFirst();
     }
 
     @Deprecated
@@ -101,7 +101,6 @@ public class DocumentSlotRepository {
                   FROM SD_SIFREG
                  WHERE SD_SIFREZ_ID = ?
                    AND SKLADISTE_ID = ?
-                   AND ROWNUM = 1
                 """;
 
         return jdbc.queryOne(
@@ -123,11 +122,10 @@ public class DocumentSlotRepository {
         }
 
         final String sql = """
-                SELECT 1
+                SELECT COUNT(*)
                   FROM SD_SIFREG
                  WHERE DOKUMENT_ID = ?
                    AND SKLADISTE_ID = ?
-                   AND ROWNUM = 1
                 """;
 
         Integer exists = jdbc.queryOne(
@@ -139,7 +137,7 @@ public class DocumentSlotRepository {
                 rs -> rs.getInt(1)
         );
 
-        return exists != null;
+        return exists != null && exists == 1;
     }
 
     public Long warehouseForDocument(Long documentId) throws SQLException {
@@ -151,7 +149,6 @@ public class DocumentSlotRepository {
                 SELECT SKLADISTE_ID
                   FROM SD_SIFREG
                  WHERE DOKUMENT_ID = ?
-                   AND ROWNUM = 1
                 """;
 
         return jdbc.queryOne(
@@ -162,5 +159,21 @@ public class DocumentSlotRepository {
                     return rs.wasNull() ? null : value;
                 }
         );
+    }
+
+    private Long requireUniqueMatch(List<Long> matches, Long warehouseId, String documentCode) throws SQLException {
+        List<Long> resolved = matches == null
+                ? List.of()
+                : matches.stream().filter(value -> value != null).distinct().toList();
+
+        if (resolved.size() > 1) {
+            throw new SQLException(
+                    "Ambiguous legacy document mapping for warehouseId=" + warehouseId
+                            + ", documentCode=" + documentCode
+                            + ": DOKUMENT_ID values=" + resolved
+            );
+        }
+
+        return resolved.isEmpty() ? null : resolved.getFirst();
     }
 }

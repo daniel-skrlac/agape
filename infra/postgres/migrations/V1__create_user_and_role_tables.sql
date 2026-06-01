@@ -174,6 +174,7 @@ CREATE TABLE dispatch_booking_session_entry
     doc_patches   JSONB NOT NULL,
     extra_items   JSONB NOT NULL,
     note          TEXT,
+    document_date DATE,
 
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -122,7 +122,6 @@ public class PartnerRepository {
         }
 
         final String sql = """
-                SELECT * FROM (
                 SELECT
                   p.PARTNER_ID,
                   p.KORISNIK_ID,
@@ -141,11 +140,9 @@ public class PartnerRepository {
                   AND p.PARTNERID = ?
                   AND NVL(p.AKTIVAN, 1) = 1
                 ORDER BY p.PARTNER_ID DESC
-                )
-                WHERE ROWNUM = 1
                 """;
 
-        return jdbc.queryOne(
+        List<PartnerEntity> matches = jdbc.query(
                 sql,
                 ps -> {
                     ps.setLong(1, tenantId);
@@ -153,6 +150,15 @@ public class PartnerRepository {
                 },
                 PartnerRepository::mapRowToEntity
         );
+
+        if (matches.size() > 1) {
+            throw new SQLException(
+                    "Ambiguous active legacy partner mapping for KORISNIK_ID="
+                            + tenantId + ", PARTNERID=" + partnerNumber
+            );
+        }
+
+        return matches.isEmpty() ? null : matches.getFirst();
     }
 
     public PartnerEntity insert(PartnerEntity in) throws SQLException {

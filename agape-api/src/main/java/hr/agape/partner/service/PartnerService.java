@@ -24,14 +24,22 @@ import java.util.stream.Collectors;
 public class PartnerService {
 
     private final PartnerRepository repo;
+    private final hr.agape.document.user.repository.UserRepository legacyUserRepo;
     private final PartnerApiMapper mapper;
     private final AuthUtil authUtil;
     private final TransactionSynchronizationRegistry tsr;
 
     @Inject
     @SuppressWarnings("CdiInjectionPointsInspection")
-    public PartnerService(PartnerRepository repo, PartnerApiMapper mapper, AuthUtil authUtil, TransactionSynchronizationRegistry tsr) {
+    public PartnerService(
+            PartnerRepository repo,
+            hr.agape.document.user.repository.UserRepository legacyUserRepo,
+            PartnerApiMapper mapper,
+            AuthUtil authUtil,
+            TransactionSynchronizationRegistry tsr
+    ) {
         this.repo = repo;
+        this.legacyUserRepo = legacyUserRepo;
         this.mapper = mapper;
         this.authUtil = authUtil;
         this.tsr = tsr;
@@ -40,7 +48,8 @@ public class PartnerService {
     @Transactional
     public ServiceResponseDTO<PartnerResponseDTO> create(PartnerCreateRequest req) {
         try {
-            req.setTenantId(authUtil.requireUserId());
+            authUtil.requireUserId();
+            req.setTenantId(requireLegacyTenantId());
             PartnerEntity in = mapper.toEntity(req);
             if (in.getActive() == null) in.setActive(Boolean.TRUE);
 
@@ -92,6 +101,7 @@ public class PartnerService {
     @Transactional
     public ServiceResponseDTO<PagedResultDTO<PartnerResponseDTO>> search(PartnerSearchFilter filter) {
         try {
+            filter.setTenantId(requireLegacyTenantId());
             long total = repo.countFiltered(filter);
             List<PartnerEntity> items = repo.pageFiltered(filter);
 
@@ -142,12 +152,21 @@ public class PartnerService {
         }
     }
 
-    public PartnerResponseDTO findByPartnerNumber(Long tenantId, Integer partnerNumber) {
+    public PartnerResponseDTO findByPartnerNumber(Integer partnerNumber) {
         try {
-            PartnerEntity partner = repo.findByPartnerNumber(tenantId, partnerNumber);
+            PartnerEntity partner = repo.findByPartnerNumber(requireLegacyTenantId(), partnerNumber);
             return partner == null ? null : mapper.toResponse(partner);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private Long requireLegacyTenantId() throws Exception {
+        var legacyUser = legacyUserRepo.findByOib();
+        if (legacyUser == null || legacyUser.getUserId() == null) {
+            throw new IllegalStateException("Configured legacy KORISNIK was not found.");
+        }
+
+        return legacyUser.getUserId();
     }
 }

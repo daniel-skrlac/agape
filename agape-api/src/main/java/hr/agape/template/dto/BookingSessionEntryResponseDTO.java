@@ -4,6 +4,8 @@ import hr.agape.template.enumeration.DraftMode;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDate;
+
 @Getter
 @Setter
 public class BookingSessionEntryResponseDTO {
@@ -15,4 +17,5 @@ public class BookingSessionEntryResponseDTO {
     private Object docPatches;
     private Object extraItems;
     private String note;
+    private LocalDate documentDate;
 }

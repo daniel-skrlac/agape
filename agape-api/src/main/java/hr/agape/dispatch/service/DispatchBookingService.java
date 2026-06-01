@@ -11,7 +11,6 @@ import hr.agape.dispatch.dto.DispatchSearchFilter;
 import hr.agape.dispatch.dto.DispatchSummaryResponseDTO;
 import hr.agape.dispatch.dto.DispatchUpdateRequestDTO;
 import hr.agape.dispatch.enumeration.DispatchStatusEnum;
-import hr.agape.dispatch.enumeration.DocumentTextType;
 import hr.agape.dispatch.mapper.DispatchApiMapper;
 import hr.agape.document.domain.DocumentHeaderEntity;
 import hr.agape.document.domain.DocumentItemPriceEntity;
@@ -19,10 +18,12 @@ import hr.agape.document.dto.DocumentItemLineDTO;
 import hr.agape.document.lookup.repository.DocumentItemLookupRepository;
 import hr.agape.document.lookup.repository.VatCategoryRepository;
 import hr.agape.document.lookup.view.DocumentItemAttributesView;
+import hr.agape.document.lookup.view.DocumentSlotTypeView;
 import hr.agape.document.repository.DocumentHeaderRepository;
 import hr.agape.document.repository.DocumentItemPriceRepository;
 import hr.agape.document.repository.DocumentItemRepository;
 import hr.agape.document.repository.DocumentSlotRepository;
+import hr.agape.document.repository.DocumentTypeRepository;
 import hr.agape.document.user.repository.UserRepository;
 import hr.agape.partner.repository.PartnerRepository;
 import hr.agape.user.util.AuthUtil;
@@ -45,6 +46,7 @@ public class DispatchBookingService {
     private static final String REQ_PREFIX = "Request[";
 
     private final DocumentSlotRepository slotRepo;
+    private final DocumentTypeRepository documentTypeRepo;
     private final DocumentHeaderRepository headerRepo;
     private final DispatchApiMapper mapper;
     private final PartnerRepository partnerRepo;
@@ -59,6 +61,7 @@ public class DispatchBookingService {
     @Inject
     public DispatchBookingService(
             DocumentSlotRepository slotRepo,
+            DocumentTypeRepository documentTypeRepo,
             DocumentHeaderRepository headerRepo,
             DispatchApiMapper mapper,
             PartnerRepository partnerRepo,
@@ -71,6 +74,7 @@ public class DispatchBookingService {
             UserRepository userRepo
     ) {
         this.slotRepo = slotRepo;
+        this.documentTypeRepo = documentTypeRepo;
         this.headerRepo = headerRepo;
         this.mapper = mapper;
         this.partnerRepo = partnerRepo;
@@ -97,7 +101,7 @@ public class DispatchBookingService {
             req.setCreatedBy(actorOibNum);
 
             Long whId = req.getWarehouseId();
-            Long documentId = slotRepo.resolveDispatchDocumentIdForWarehouse(whId);
+            Long documentId = resolveDocumentIdForWarehouse(req, whId);
             if (documentId == null) {
                 return ServiceResponseDirector.errorBadRequest(REQ_PREFIX + "0]: cannot resolve DOKUMENT_ID for warehouseId=" + whId);
             }
@@ -120,7 +124,6 @@ public class DispatchBookingService {
             }
 
             DocumentHeaderEntity headerInput = mapper.toHeader(req);
-            headerInput.setTextType(DocumentTextType.OTPREMNICA);
             headerInput.setItemCount(req.getItems().size());
 
             List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvByItem);
@@ -168,6 +171,7 @@ public class DispatchBookingService {
 
             List<Long> docByIdx = new ArrayList<>(requests.size());
             List<Long> whByIdx = new ArrayList<>(requests.size());
+            List<String> docResolutionErrorByIdx = new ArrayList<>(requests.size());
 
             for (DispatchRequestDTO r : requests) {
                 Long whId = (r == null) ? null : r.getWarehouseId();
@@ -177,8 +181,17 @@ public class DispatchBookingService {
                     r.setCreatedBy(actorOibNum);
                 }
 
-                Long docId = (whId == null) ? null : slotRepo.resolveDispatchDocumentIdForWarehouse(whId);
+                Long docId = null;
+                String docResolutionError = null;
+                if (whId != null && r != null) {
+                    try {
+                        docId = resolveDocumentIdForWarehouse(r, whId);
+                    } catch (SQLException e) {
+                        docResolutionError = safeMsg(e);
+                    }
+                }
                 docByIdx.add(docId);
+                docResolutionErrorByIdx.add(docResolutionError);
 
                 if (r != null) r.setDocumentId(docId);
             }
@@ -205,6 +218,7 @@ public class DispatchBookingService {
                 DispatchRequestDTO req = requests.get(i);
                 Long whId = whByIdx.get(i);
                 Long documentId = docByIdx.get(i);
+                String docResolutionError = docResolutionErrorByIdx.get(i);
 
                 var rb = DispatchBulkItemResultDTO.builder()
                         .index(i)
@@ -228,7 +242,10 @@ public class DispatchBookingService {
                     if (documentId == null) {
                         failCount++;
                         results.add(rb.success(false).status(DispatchStatusEnum.FAILED.name())
-                                .error(REQ_PREFIX + i + "]: cannot resolve DOKUMENT_ID for warehouseId=" + whId + " (SD_SIFREZ/SD_SIFREG).")
+                                .error(REQ_PREFIX + i + "]: "
+                                        + (docResolutionError != null
+                                        ? docResolutionError
+                                        : "cannot resolve DOKUMENT_ID for warehouseId=" + whId + " (SD_SIFREZ/SD_SIFREG)."))
                                 .build());
                         continue;
                     }
@@ -255,7 +272,6 @@ public class DispatchBookingService {
                     }
 
                     DocumentHeaderEntity headerInput = mapper.toHeader(req);
-                    headerInput.setTextType(DocumentTextType.OTPREMNICA);
                     headerInput.setItemCount(req.getItems().size());
 
                     List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvByItemGlobal);
@@ -643,5 +659,26 @@ public class DispatchBookingService {
     private static String safeMsg(Exception e) {
         String m = e.getMessage();
         return (m == null || m.isBlank()) ? e.getClass().getSimpleName() : m;
+    }
+
+    private Long resolveDocumentIdForWarehouse(DispatchRequestDTO req, Long warehouseId) throws SQLException {
+        if (req == null || warehouseId == null) {
+            return null;
+        }
+
+        Long configuredDocumentId = req.getDocumentId();
+        if (configuredDocumentId == null) {
+            return slotRepo.resolveDispatchDocumentIdForWarehouse(warehouseId);
+        }
+
+        DocumentSlotTypeView configuredSlot = documentTypeRepo.findDocumentSlot(configuredDocumentId)
+                .orElseThrow(() -> new SQLException(
+                        "Unknown configured DOKUMENT_ID=" + configuredDocumentId
+                ));
+
+        return slotRepo.resolveDocumentIdForWarehouseAndCode(
+                warehouseId,
+                configuredSlot.getDocumentCode()
+        );
     }
 }
