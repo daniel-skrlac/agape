@@ -104,6 +104,8 @@ type ScanPage = {
     rawText: string;
     partnerConfidence: number | null;
     documentDateConfidence: number | null;
+    scannedDocumentDate: string;
+    scannedDocumentDateConfidence: number | null;
     lines: EditableScanLine[];
     validatedKey: string | null;
     lastValidation: BookingSessionScanValidateResponseDTO | null;
@@ -191,6 +193,20 @@ function quantityEditPatch(line: EditableScanLine, quantity: string): Partial<Ed
         confidence: matchesScannedValue ? line.scannedConfidence ?? null : null,
         confidenceLevel: matchesScannedValue ? line.scannedConfidenceLevel ?? null : null,
         valid: null,
+    };
+}
+
+function documentDateEditPatch(page: ScanPage, documentDate: string): Partial<ScanPage> {
+    const nextDate = toDateInput(documentDate);
+    const scannedDate = toDateInput(page.scannedDocumentDate);
+
+    return {
+        documentDate: nextDate,
+        documentDateConfidence: scannedDate
+            ? nextDate === scannedDate
+                ? page.scannedDocumentDateConfidence
+                : 0
+            : null,
     };
 }
 
@@ -470,6 +486,22 @@ function serializablePage(page: ScanPage): ScanPage {
 function restoreScanPage(raw: any): ScanPage | null {
     if (!raw?.file?.uri) return null;
 
+    const scannedDocumentDate = toDateInput(
+        raw.scannedDocumentDate ??
+        raw.parsed?.documentDate ??
+        ""
+    );
+    const scannedDocumentDateConfidence = confidenceValue(
+        raw.scannedDocumentDateConfidence ??
+        raw.parsed?.documentDateConfidence
+    );
+    const documentDate = toDateInput(raw.documentDate);
+    const documentDateConfidence = scannedDocumentDate
+        ? documentDate === scannedDocumentDate
+            ? scannedDocumentDateConfidence
+            : 0
+        : confidenceValue(raw.documentDateConfidence);
+
     return {
         id: String(raw.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
         file: {
@@ -484,11 +516,13 @@ function restoreScanPage(raw: any): ScanPage | null {
         selectedPartner: raw.selectedPartner ?? null,
         partnerNameHint: cleanParamText(raw.partnerNameHint),
         templateId: cleanNumber(raw.templateId),
-        documentDate: toDateInput(raw.documentDate),
+        documentDate,
         note: String(raw.note ?? "Skenirano sa papira"),
         rawText: String(raw.rawText ?? ""),
         partnerConfidence: confidenceValue(raw.partnerConfidence),
-        documentDateConfidence: confidenceValue(raw.documentDateConfidence),
+        documentDateConfidence,
+        scannedDocumentDate,
+        scannedDocumentDateConfidence,
         lines: Array.isArray(raw.lines)
             ? raw.lines.map((line: any) => ({
                 ...line,
@@ -754,6 +788,8 @@ export default function DispatchSlipScanScreen() {
         rawText: "",
         partnerConfidence: null,
         documentDateConfidence: null,
+        scannedDocumentDate: "",
+        scannedDocumentDateConfidence: null,
         lines: [],
         validatedKey: null,
         lastValidation: null,
@@ -765,9 +801,12 @@ export default function DispatchSlipScanScreen() {
         ...page,
         file,
         parsed: null,
+        documentDate: "",
         rawText: "",
         partnerConfidence: null,
         documentDateConfidence: null,
+        scannedDocumentDate: "",
+        scannedDocumentDateConfidence: null,
         lines: [],
         validatedKey: null,
         lastValidation: null,
@@ -886,10 +925,7 @@ export default function DispatchSlipScanScreen() {
 
         const selected = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
 
-        invalidatePage(currentPage.id, {
-            documentDate: dateToIsoLocal(selected),
-            documentDateConfidence: 1,
-        });
+        invalidatePage(currentPage.id, documentDateEditPatch(currentPage, dateToIsoLocal(selected)));
     }, [currentPage, invalidatePage]);
 
     const setDocumentDateToToday = useCallback(() => {
@@ -897,10 +933,7 @@ export default function DispatchSlipScanScreen() {
 
         Keyboard.dismiss();
         setDatePickerOpen(false);
-        invalidatePage(currentPage.id, {
-            documentDate: dateToIsoLocal(todayLocalNoon()),
-            documentDateConfidence: 1,
-        });
+        invalidatePage(currentPage.id, documentDateEditPatch(currentPage, dateToIsoLocal(todayLocalNoon())));
     }, [currentPage, invalidatePage]);
 
     const pickCamera = useCallback(async () => {
@@ -990,7 +1023,18 @@ export default function DispatchSlipScanScreen() {
         updatePage(pageId, (page) => {
             const nextPartnerId = cleanNumber((next as any)?.partnerId) ?? page.partnerId;
             const nextTemplateId = cleanNumber((next as any)?.templateId) ?? page.templateId;
-            const nextDate = toDateInput((next as any)?.documentDate ?? page.documentDate);
+            const parsedDate = toDateInput((next as any)?.documentDate);
+            const parsedDateConfidence = confidenceValue((next as any)?.documentDateConfidence);
+            const scannedDocumentDate = page.scannedDocumentDate || parsedDate;
+            const scannedDocumentDateConfidence = page.scannedDocumentDate
+                ? page.scannedDocumentDateConfidence
+                : parsedDateConfidence;
+            const nextDate = page.documentDate || parsedDate;
+            const nextDateConfidence = scannedDocumentDate
+                ? nextDate === scannedDocumentDate
+                    ? scannedDocumentDateConfidence
+                    : 0
+                : null;
             const nextNote = String((next as any)?.note ?? page.note ?? "");
             const rawText = String((next as any)?.rawText ?? page.rawText ?? "");
             const partnerHint =
@@ -1015,7 +1059,9 @@ export default function DispatchSlipScanScreen() {
                 note: nextNote,
                 rawText,
                 partnerConfidence: confidenceValue((next as any)?.partnerConfidence),
-                documentDateConfidence: confidenceValue((next as any)?.documentDateConfidence),
+                documentDateConfidence: nextDateConfidence,
+                scannedDocumentDate,
+                scannedDocumentDateConfidence,
                 partnerNameHint: partnerHint,
                 lines: nextLines,
                 validatedKey: (next as any)?.allValid ? makeValidationKey(keyPage) : null,
@@ -1124,7 +1170,7 @@ export default function DispatchSlipScanScreen() {
         try {
             if (source === "gallery") {
                 const res = await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    mediaTypes: ["images"],
                     allowsMultipleSelection: !scannerSession,
                     selectionLimit: scannerSession ? 1 : 0,
                     quality: 1,

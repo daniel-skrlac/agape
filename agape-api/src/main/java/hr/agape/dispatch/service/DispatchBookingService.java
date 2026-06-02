@@ -128,7 +128,7 @@ public class DispatchBookingService {
 
             List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvByItem);
 
-            DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
+            DocumentHeaderEntity created = tx.createDraft(headerInput, prepared, actorOibDigits);
 
             if (req.isDraft()) {
                 DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
@@ -276,7 +276,7 @@ public class DispatchBookingService {
 
                     List<DocumentItemLineDTO> prepared = prepareLines(req, attrsByItem, pdvByItemGlobal);
 
-                    DocumentHeaderEntity created = tx.createDraft(headerInput, prepared);
+                    DocumentHeaderEntity created = tx.createDraft(headerInput, prepared, actorOibDigits);
 
                     if (req.isDraft()) {
                         DocumentHeaderEntity fresh = headerRepo.findHeader(created.getId());
@@ -507,7 +507,14 @@ public class DispatchBookingService {
                         .build());
             }
 
-            DocumentHeaderEntity updated = tx.updateDraft(headerId, body.getPartnerId(), body.getOverrideNote(), newLines);
+            DocumentHeaderEntity updated = tx.updateDraft(
+                    headerId,
+                    body.getPartnerId(),
+                    body.getOverrideNote(),
+                    newLines,
+                    actorOibDigits,
+                    actorOibNum
+            );
             if (updated == null) {
                 return ServiceResponseDirector.errorBadRequest("Draft update failed (maybe already posted or cancelled).");
             }

@@ -723,9 +723,25 @@ export default function SessionDetailIndex() {
       setValidateManyOpen(false);
       setDetailFromMany(false);
 
-      await finalizeM.mutateAsync();
+      const result: any = await finalizeM.mutateAsync();
       clearDraftsForSession(sessionId);
       await sQ.refetch();
+
+      const failed = Number(result?.failed ?? 0);
+      if (failed > 0) {
+        const failedItems = Array.isArray(result?.items)
+          ? result.items.filter((item: any) => item?.success === false)
+          : [];
+        const details = failedItems
+          .map((item: any) => cleanText(item?.error))
+          .filter(Boolean)
+          .join("\n");
+
+        setScreenError(
+          `Sesija je zaključana nakon knjiženja, ali ${failed} unos${failed === 1 ? "" : "a"} nije uspješno knjiženo.`
+          + (details ? `\n${details}` : "")
+        );
+      }
     } catch (e) {
       setScreenError(toUserMessage(e, "Greška pri knjiženju sesije."));
     }

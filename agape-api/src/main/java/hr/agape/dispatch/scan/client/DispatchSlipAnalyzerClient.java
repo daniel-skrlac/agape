@@ -11,7 +11,7 @@ import org.jboss.resteasy.reactive.multipart.FileUpload;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Map;
@@ -35,9 +35,9 @@ public class DispatchSlipAnalyzerClient {
             String boundary = "AgapeDispatchSlip" + UUID.randomUUID().toString().replace("-", "");
             byte[] body = multipartBody(file, boundary);
 
-            HttpURLConnection connection = (HttpURLConnection) new URL(
+            HttpURLConnection connection = (HttpURLConnection) URI.create(
                     normalizeBaseUrl(analyzerUrl) + "/analyze-dispatch-slip"
-            ).openConnection();
+            ).toURL().openConnection();
             connection.setConnectTimeout(10_000);
             connection.setReadTimeout(120_000);
             connection.setRequestMethod("POST");

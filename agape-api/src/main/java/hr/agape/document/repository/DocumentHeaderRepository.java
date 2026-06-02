@@ -65,8 +65,14 @@ public class DocumentHeaderRepository {
         return doInsertHeader(c, h);
     }
 
-    public DocumentHeaderEntity updateDraftHeader(Connection c, Long headerId, Long partnerId, String note) throws SQLException {
-        return updateDraftHeaderInternal(c, headerId, partnerId, note);
+    public DocumentHeaderEntity updateDraftHeader(
+            Connection c,
+            Long headerId,
+            Long partnerId,
+            String note,
+            Long modifiedBy
+    ) throws SQLException {
+        return updateDraftHeaderInternal(c, headerId, partnerId, note, modifiedBy);
     }
 
     private DocumentHeaderEntity doInsertHeader(Connection c, DocumentHeaderEntity h) throws SQLException {
@@ -80,14 +86,16 @@ public class DocumentHeaderRepository {
                        SIFRATEKSTA,
                        BROJSTAVAKA,
                        BROJJEDINICAV,
+                       PREPORUCENAMARZA,
                        RABATSTOPA,
+                       IZNOSZT,
                        DOKUMENTBR,
                        KNJIZENO,
                        KNJIZIO,
                        DATUM_KNJIZENJA,
                        DATUM_IZRADE,
                        NAPOMENA)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, 0, NULL, 0, NULL, NULL, SYSDATE, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, 0, NULL, 0, NULL, NULL, SYSDATE, ?)
                     RETURNING ID,
                               DOKUMENTBR,
                               DATUM_DOKUMENTA,
@@ -205,21 +213,6 @@ public class DocumentHeaderRepository {
         });
     }
 
-    public void setCancelledBy(Long headerId, Long actorOib) throws SQLException {
-        final String sql = """
-                UPDATE SD_GLAVA
-                   SET STORNIRAO    = ?,
-                       DATUM_STORNO = SYSDATE
-                 WHERE ID = ?
-                   AND STORNIRAO IS NULL
-                """;
-
-        jdbc.update(sql, ps -> {
-            Jdbc.setLong(ps, 1, actorOib);
-            Jdbc.setLong(ps, 2, headerId);
-        });
-    }
-
     /**
      * Optional: stays if we ever want to post without procedure.
      */
@@ -244,11 +237,17 @@ public class DocumentHeaderRepository {
         return findHeader(headerId);
     }
 
-    public DocumentHeaderEntity updateDraftHeaderInternal(Connection c, Long headerId, Long partnerId, String note) throws SQLException {
+    public DocumentHeaderEntity updateDraftHeaderInternal(
+            Connection c,
+            Long headerId,
+            Long partnerId,
+            String note,
+            Long modifiedBy
+    ) throws SQLException {
         final String sql = """
                 UPDATE SD_GLAVA
                    SET PARTNER_ID = COALESCE(?, PARTNER_ID),
-                       NAPOMENA   = COALESCE(?, NAPOMENA),
+                       NAPOMENA   = NVL(TO_CLOB(?), NAPOMENA),
                        IZMIJENIO  = COALESCE(?, IZMIJENIO),
                        DATUM_IZMJENE = SYSDATE
                  WHERE ID = ?
@@ -258,8 +257,8 @@ public class DocumentHeaderRepository {
 
         int updated = jdbc.update(c, sql, ps -> {
             Jdbc.setLong(ps, 1, partnerId);
-            Jdbc.setClobString(ps, 2, note);
-            ps.setNull(3, Types.NUMERIC);
+            Jdbc.setString(ps, 2, note);
+            Jdbc.setLong(ps, 3, modifiedBy);
             Jdbc.setLong(ps, 4, headerId);
         });
 

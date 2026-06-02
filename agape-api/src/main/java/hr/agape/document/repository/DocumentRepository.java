@@ -128,6 +128,7 @@ public class DocumentRepository {
 
     public void cancelDocument(
             Long headerId,
+            String actorOibDigits,
             int stornoNaSkladiste,
             int stornoUkPopisa,
             int stornoVeznid,
@@ -138,7 +139,7 @@ public class DocumentRepository {
             c.setAutoCommit(false);
 
             try {
-                cancelDocument(c, headerId, stornoNaSkladiste, stornoUkPopisa, stornoVeznid, postaviOznaku);
+                cancelDocument(c, headerId, actorOibDigits, stornoNaSkladiste, stornoUkPopisa, stornoVeznid, postaviOznaku);
                 c.commit();
             } catch (SQLException e) {
                 rollbackQuietly(c);
@@ -152,6 +153,7 @@ public class DocumentRepository {
     public void cancelDocument(
             Connection c,
             Long headerId,
+            String actorOibDigits,
             int stornoNaSkladiste,
             int stornoUkPopisa,
             int stornoVeznid,
@@ -161,7 +163,12 @@ public class DocumentRepository {
             throw new SQLException("Cannot cancel document: SD_GLAVA.ID is null.");
         }
 
-        lockPostedHeader(c, headerId);
+        if (actorOibDigits == null || actorOibDigits.isBlank()) {
+            throw new SQLException("Cannot cancel document: missing operator OIB. SD_GLAVA.ID=" + headerId);
+        }
+
+        Long documentId = lockPostedHeader(c, headerId);
+        initLegacyContext(c, documentId, actorOibDigits);
 
         try (CallableStatement cs = c.prepareCall("{ call STORNO_MK.STORNO_MK_DOKUMENT(?,?,?,?,?) }")) {
             cs.setLong(1, headerId);
@@ -171,6 +178,8 @@ public class DocumentRepository {
             cs.setInt(5, postaviOznaku);
             cs.execute();
         }
+
+        assertDocumentCancelled(c, headerId);
     }
 
     private void lockDraftHeader(Connection c, Long sdGlavaId) throws SQLException {
@@ -201,10 +210,11 @@ public class DocumentRepository {
         }
     }
 
-    private void lockPostedHeader(Connection c, Long sdGlavaId) throws SQLException {
+    private Long lockPostedHeader(Connection c, Long sdGlavaId) throws SQLException {
         final String sql = """
                 SELECT NVL(KNJIZENO, 0) AS KNJIZENO,
-                       STORNIRAO
+                       STORNIRAO,
+                       DOKUMENT_ID
                   FROM SD_GLAVA
                  WHERE ID = ?
                  FOR UPDATE NOWAIT
@@ -225,6 +235,12 @@ public class DocumentRepository {
                 if (rs.getObject("STORNIRAO") != null) {
                     throw new SQLException("Cannot cancel: document is already cancelled/storno. SD_GLAVA.ID=" + sdGlavaId);
                 }
+
+                Long documentId = rs.getLong("DOKUMENT_ID");
+                if (rs.wasNull()) {
+                    throw new SQLException("Cannot cancel: DOKUMENT_ID is null. SD_GLAVA.ID=" + sdGlavaId);
+                }
+                return documentId;
             }
         }
     }
@@ -251,7 +267,7 @@ public class DocumentRepository {
                     throw new SQLException(
                             "Legacy booking procedure finished, but SD_GLAVA.KNJIZENO was not set to 1. "
                                     + "SD_GLAVA.ID=" + sdGlavaId
-                                    + latestBookingLogMessage(c, sdGlavaId)
+                                    + latestLegacyLogMessage(c, sdGlavaId)
                     );
                 }
 
@@ -262,14 +278,49 @@ public class DocumentRepository {
                     throw new SQLException(
                             "Legacy booking procedure set KNJIZENO=1, but KNJIZIO or DATUM_KNJIZENJA is null. "
                                     + "SD_GLAVA.ID=" + sdGlavaId
-                                    + latestBookingLogMessage(c, sdGlavaId)
+                                    + latestLegacyLogMessage(c, sdGlavaId)
                     );
                 }
             }
         }
     }
 
-    private String latestBookingLogMessage(Connection c, Long sdGlavaId) {
+    private void assertDocumentCancelled(Connection c, Long sdGlavaId) throws SQLException {
+        final String sql = """
+                SELECT NVL(KNJIZENO, 0) AS KNJIZENO,
+                       NVL(STORNO, 0) AS STORNO,
+                       STORNIRAO,
+                       DATUM_STORNO
+                  FROM SD_GLAVA
+                 WHERE ID = ?
+                """;
+
+        try (PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setLong(1, sdGlavaId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new SQLException("Legacy storno failed: SD_GLAVA row disappeared. ID=" + sdGlavaId);
+                }
+
+                int posted = rs.getInt("KNJIZENO");
+                int cancelled = rs.getInt("STORNO");
+                Object cancelledBy = rs.getObject("STORNIRAO");
+                Object cancelledAt = rs.getObject("DATUM_STORNO");
+
+                if (posted != 0 || cancelled != 1 || cancelledBy == null || cancelledAt == null) {
+                    throw new SQLException(
+                            "Legacy storno procedure finished, but SD_GLAVA was not marked as cancelled. "
+                                    + "Expected KNJIZENO=0, STORNO=1, STORNIRAO and DATUM_STORNO. "
+                                    + "SD_GLAVA.ID=" + sdGlavaId
+                                    + latestLegacyLogMessage(c, sdGlavaId)
+                    );
+                }
+            }
+        }
+    }
+
+    private String latestLegacyLogMessage(Connection c, Long sdGlavaId) {
         final String sql = """
                 SELECT *
                   FROM (

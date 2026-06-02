@@ -60,14 +60,15 @@ public class DispatchBookingTransactionService {
 
     public DocumentHeaderEntity createDraft(
             DocumentHeaderEntity headerInput,
-            List<DocumentItemLineDTO> lines
+            List<DocumentItemLineDTO> lines,
+            String actorOibDigits
     ) throws SQLException {
         return jdbc.withConnection(c -> {
             boolean previousAutoCommit = c.getAutoCommit();
             c.setAutoCommit(false);
 
             try {
-                String operatorOibDigits = agapeConfig.operater().oib();
+                String operatorOibDigits = firstNonBlank(actorOibDigits, agapeConfig.operater().oib());
 
                 documentRepository.initLegacyContext(c, headerInput.getDocumentId(), operatorOibDigits);
 
@@ -93,7 +94,9 @@ public class DispatchBookingTransactionService {
             Long headerId,
             Long partnerId,
             String note,
-            List<DocumentItemLineDTO> newLines
+            List<DocumentItemLineDTO> newLines,
+            String actorOibDigits,
+            Long actorOib
     ) throws SQLException {
         return jdbc.withConnection(c -> {
             boolean previousAutoCommit = c.getAutoCommit();
@@ -106,14 +109,14 @@ public class DispatchBookingTransactionService {
                     return null;
                 }
 
-                String operatorOibDigits = agapeConfig.operater().oib();
+                String operatorOibDigits = firstNonBlank(actorOibDigits, agapeConfig.operater().oib());
 
                 documentRepository.initLegacyContext(c, existing.getDocumentId(), operatorOibDigits);
 
                 lineRepo.deleteByHeader(c, headerId);
                 lineRepo.insert(c, headerId, newLines);
 
-                DocumentHeaderEntity updated = headerRepo.updateDraftHeader(c, headerId, partnerId, note);
+                DocumentHeaderEntity updated = headerRepo.updateDraftHeader(c, headerId, partnerId, note, actorOib);
                 if (updated == null) {
                     rollbackQuietly(c);
                     return null;
@@ -191,15 +194,18 @@ public class DispatchBookingTransactionService {
 
     @Transactional(NOT_SUPPORTED)
     public void cancelViaProcedure(Long headerId, Long actorOib, String cancelReason) throws SQLException {
+        if (actorOib == null) {
+            throw new SQLException("Cannot cancel document: missing authenticated operator OIB.");
+        }
+
         documentRepository.cancelDocument(
                 headerId,
+                String.valueOf(actorOib),
                 dispatchStornoDocumentConfig.naSkladiste(),
                 dispatchStornoDocumentConfig.ukPopisa(),
                 dispatchStornoDocumentConfig.veznid(),
                 dispatchStornoDocumentConfig.postaviOznaku()
         );
-
-        headerRepo.setCancelledBy(headerId, actorOib);
 
         if (cancelReason != null && !cancelReason.isBlank()) {
             headerRepo.setCancelNote(headerId, cancelReason);

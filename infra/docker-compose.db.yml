@@ -11,6 +11,7 @@ services:
       - xe-data:/opt/oracle/oradata
       - ./oracle/dumps:/dumps
       - ./oracle/bootstrap:/bootstrap:ro
+      - ./oracle/diagnostics:/diagnostics:ro
     healthcheck:
       test:
         [

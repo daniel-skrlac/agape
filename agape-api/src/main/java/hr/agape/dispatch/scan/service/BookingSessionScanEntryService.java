@@ -56,7 +56,6 @@ public class BookingSessionScanEntryService {
     private static final BigDecimal CONFIDENCE_HIGH = new BigDecimal("0.80");
     private static final BigDecimal CONFIDENCE_MEDIUM = new BigDecimal("0.60");
     private static final BigDecimal DOCUMENT_DATE_AUTO_ACCEPT_CONFIDENCE = new BigDecimal("0.75");
-
     private static final Pattern LEADING_PARTNER_NUMBER_PATTERN = Pattern.compile(
             "^\\s*(\\d{3,4})\\s+[\\p{L}].*",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
@@ -161,7 +160,6 @@ public class BookingSessionScanEntryService {
             LocalDate resolvedDocumentDate = resolveDocumentDate(
                     rawText,
                     analysis.getDocumentDate(),
-                    analysis.getDocumentDateConfidence(),
                     documentDate
             );
 
@@ -183,7 +181,12 @@ public class BookingSessionScanEntryService {
                     allowPartnerTextFallback
             ));
             parsed.setPartnerConfidence(resolvePartnerConfidence(analysis, detectedPartnerNumber, allowPartnerTextFallback));
-            parsed.setDocumentDateConfidence(analysis.getDocumentDateConfidence());
+            parsed.setDocumentDateConfidence(resolveDocumentDateConfidence(
+                    analysis.getDocumentDate(),
+                    analysis.getDocumentDateConfidence(),
+                    resolvedDocumentDate,
+                    documentDate
+            ));
             parsed.setProcessingMs(analysis.getProcessingMs());
             parsed.setImageQuality(analysis.getImageQuality());
             parsed.setPartnerResolved(effectivePartnerId != null);
@@ -192,7 +195,6 @@ public class BookingSessionScanEntryService {
             parsed.setWarnings(mergeWarnings(
                     parsed.getWarnings(),
                     analysis,
-                    resolvedDocumentDate,
                     documentDate,
                     session.getWarehouseId(),
                     validation.getLines()
@@ -814,7 +816,6 @@ public class BookingSessionScanEntryService {
     private LocalDate resolveDocumentDate(
             String rawText,
             LocalDate analyzerDate,
-            BigDecimal analyzerDateConfidence,
             String providedValue
     ) {
         LocalDate providedDate = parseProvidedDate(providedValue);
@@ -826,15 +827,30 @@ public class BookingSessionScanEntryService {
             return analyzerDate;
         }
 
-        if (analyzerDate == null) {
-            return parseCroatianDateFromText(rawText);
+        return parseCroatianDateFromText(rawText);
+    }
+
+    private BigDecimal resolveDocumentDateConfidence(
+            LocalDate analyzerDate,
+            BigDecimal analyzerDateConfidence,
+            LocalDate resolvedDate,
+            String providedValue
+    ) {
+        if (resolvedDate == null) {
+            return null;
         }
 
-        return null;
+        if (analyzerDate != null && analyzerDate.equals(resolvedDate)) {
+            return analyzerDateConfidence;
+        }
+
+        return parseProvidedDate(providedValue) != null
+                ? BigDecimal.ZERO
+                : null;
     }
 
     private boolean isDocumentDateAutoAccepted(BigDecimal confidence) {
-        return confidence == null || confidence.compareTo(DOCUMENT_DATE_AUTO_ACCEPT_CONFIDENCE) >= 0;
+        return confidence != null && confidence.compareTo(DOCUMENT_DATE_AUTO_ACCEPT_CONFIDENCE) >= 0;
     }
 
     private LocalDate parseProvidedDate(String value) {
@@ -882,7 +898,6 @@ public class BookingSessionScanEntryService {
     private List<String> mergeWarnings(
             List<String> parsedWarnings,
             DispatchSlipAnalyzerResponseDTO analysis,
-            LocalDate resolvedDocumentDate,
             String providedDocumentDate,
             Long warehouseId,
             List<BookingSessionScanLineValidationDTO> validatedLines
@@ -905,7 +920,6 @@ public class BookingSessionScanEntryService {
 
         if (analysis != null
                 && analysis.getDocumentDate() != null
-                && resolvedDocumentDate == null
                 && (providedDocumentDate == null || providedDocumentDate.isBlank())
                 && !isDocumentDateAutoAccepted(analysis.getDocumentDateConfidence())) {
             warnings.add("Prepoznati datum nije dovoljno siguran. Odaberi datum ručno.");
