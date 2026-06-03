@@ -20,11 +20,13 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
 import { CenterSheet } from "@/components/CenterSheet";
 import ValidateImpactModal from "@/components/ValidateImpactModal";
+import ValidateManyModal, { toValidateRow, type ValidateRow } from "@/components/ValidateManyModal";
 import { TemplateDocItemsEditorModal } from "@/components/TemplateDocItemsEditorModal";
 import InfoResultPopup from "@/components/InfoResultPopup";
 
 import type {
   DraftMode,
+  DispatchBulkValidationRequestDTO,
   DispatchRequestValidationDTO,
   ItemDescriptorResponseDTO,
   PartnerResponseDTO,
@@ -37,7 +39,7 @@ import type {
 
 import { partnerService } from "../../../../../src/api/services/partnerService";
 import { useCurrentUser } from "../../../../../src/api/hooks/common/useCurrentUser";
-import { useDispatchValidate } from "../../../../../src/api/hooks/sessions/useDispatchValidate";
+import { useDispatchValidateBulk } from "../../../../../src/api/hooks/sessions/useDispatchValidate";
 import { toLocalDateString } from "@/src/utils/dateIso";
 import { useBookTemplateOne, useTemplateDetail } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 import { useItemDirectory } from "../../../../../src/api/hooks/documents/useItemDirectory";
@@ -194,6 +196,60 @@ function buildValidatePayload(args: {
   } as any;
 }
 
+function partnerDisplayName(partner: PartnerResponseDTO) {
+  const name = String((partner as any)?.name ?? "").trim();
+  const number = String((partner as any)?.partnerNumber ?? "").trim();
+  if (name && number) return `${name} #${number}`;
+  if (name) return name;
+  return number ? `Partner #${number}` : "Partner";
+}
+
+function buildBulkValidatePayload(args: {
+  warehouseId: number;
+  selectedPartners: PartnerResponseDTO[];
+  draftMode: DraftMode;
+  templateDocs: TemplateDocResponseDTO[];
+  docPatches: TemplateBookDocPatchDTO[];
+  extraItems: TemplateBookItemDTO[];
+  partnerNoteById: PartnerNoteMap;
+}) {
+  const {
+    warehouseId,
+    selectedPartners,
+    draftMode,
+    templateDocs,
+    docPatches,
+    extraItems,
+    partnerNoteById,
+  } = args;
+
+  const partnerNameById: Record<string, string> = {};
+
+  const items: DispatchBulkValidationRequestDTO["items"] = selectedPartners
+    .map((partner) => {
+      const partnerId = Number((partner as any)?.id);
+      if (!partnerId) return null;
+
+      partnerNameById[String(partnerId)] = partnerDisplayName(partner);
+
+      return {
+        partnerId,
+        request: buildValidatePayload({
+          warehouseId,
+          partnerId,
+          draftMode,
+          templateDocs,
+          docPatches,
+          extraItems,
+          note: partnerNoteById[String(partnerId)] ?? null,
+        }),
+      };
+    })
+    .filter(Boolean) as DispatchBulkValidationRequestDTO["items"];
+
+  return { request: { items }, partnerNameById };
+}
+
 function asFiniteNumber(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -260,7 +316,7 @@ export default function TemplateDispatchScreen() {
   const templateDocs: TemplateDocResponseDTO[] = (template?.documents ?? []) as any;
 
   const bookOneMutation = useBookTemplateOne();
-  const validateMutation = useDispatchValidate();
+  const validateBulkMutation = useDispatchValidateBulk();
 
   const { fetchItemsPage: fetchItemsPageBase } = useItemDirectory({
     warehouseId: warehouseId ? Number(warehouseId) : null,
@@ -470,12 +526,20 @@ export default function TemplateDispatchScreen() {
   }, [templateDocs]);
 
   const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
+  const [isValidateSummaryOpen, setIsValidateSummaryOpen] = useState(false);
+  const [validateRows, setValidateRows] = useState<ValidateRow[]>([]);
+  const [validateDetailRow, setValidateDetailRow] = useState<ValidateRow | null>(null);
+  const [detailFromMany, setDetailFromMany] = useState(false);
 
-  const validateLoading = validateMutation.isPending;
-  const validateData = validateMutation.data ?? null;
-  const validateError = validateMutation.error
-    ? toUserMessage(validateMutation.error, "Greška pri validaciji.")
-    : null;
+  const validateLoading = validateBulkMutation.isPending;
+  const selectedValidateRow = validateDetailRow ?? (validateRows.length === 1 ? validateRows[0] : null);
+  const validateData = selectedValidateRow?.data ?? null;
+  const validateError =
+    selectedValidateRow?.error ||
+    selectedValidateRow?.warning ||
+    (validateBulkMutation.error
+      ? toUserMessage(validateBulkMutation.error, "Greška pri validaciji.")
+      : null);
 
   const openValidateModal = async () => {
     setScreenError(null);
@@ -513,32 +577,17 @@ export default function TemplateDispatchScreen() {
       return;
     }
 
-    if (selectedPartners.length !== 1) {
-      setResultPopup({
-        visible: true,
-        kind: "info",
-        title: "Validacija ograničena",
-        message: "Validacija trenutno radi samo za 1 partnera. Odaberi točno jednog partnera.",
-        linkHeaderId: null,
-      });
-      return;
-    }
-
-    const partner = selectedPartners[0];
-    const partnerId = Number((partner as any)?.id);
-    const note = partnerNoteById[String(partnerId)] ?? null;
-
-    const payload = buildValidatePayload({
+    const bulk = buildBulkValidatePayload({
       warehouseId,
-      partnerId,
+      selectedPartners,
       draftMode,
       templateDocs,
       docPatches,
       extraItems,
-      note,
+      partnerNoteById,
     });
 
-    if (!payload.items || (payload.items as any[]).length === 0) {
+    if (!bulk.request.items.length) {
       setResultPopup({
         visible: true,
         kind: "info",
@@ -549,12 +598,64 @@ export default function TemplateDispatchScreen() {
       return;
     }
 
-    setIsValidateModalOpen(true);
-    validateMutation.reset();
+    const firstPayload = bulk.request.items[0]?.request as any;
+    if (!firstPayload?.items || firstPayload.items.length === 0) {
+      setResultPopup({
+        visible: true,
+        kind: "info",
+        title: "Nema stavki",
+        message: "Nema stavki za validaciju.",
+        linkHeaderId: null,
+      });
+      return;
+    }
+
+    setValidateRows([]);
+    setValidateDetailRow(null);
+    setDetailFromMany(false);
+    validateBulkMutation.reset();
+
+    if (bulk.request.items.length === 1) {
+      setIsValidateModalOpen(true);
+      setIsValidateSummaryOpen(false);
+    } else {
+      setIsValidateSummaryOpen(true);
+      setIsValidateModalOpen(false);
+    }
 
     try {
-      await validateMutation.mutateAsync(payload as any);
-    } catch {
+      const response = await validateBulkMutation.mutateAsync(bulk.request as any);
+      const rows: ValidateRow[] = ((response as any)?.results ?? []).map((row: any) => {
+        const partnerId = Number(row?.partnerId);
+        return toValidateRow({
+          partnerId,
+          partnerName: bulk.partnerNameById[String(partnerId)] ?? `Partner #${partnerId}`,
+          data: row?.data ?? null,
+          error: row?.error ? String(row.error) : null,
+          warning: null,
+        });
+      });
+
+      setValidateRows(rows);
+    } catch (e) {
+      const message = toUserMessage(e, "Greška pri validaciji.");
+      if (bulk.request.items.length === 1) {
+        setValidateRows([{
+          partnerId: Number(bulk.request.items[0]?.partnerId ?? 0),
+          partnerName: bulk.partnerNameById[String(bulk.request.items[0]?.partnerId ?? "")] ?? "Partner",
+          data: null,
+          error: message,
+          warning: null,
+          ok: 0,
+          warn: 0,
+          bad: 0,
+          total: 0,
+        }]);
+      } else {
+        setValidateRows([]);
+        setIsValidateSummaryOpen(false);
+        setScreenError(message);
+      }
     }
   };
 
@@ -667,8 +768,18 @@ export default function TemplateDispatchScreen() {
 
   const confirmValidateAndSubmit = async () => {
     setIsValidateModalOpen(false);
+    setIsValidateSummaryOpen(false);
+    setValidateDetailRow(null);
+    setDetailFromMany(false);
     await submitBooking();
   };
+
+  const openDetailFromRow = useCallback((row: ValidateRow) => {
+    setValidateDetailRow(row);
+    setDetailFromMany(true);
+    setIsValidateSummaryOpen(false);
+    setIsValidateModalOpen(true);
+  }, []);
 
   if (ready && !warehouseId) {
     return (
@@ -1032,6 +1143,12 @@ export default function TemplateDispatchScreen() {
         onClose={() => {
           if (bookingBusy || validateLoading) return;
           setIsValidateModalOpen(false);
+
+          if (detailFromMany) {
+            setIsValidateSummaryOpen(true);
+            setDetailFromMany(false);
+            setValidateDetailRow(null);
+          }
         }}
         disableClose={bookingBusy || validateLoading}
         loading={validateLoading}
@@ -1039,6 +1156,26 @@ export default function TemplateDispatchScreen() {
         data={validateData}
         onConfirm={confirmValidateAndSubmit}
         confirmText="Kreiraj"
+        showConfirm={!detailFromMany}
+      />
+
+      <ValidateManyModal
+        visible={isValidateSummaryOpen}
+        loading={validateLoading}
+        rows={validateRows}
+        disableClose={bookingBusy || validateLoading}
+        onClose={() => {
+          if (bookingBusy || validateLoading) return;
+          setIsValidateSummaryOpen(false);
+          setDetailFromMany(false);
+          setValidateDetailRow(null);
+        }}
+        onConfirm={confirmValidateAndSubmit}
+        onOpenDetail={openDetailFromRow}
+        title="Validacija prije knjiženja"
+        subtitle="Provjera po partneru prije kreiranja otpremnica."
+        confirmText="Kreiraj za odabrane partnere"
+        disabledConfirmText="Ispravi prije kreiranja"
       />
 
       <InfoResultPopup

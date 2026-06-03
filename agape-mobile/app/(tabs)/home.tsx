@@ -46,13 +46,22 @@ export default function HomeScreen() {
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
   const followsDefaultRef = useRef(true);
+  const [openAcc, setOpenAcc] = useState<Record<SectionKey, boolean>>({
+    missing: false,
+    needsFill: false,
+    most: false,
+  });
 
   useFocusEffect(
     useCallback(() => {
       followsDefaultRef.current = true;
       setWarehouseOpen(false);
+      setOpenAcc({ missing: false, needsFill: false, most: false });
       setWarehouseId(null);
-      return () => setWarehouseOpen(false);
+      return () => {
+        setWarehouseOpen(false);
+        setOpenAcc({ missing: false, needsFill: false, most: false });
+      };
     }, [])
   );
 
@@ -79,6 +88,7 @@ export default function HomeScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setWarehouseId(id);
     setWarehouseOpen(false);
+    setOpenAcc({ missing: false, needsFill: false, most: false });
   }, []);
 
   const toggleWarehouse = useCallback(() => {
@@ -91,12 +101,6 @@ export default function HomeScreen() {
   const statsError = (stats as any)?.error;
 
   const totals = data?.totals;
-
-  const [openAcc, setOpenAcc] = useState<Record<SectionKey, boolean>>({
-    missing: false,
-    needsFill: false,
-    most: false,
-  });
 
   const toggleAcc = (k: SectionKey) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -133,6 +137,7 @@ export default function HomeScreen() {
       followsDefaultRef.current = true;
       setWarehouseId(null);
       setWarehouseOpen(false);
+      setOpenAcc({ missing: false, needsFill: false, most: false });
 
       await Promise.resolve(refetchWarehouses?.());
       await stats.refetch?.();

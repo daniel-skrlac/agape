@@ -37,8 +37,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -281,19 +285,66 @@ public class DispatchBookingSessionService {
         }
     }
 
+    @Transactional
     public ServiceResponseDTO<BookingSessionEntryResponseDTO> upsertScanEntry(
             Long sessionId,
             BookingSessionScanEntryUpsertRequestDTO req
     ) {
         try {
+            Long userId = authUtil.requireUserId();
+
+            DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
+            if (s == null) return ServiceResponseDirector.errorNotFound("Session not found.");
+            if (s.getStatus() != BookingSessionStatus.DRAFT) {
+                return ServiceResponseDirector.errorBadRequest("Session is not editable.");
+            }
+
             BookingSessionEntryUpsertRequestDTO entryReq = BookingSessionScanEntryUtil.toEntryRequest(
                     req,
                     resolveScanNote(req.getNote())
             );
 
-            return upsertEntry(sessionId, entryReq);
+            if (entryReq.getTemplateId() != null) {
+                DispatchTemplateEntity t = templateRepo.findFullAccessible(entryReq.getTemplateId(), userId);
+                if (t == null) return ServiceResponseDirector.errorBadRequest("Template not accessible.");
+            }
+
+            if (entryReq.getTemplateId() == null && isBlankItems(entryReq.getExtraItems())) {
+                return ServiceResponseDirector.errorBadRequest("Sken nije pronašao stavke za spremanje.");
+            }
+
+            String scanFingerprint = buildScanFingerprint(entryReq);
+            DispatchBookingSessionEntryEntity e = entryRepo.findBySessionAndPartner(sessionId, entryReq.getPartnerId());
+            if (e == null) {
+                e = new DispatchBookingSessionEntryEntity();
+                e.setBookingSession(s);
+                e.setPartnerId(entryReq.getPartnerId());
+                e.setTemplateId(entryReq.getTemplateId());
+                e.setDraftMode(entryReq.getDraftMode());
+                e.setNote(entryReq.getNote());
+                e.setDocumentDate(entryReq.getDocumentDate());
+                e.setDocPatchesJson(jsonUtil.write(entryReq.getDocPatches() == null ? List.of() : entryReq.getDocPatches()));
+                e.setExtraItemsJson(jsonUtil.write(entryReq.getExtraItems() == null ? List.of() : entryReq.getExtraItems()));
+                e.setScanFingerprintsJson(jsonUtil.write(scanFingerprint == null ? List.of() : List.of(scanFingerprint)));
+                e.persist();
+
+                return ServiceResponseDirector.successOk(enrichedEntryDto(e), "Entry saved.");
+            }
+
+            if (scanFingerprint != null
+                    && (hasScanFingerprint(e, scanFingerprint) || scanFingerprint.equals(buildExistingScanFingerprint(e)))) {
+                return ServiceResponseDirector.successOk(enrichedEntryDto(e), "Entry saved.");
+            }
+
+            mergeScanIntoExistingEntry(e, entryReq);
+            appendScanFingerprint(e, scanFingerprint);
+            e.persist();
+
+            return ServiceResponseDirector.successOk(enrichedEntryDto(e), "Entry saved.");
+        } catch (IllegalArgumentException e) {
+            return ServiceResponseDirector.errorBadRequest(e.getMessage());
         } catch (Exception e) {
-            return ServiceResponseDirector.errorInternal("Failed to save scan entry.");
+            return ServiceResponseDirector.errorInternal("Failed to save scan entry: " + e.getMessage());
         }
     }
 
@@ -303,6 +354,221 @@ public class DispatchBookingSessionService {
         }
 
         return "Skenirano sa papira";
+    }
+
+    private BookingSessionEntryResponseDTO enrichedEntryDto(DispatchBookingSessionEntryEntity entry) {
+        return toEntryDtosWithPartnerMeta(List.of(entry)).getFirst();
+    }
+
+    private boolean hasScanFingerprint(DispatchBookingSessionEntryEntity entry, String scanFingerprint) {
+        if (scanFingerprint == null || scanFingerprint.isBlank()) return false;
+
+        List<String> existing = jsonUtil.readList(entry.getScanFingerprintsJson(), new TypeReference<>() {});
+        return existing.stream().anyMatch(scanFingerprint::equals);
+    }
+
+    private void appendScanFingerprint(DispatchBookingSessionEntryEntity entry, String scanFingerprint) {
+        if (scanFingerprint == null || scanFingerprint.isBlank()) return;
+
+        List<String> existing = new ArrayList<>(jsonUtil.readList(entry.getScanFingerprintsJson(), new TypeReference<>() {}));
+        if (!existing.contains(scanFingerprint)) {
+            existing.add(scanFingerprint);
+        }
+        entry.setScanFingerprintsJson(jsonUtil.write(existing));
+    }
+
+    private String buildScanFingerprint(BookingSessionEntryUpsertRequestDTO req) {
+        if (req == null) return null;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("partner=").append(req.getPartnerId()).append('|');
+        sb.append("template=").append(req.getTemplateId()).append('|');
+        sb.append("date=").append(req.getDocumentDate()).append('|');
+
+        List<String> lines = new ArrayList<>();
+        for (TemplateBookDocPatchDTO patch : req.getDocPatches() == null ? List.<TemplateBookDocPatchDTO>of() : req.getDocPatches()) {
+            if (patch == null || patch.getDocumentId() == null) continue;
+            collectFingerprintItems(lines, "D:" + patch.getDocumentId(), patch.getSetItems());
+            collectFingerprintItems(lines, "D:" + patch.getDocumentId(), patch.getAddItems());
+        }
+        collectFingerprintItems(lines, "E", req.getExtraItems());
+
+        if (lines.isEmpty()) return null;
+
+        lines.sort(Comparator.naturalOrder());
+        for (String line : lines) {
+            sb.append(line).append('|');
+        }
+
+        return sha256Hex(sb.toString());
+    }
+
+    private String buildExistingScanFingerprint(DispatchBookingSessionEntryEntity entry) {
+        if (entry == null) return null;
+
+        BookingSessionEntryUpsertRequestDTO req = new BookingSessionEntryUpsertRequestDTO();
+        req.setPartnerId(entry.getPartnerId());
+        req.setTemplateId(entry.getTemplateId());
+        req.setDocumentDate(entry.getDocumentDate());
+        req.setDocPatches(jsonUtil.readList(entry.getDocPatchesJson(), new TypeReference<>() {}));
+        req.setExtraItems(jsonUtil.readList(entry.getExtraItemsJson(), new TypeReference<>() {}));
+
+        return buildScanFingerprint(req);
+    }
+
+    private void collectFingerprintItems(List<String> out, String scope, List<TemplateBookItemDTO> items) {
+        for (TemplateBookItemDTO item : items == null ? List.<TemplateBookItemDTO>of() : items) {
+            if (item == null
+                    || item.getItemId() == null
+                    || item.getQuantity() == null
+                    || item.getQuantity().signum() <= 0) {
+                continue;
+            }
+            out.add(scope + ':' + item.getItemId() + ':' + normalizeQuantity(item.getQuantity()));
+        }
+    }
+
+    private String normalizeQuantity(BigDecimal quantity) {
+        return quantity.stripTrailingZeros().toPlainString();
+    }
+
+    private String sha256Hex(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(input.hashCode());
+        }
+    }
+
+    private void mergeScanIntoExistingEntry(
+            DispatchBookingSessionEntryEntity existing,
+            BookingSessionEntryUpsertRequestDTO incoming
+    ) {
+        Long existingTemplateId = existing.getTemplateId();
+        Long incomingTemplateId = incoming.getTemplateId();
+
+        if (existingTemplateId != null
+                && incomingTemplateId != null
+                && !existingTemplateId.equals(incomingTemplateId)) {
+            throw new IllegalArgumentException(
+                    "Partner već ima unos s drugim predloškom. Otvori unos partnera i uredi ga ručno."
+            );
+        }
+
+        existing.setTemplateId(existingTemplateId != null ? existingTemplateId : incomingTemplateId);
+
+        if (incoming.getDraftMode() != null) {
+            existing.setDraftMode(incoming.getDraftMode());
+        }
+
+        if (existing.getDocumentDate() == null && incoming.getDocumentDate() != null) {
+            existing.setDocumentDate(incoming.getDocumentDate());
+        }
+
+        existing.setNote(mergeNotes(existing.getNote(), incoming.getNote()));
+
+        List<TemplateBookDocPatchDTO> mergedPatches = mergeDocPatches(
+                jsonUtil.readList(existing.getDocPatchesJson(), new TypeReference<>() {}),
+                incoming.getDocPatches()
+        );
+        List<TemplateBookItemDTO> mergedExtraItems = mergeExtraItems(
+                jsonUtil.readList(existing.getExtraItemsJson(), new TypeReference<>() {}),
+                incoming.getExtraItems()
+        );
+
+        existing.setDocPatchesJson(jsonUtil.write(mergedPatches));
+        existing.setExtraItemsJson(jsonUtil.write(mergedExtraItems));
+    }
+
+    private String mergeNotes(String existing, String incoming) {
+        String a = existing == null ? "" : existing.trim();
+        String b = incoming == null ? "" : incoming.trim();
+
+        if (b.isBlank()) return a.isBlank() ? null : a;
+        if (a.isBlank()) return b;
+        if (a.equals(b) || a.contains(b)) return a;
+
+        return a + "\n" + b;
+    }
+
+    private List<TemplateBookDocPatchDTO> mergeDocPatches(
+            List<TemplateBookDocPatchDTO> existing,
+            List<TemplateBookDocPatchDTO> incoming
+    ) {
+        Map<Long, Map<Long, TemplateBookItemDTO>> byDocumentAndItem = new LinkedHashMap<>();
+
+        addDocPatches(byDocumentAndItem, existing);
+        addDocPatches(byDocumentAndItem, incoming);
+
+        List<TemplateBookDocPatchDTO> out = new ArrayList<>();
+        for (Map.Entry<Long, Map<Long, TemplateBookItemDTO>> entry : byDocumentAndItem.entrySet()) {
+            TemplateBookDocPatchDTO patch = new TemplateBookDocPatchDTO();
+            patch.setDocumentId(entry.getKey());
+            patch.setAddItems(new ArrayList<>(entry.getValue().values()));
+            out.add(patch);
+        }
+
+        return out;
+    }
+
+    private void addDocPatches(
+            Map<Long, Map<Long, TemplateBookItemDTO>> byDocumentAndItem,
+            List<TemplateBookDocPatchDTO> patches
+    ) {
+        for (TemplateBookDocPatchDTO patch : patches == null ? List.<TemplateBookDocPatchDTO>of() : patches) {
+            if (patch == null || patch.getDocumentId() == null) continue;
+
+            Map<Long, TemplateBookItemDTO> byItem = byDocumentAndItem.computeIfAbsent(
+                    patch.getDocumentId(),
+                    key -> new LinkedHashMap<>()
+            );
+
+            for (TemplateBookItemDTO item : patch.getSetItems() == null ? List.<TemplateBookItemDTO>of() : patch.getSetItems()) {
+                addItemQuantity(byItem, item);
+            }
+
+            for (TemplateBookItemDTO item : patch.getAddItems() == null ? List.<TemplateBookItemDTO>of() : patch.getAddItems()) {
+                addItemQuantity(byItem, item);
+            }
+        }
+    }
+
+    private List<TemplateBookItemDTO> mergeExtraItems(
+            List<TemplateBookItemDTO> existing,
+            List<TemplateBookItemDTO> incoming
+    ) {
+        Map<Long, TemplateBookItemDTO> byItem = new LinkedHashMap<>();
+        for (TemplateBookItemDTO item : existing == null ? List.<TemplateBookItemDTO>of() : existing) {
+            addItemQuantity(byItem, item);
+        }
+        for (TemplateBookItemDTO item : incoming == null ? List.<TemplateBookItemDTO>of() : incoming) {
+            addItemQuantity(byItem, item);
+        }
+        return new ArrayList<>(byItem.values());
+    }
+
+    private void addItemQuantity(Map<Long, TemplateBookItemDTO> byItem, TemplateBookItemDTO source) {
+        if (source == null
+                || source.getItemId() == null
+                || source.getQuantity() == null
+                || source.getQuantity().signum() <= 0) {
+            return;
+        }
+
+        TemplateBookItemDTO item = byItem.computeIfAbsent(source.getItemId(), itemId -> {
+            TemplateBookItemDTO next = new TemplateBookItemDTO();
+            next.setItemId(itemId);
+            next.setQuantity(BigDecimal.ZERO);
+            return next;
+        });
+
+        item.setQuantity(item.getQuantity().add(source.getQuantity()));
     }
 
     @Transactional

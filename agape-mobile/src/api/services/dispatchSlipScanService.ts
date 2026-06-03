@@ -26,7 +26,7 @@ export const dispatchSlipScanService = {
 
         form.append("file", {
             uri: args.uri,
-            name: args.name || "dispatch-slip.jpg",
+            name: args.name || "otpremnica.jpg",
             type: args.mimeType || "image/jpeg",
         } as any);
 

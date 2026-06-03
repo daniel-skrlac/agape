@@ -13,7 +13,6 @@ import hr.agape.dispatch.scan.dto.DispatchSlipAnalyzerQuantityDTO;
 import hr.agape.dispatch.scan.dto.DispatchSlipAnalyzerResponseDTO;
 import hr.agape.dispatch.scan.dto.DispatchSlipParsedDTO;
 import hr.agape.dispatch.scan.mapper.BookingSessionScanEntryMapper;
-import hr.agape.dispatch.scan.util.BookingSessionScanEntryUtil;
 import hr.agape.dispatch.scan.util.DispatchSlipTextParser;
 import hr.agape.dispatch.scan.util.DispatchSlipUploadFileUtil;
 import hr.agape.item.dto.ItemDescriptorResponseDTO;
@@ -227,13 +226,10 @@ public class BookingSessionScanEntryService {
             );
 
             if (!Boolean.TRUE.equals(validation.getAllValid())) {
-                return ServiceResponseDirector.errorBadRequest("Scan lines are not fully validated.");
+                return ServiceResponseDirector.errorBadRequest("Skenirane stavke nisu potpuno validirane.");
             }
 
-            return sessionService.upsertEntry(
-                    sessionId,
-                    BookingSessionScanEntryUtil.toEntryRequest(req, mapper.resolveScanNote(req.getNote()))
-            );
+            return sessionService.upsertScanEntry(sessionId, req);
         } catch (IllegalArgumentException e) {
             return ServiceResponseDirector.errorBadRequest(e.getMessage());
         } catch (Exception e) {

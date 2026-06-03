@@ -43,6 +43,7 @@ import {
     useParseDispatchSlip,
     useSaveDispatchSlipScanEntry,
 } from "@/src/api/hooks/scans/useDispatchSlipScans";
+import { clearDraft as clearEntryDraft } from "@/src/stores/entryDraftStore";
 import { partnerService } from "@/src/api/services/partnerService";
 import { itemDirectoryService } from "@/src/api/services/itemDirectoryService";
 import { s } from "@/src/styles/DispatchSlipScan.styles";
@@ -371,6 +372,29 @@ function makeValidationKey(page: Pick<ScanPage, "partnerId" | "templateId" | "do
             confidence: confidenceValue(line.confidence),
             confidenceLevel: normalizeConfidenceLevel(line.confidenceLevel),
         })),
+    });
+}
+
+function scanPageSaveFingerprint(page: ScanPage) {
+    const lines = page.lines
+        .filter((line) => quantityValue(line) > 0)
+        .map((line) => ({
+            documentId: cleanNumber(line.documentId),
+            itemId: cleanNumber(line.itemId),
+            quantity: quantityValue(line),
+        }))
+        .filter((line) => line.itemId && line.quantity > 0)
+        .sort((a, b) =>
+            Number(a.documentId ?? 0) - Number(b.documentId ?? 0)
+            || Number(a.itemId ?? 0) - Number(b.itemId ?? 0)
+            || Number(a.quantity) - Number(b.quantity)
+        );
+
+    return JSON.stringify({
+        partnerId: page.partnerId,
+        templateId: page.templateId,
+        documentDate: nullableDateInput(page.documentDate),
+        lines,
     });
 }
 
@@ -1329,6 +1353,8 @@ export default function DispatchSlipScanScreen() {
     const saveAll = useCallback(async () => {
         if (saveAllError) return;
 
+        const seenPages = new Set<string>();
+        let duplicatePages = 0;
         const groups = new Map<number, {
             partnerId: number;
             partnerNameHint: string | null;
@@ -1341,6 +1367,13 @@ export default function DispatchSlipScanScreen() {
         for (const page of pages) {
             const partnerId = page.partnerId;
             if (!partnerId) continue;
+
+            const pageFingerprint = scanPageSaveFingerprint(page);
+            if (seenPages.has(pageFingerprint)) {
+                duplicatePages++;
+                continue;
+            }
+            seenPages.add(pageFingerprint);
 
             const group = groups.get(partnerId) ?? {
                 partnerId,
@@ -1376,10 +1409,20 @@ export default function DispatchSlipScanScreen() {
             groups.set(partnerId, group);
         }
 
+        const nonEmptyGroups = Array.from(groups.values()).filter((group) => group.lines.length > 0);
+        if (!nonEmptyGroups.length) {
+            setScreenError(
+                duplicatePages > 0
+                    ? "Sve stranice koje pokušavaš spremiti već su dodane u ovoj obradi."
+                    : "Nema stavki za spremanje."
+            );
+            return;
+        }
+
         try {
             setScreenError(null);
 
-            for (const group of groups.values()) {
+            for (const group of nonEmptyGroups) {
                 await saveM.mutateAsync({
                     partnerId: group.partnerId,
                     templateId: (group.templateId || null) as any,
@@ -1388,13 +1431,14 @@ export default function DispatchSlipScanScreen() {
                     note: group.notes.join("\n"),
                     lines: group.lines as any,
                 });
+                clearEntryDraft(sessionId, group.partnerId);
             }
 
             await deleteLocalDraft(draftPath);
             setPages([]);
             setCurrentPageIndex(0);
 
-            if (lockedPartnerContext && initialPartnerId && groups.size === 1) {
+            if (lockedPartnerContext && initialPartnerId && nonEmptyGroups.length === 1) {
                 router.replace({
                     pathname: "/(tabs)/sessions/[id]/entry" as const,
                     params: {

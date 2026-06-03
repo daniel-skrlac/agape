@@ -571,9 +571,6 @@ export default function SessionEntryEditor() {
   useEffect(() => {
     if (!sessionId || !partnerId || !session) return;
 
-    const key = `${sessionId}:${partnerId}:${(session as any)?.id ?? ""}`;
-    if (hydratedKeyRef.current === key) return;
-
     const cur = getDraft(sessionId, partnerId) ?? ensureDraft(sessionId, partnerId);
     const touched = (cur as any)._touched ?? {};
 
@@ -582,9 +579,23 @@ export default function SessionEntryEditor() {
     ) as BookingSessionEntryResponseDTO | undefined;
 
     if (!existing) {
-      hydratedKeyRef.current = key;
+      hydratedKeyRef.current = `${sessionId}:${partnerId}:missing`;
       return;
     }
+
+    const key = JSON.stringify({
+      sessionId,
+      partnerId,
+      sessionUpdatedAt: (session as any)?.updatedAt ?? null,
+      entryId: (existing as any)?.id ?? null,
+      templateId: (existing as any)?.templateId ?? null,
+      draftMode: (existing as any)?.draftMode ?? null,
+      documentDate: (existing as any)?.documentDate ?? null,
+      note: (existing as any)?.note ?? null,
+      docPatches: (existing as any)?.docPatches ?? (existing as any)?.docPatchesJson ?? null,
+      extraItems: (existing as any)?.extraItems ?? (existing as any)?.extraItemsJson ?? null,
+    });
+    if (hydratedKeyRef.current === key) return;
 
     const incomingTemplateId =
       (existing as any)?.templateId != null ? num((existing as any).templateId) : null;
@@ -621,23 +632,23 @@ export default function SessionEntryEditor() {
       templateId: touched.templateId ? cur.templateId : cur.templateId ?? incomingTemplateId,
       docPatches: touched.docPatches
         ? curDocPatches
-        : curDocPatches.length
-          ? curDocPatches
-          : incomingDocPatches,
+        : incomingDocPatches.length
+          ? incomingDocPatches
+          : curDocPatches,
       standaloneQty: touched.standaloneQty
         ? cur.standaloneQty ?? {}
-        : cur.standaloneQty && Object.keys(cur.standaloneQty).length > 0
-          ? cur.standaloneQty
-          : incomingExtra.qty,
+        : hasKeys(incomingExtra.qty)
+          ? incomingExtra.qty
+          : cur.standaloneQty ?? {},
       standaloneMetaById: touched.standaloneMetaById
         ? (cur as any).standaloneMetaById ?? {}
-        : hasKeys((cur as any).standaloneMetaById)
-          ? (cur as any).standaloneMetaById
-          : incomingExtra.metaById,
-      note: touched.note ? cur.note ?? null : cur.note != null ? cur.note : incomingNote,
+        : hasKeys(incomingExtra.metaById)
+          ? incomingExtra.metaById
+          : (cur as any).standaloneMetaById ?? {},
+      note: touched.note ? cur.note ?? null : incomingNote,
       documentDate: touched.documentDate
         ? ((cur as any)?.documentDate ?? null)
-        : ((cur as any)?.documentDate ?? incomingDocDate),
+        : incomingDocDate,
     };
 
     setDraft(merged as any);
@@ -941,8 +952,8 @@ export default function SessionEntryEditor() {
             <Text style={st.scanTitle}>Skeniraj otpremnicu za partnera</Text>
             <Text style={st.scanSub} numberOfLines={2}>
               {tplId
-                ? `Fotografiraj slip i spoji ga s predloškom za ${partnerName || "partnera"}.`
-                : `Fotografiraj slip i spremi stavke bez predloška za ${partnerName || "partnera"}.`}
+                ? `Fotografiraj papirnatu otpremnicu i spoji je s predloškom za ${partnerName || "partnera"}.`
+                : `Fotografiraj papirnatu otpremnicu i spremi stavke bez predloška za ${partnerName || "partnera"}.`}
             </Text>
           </View>
           <FontAwesome name="chevron-right" size={14} color={Colors.sub} />

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,6 +18,7 @@ import { ErrorCard } from "@/components/ErrorCard";
 import NavigationHeader from "@/components/NavigationHeader";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import ValidateImpactModal from "@/components/ValidateImpactModal";
+import ValidateManyModal, { toValidateRow } from "@/components/ValidateManyModal";
 
 import type {
   BookingSessionEntryResponseDTO,
@@ -233,25 +233,6 @@ type ValidateRow = {
   warning: string | null;
 };
 
-function classifyImpact(data: any) {
-  const items: any[] = ((data as any)?.items ?? []) as any[];
-  let ok = 0;
-  let warn = 0;
-  let bad = 0;
-
-  for (const it of items) {
-    if (!!it?.missingInWarehouse) {
-      bad++;
-      continue;
-    }
-    const after = Number(String(it?.afterEffectiveQty ?? "").replace(",", "."));
-    if (Number.isFinite(after) && after < 0) warn++;
-    else ok++;
-  }
-
-  return { ok, warn, bad, total: items.length };
-}
-
 function buildBulkValidateRequest(args: {
   sessionId: number;
   warehouseId: number;
@@ -281,201 +262,6 @@ function buildBulkValidateRequest(args: {
   }
 
   return { request: { items }, warningByPartnerId, partnerNameById };
-}
-
-function toValidateRow(args: {
-  partnerId: number;
-  partnerName: string;
-  data: WarehouseBookingImpactDTO | null;
-  error: string | null;
-  warning: string | null;
-}): ValidateRow {
-  const { partnerId, partnerName, data, error, warning } = args;
-  const stats = data ? classifyImpact(data) : { ok: 0, warn: 0, bad: 0, total: 0 };
-
-  return { partnerId, partnerName, ...stats, data, error, warning };
-}
-
-/**
- * VALIDACIJA modal:
- * - Summary ONLY: OK + MINUS
- * - Rows ONLY show OK or MINUS pill (no NEMA / ERROR UI)
- * - If partner has error OR missing items (bad>0), show it as MINUS (warn bucket) and block confirm
- * - Backdrop click DOES NOTHING (only X / Zatvori / Knjiži can close)
- */
-function ValidateManyModal(props: {
-  visible: boolean;
-  loading: boolean;
-  rows: ValidateRow[];
-  onClose: () => void;
-  onConfirm: () => void;
-  onOpenDetail: (row: ValidateRow) => void;
-  disableClose?: boolean;
-}) {
-  const { visible, loading, rows, onClose, onConfirm, onOpenDetail, disableClose } = props;
-
-  const summary = useMemo(() => {
-    const okPartners = rows.filter((r) => !r.error && r.bad === 0 && r.warn === 0).length;
-    const minusPartners = rows.filter((r) => !!r.error || r.bad > 0 || r.warn > 0).length;
-    const anyWarning = rows.some((r) => !!r.warning);
-
-    const anyBlocking = rows.some((r) => !!r.error || r.bad > 0);
-    return { okPartners, minusPartners, anyWarning, anyBlocking };
-  }, [rows]);
-
-  const canConfirm = !loading && !summary.anyBlocking;
-
-  return (
-    <Modal
-      transparent
-      visible={visible}
-      animationType="fade"
-      onRequestClose={disableClose ? undefined : onClose}
-    >
-      <View style={vm.wrap}>
-        <Pressable style={vm.backdrop} onPress={() => { }} />
-
-        <View style={vm.card}>
-          <View style={vm.header}>
-            <View style={{ flex: 1 }}>
-              <Text style={vm.title}>Validacija prije knjiženja</Text>
-              <Text style={vm.sub}>Provjera po partneru prije finalnog knjiženja sesije.</Text>
-            </View>
-
-            <Pressable
-              style={[vm.iconBtn, disableClose && { opacity: 0.5 }]}
-              onPress={disableClose ? undefined : onClose}
-              disabled={disableClose}
-            >
-              <FontAwesome name="close" size={18} color={Colors.text} />
-            </Pressable>
-          </View>
-
-          <ScrollView contentContainerStyle={vm.body} keyboardShouldPersistTaps="handled">
-            {loading ? (
-              <View style={vm.stateBox}>
-                <ActivityIndicator />
-                <Text style={vm.stateTitle}>Provjeravam…</Text>
-                <Text style={vm.stateSub}>Molim pričekaj.</Text>
-              </View>
-            ) : (
-              <>
-                {/* Summary ONLY OK + MINUS */}
-                <View style={vm.summaryGrid}>
-                  <View style={vm.summaryChip}>
-                    <Text style={vm.summaryChipLabel}>OK</Text>
-                    <Text style={vm.summaryChipValue}>{summary.okPartners}</Text>
-                  </View>
-                  <View style={vm.summaryChip}>
-                    <Text style={vm.summaryChipLabel}>MINUS</Text>
-                    <Text style={vm.summaryChipValue}>{summary.minusPartners}</Text>
-                  </View>
-                </View>
-
-                {!!summary.anyWarning && (
-                  <View style={vm.warnBox}>
-                    <View style={vm.warnHeader}>
-                      <FontAwesome name="warning" size={14} color={Colors.text} />
-                      <Text style={vm.warnTitle}>Napomena</Text>
-                    </View>
-                    <Text style={vm.warnText}>Neki unosi koriste draft/store fallback za stavke.</Text>
-                  </View>
-                )}
-
-                {/* Rows: ONLY OK / MINUS pills */}
-                <View style={{ gap: 10 }}>
-                  {rows.map((r) => {
-                    const okTone = badgeStyle("FINAL");
-                    const minusTone = badgeStyle("WARN");
-
-                    const isOk = !r.error && r.bad === 0 && r.warn === 0;
-                    const pill = isOk ? (
-                      <View style={[vm.pill, okTone]}>
-                        <Text style={[vm.pillText, { color: okTone.textColor }]}>OK</Text>
-                      </View>
-                    ) : (
-                      <View style={[vm.pill, minusTone]}>
-                        <Text style={[vm.pillText, { color: minusTone.textColor }]}>
-                          MINUS{r.warn > 0 ? ` ${r.warn}` : ""}
-                        </Text>
-                      </View>
-                    );
-
-                    return (
-                      <Pressable
-                        key={`r-${r.partnerId}`}
-                        style={vm.rowCard}
-                        onPress={() => onOpenDetail(r)}
-                        android_disableSound
-                      >
-                        <View style={vm.rowTop}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={vm.rowName} numberOfLines={1}>
-                              {r.partnerName}
-                            </Text>
-                            <Text style={vm.rowSub}>
-                              Stavki: {r.total}
-                              {!!r.warning ? " • ⚠️" : ""}
-                            </Text>
-                          </View>
-                          {pill}
-                        </View>
-
-                        <View style={vm.rowBottom}>
-                          <View style={vm.rowMiniPills}>
-                            <Text style={vm.rowMiniText}>OK {r.ok}</Text>
-                            <Text style={vm.rowMiniText}>MINUS {r.warn + r.bad + (r.error ? 1 : 0)}</Text>
-                          </View>
-
-                          <View style={vm.smallHintPill}>
-                            <FontAwesome name="search" size={11} color={Colors.sub} />
-                            <Text style={vm.smallHintText}>Detalji</Text>
-                          </View>
-                        </View>
-
-                        {/* optional: show compact line if validation had error or missing */}
-                        {!!r.error ? (
-                          <Text style={vm.warningLine} numberOfLines={2}>
-                            {r.error}
-                          </Text>
-                        ) : r.bad > 0 ? (
-                          <Text style={vm.warningLine} numberOfLines={2}>
-                            Nedostaju stavke u skladištu ({r.bad}).
-                          </Text>
-                        ) : null}
-
-                        {!!r.warning ? (
-                          <Text style={vm.warningLine} numberOfLines={2}>
-                            {r.warning}
-                          </Text>
-                        ) : null}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <View style={{ gap: 10, marginTop: 6 }}>
-                  <Pressable
-                    style={[vm.primary, !canConfirm && { opacity: 0.5 }]}
-                    onPress={onConfirm}
-                    disabled={!canConfirm}
-                  >
-                    <Text style={vm.primaryText}>
-                      {canConfirm ? "Knjiži sesiju" : "Ne mogu knjižiti"}
-                    </Text>
-                  </Pressable>
-
-                  <Pressable style={vm.secondary} onPress={onClose} disabled={disableClose}>
-                    <Text style={vm.secondaryText}>Zatvori</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
 }
 
 export default function SessionDetailIndex() {
@@ -997,7 +783,6 @@ export default function SessionDetailIndex() {
         onConfirm={confirmValidateAndFinalize}
         confirmText="Knjiži"
         showConfirm={!detailFromMany}
-        bulkHint={detailFromMany ? "Bulk knjiženje: potvrda se radi na prethodnom ekranu." : null}
       />
 
       <ValidateManyModal
@@ -1220,122 +1005,4 @@ const st = StyleSheet.create({
     gap: 8,
   },
   rowBtnDangerText: { color: Colors.dangerText, fontWeight: "900" },
-});
-
-const vm = StyleSheet.create({
-  wrap: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
-
-  card: {
-    width: "100%",
-    maxWidth: 560,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    overflow: "hidden",
-    maxHeight: "88%",
-  },
-
-  header: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  title: { fontWeight: "900", color: Colors.text, fontSize: 16, lineHeight: 20 },
-  sub: { marginTop: 2, color: Colors.sub, fontWeight: "800", fontSize: 12, lineHeight: 16 },
-  iconBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "rgba(148,163,184,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  body: { padding: 14, gap: 12, paddingBottom: 18 },
-
-  stateBox: { paddingVertical: 18, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", gap: 8 },
-  stateTitle: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-  stateSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, textAlign: "center" },
-
-  summaryGrid: { flexDirection: "row", gap: 8 },
-  summaryChip: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(148,163,184,0.08)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(2, 6, 23, 0.08)",
-  },
-  summaryChipLabel: { fontWeight: "800", color: Colors.sub, fontSize: 10 },
-  summaryChipValue: { fontWeight: "900", color: Colors.text, fontSize: 14 },
-
-  warnBox: {
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(249,115,22,0.10)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(249,115,22,0.28)",
-    gap: 8,
-  },
-  warnHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  warnTitle: { fontWeight: "900", color: Colors.text, fontSize: 13 },
-  warnText: { fontWeight: "800", color: Colors.text, opacity: 0.95, fontSize: 12 },
-
-  rowCard: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bg,
-    padding: 12,
-    gap: 8,
-  },
-  rowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  rowName: { fontWeight: "900", color: Colors.text, fontSize: 15 },
-  rowSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, marginTop: 2 },
-
-  rowBottom: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  rowMiniPills: { flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 },
-  rowMiniText: { fontWeight: "800", color: Colors.sub, fontSize: 11 },
-
-  warningLine: { fontWeight: "800", color: Colors.sub, fontSize: 12 },
-
-  smallHintPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(148,163,184,0.14)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(2, 6, 23, 0.08)",
-  },
-  smallHintText: { fontWeight: "900", color: Colors.sub, fontSize: 11 },
-
-  pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
-  pillText: { fontWeight: "900", fontSize: 11 },
-
-  primary: { padding: 12, borderRadius: 14, backgroundColor: Colors.orange, alignItems: "center" },
-  primaryText: { color: "#fff", fontWeight: "900" },
-
-  secondary: { padding: 12, borderRadius: 14, backgroundColor: "rgba(148,163,184,0.18)", alignItems: "center" },
-  secondaryText: { fontWeight: "900", color: Colors.text },
 });

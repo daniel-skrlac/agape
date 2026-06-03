@@ -175,6 +175,7 @@ CREATE TABLE dispatch_booking_session_entry
     extra_items   JSONB NOT NULL,
     note          TEXT,
     document_date DATE,
+    scan_fingerprints JSONB NOT NULL DEFAULT '[]'::jsonb,
 
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
