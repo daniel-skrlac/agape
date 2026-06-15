@@ -1,0 +1,34 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHero from '../components/PageHero.astro';
+---
+<BaseLayout
+  title="Politika privatnosti"
+  description="Politika privatnosti za web stranicu Socijalne samoposluge Kruh sv. Antuna Varaždin."
+  canonicalPath="/politika-privatnosti/"
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Politika privatnosti', href: '/politika-privatnosti/' }
+  ]}
+>
+  <PageHero
+    eyebrow="Privatnost"
+    title="Ne koristimo kolačiće za praćenje ni skrivene analitičke alate."
+    text="Ova stranica objašnjava kako je web mjesto postavljeno s naglaskom na minimalno prikupljanje podataka."
+  />
+  <section class="section section--white">
+    <div class="container article-body article-body--standalone">
+      <h2>Koje podatke obrađujemo</h2>
+      <p>Web stranica je statična i sama ne prikuplja osobne podatke kroz obrasce, komentare, račune korisnika ili analitiku.</p>
+
+      <h2>Kolačići i analitika</h2>
+      <p>Ne postavljamo kolačiće za praćenje, Facebook Pixel, TikTok Pixel ni druge skrivene marketinške alate. Zato se ne prikazuje nepotreban banner za kolačiće.</p>
+
+      <h2>Vanjske poveznice</h2>
+      <p>Poveznice na društvene mreže i karte vode na vanjske stranice. Te usluge mogu obrađivati podatke prema vlastitim pravilima privatnosti.</p>
+
+      <h2>Kontakt</h2>
+      <p>Ako se javite telefonom ili preko društvenih mreža, podaci se obrađuju kroz taj kanal komunikacije. Na ovoj web stranici nema pozadinske pohrane takvih poruka.</p>
+    </div>
+  </section>
+</BaseLayout>

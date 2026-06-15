@@ -6,11 +6,14 @@ const obavijesti = defineCollection({
     title: z.string(),
     description: z.string(),
     pubDate: z.coerce.date(),
-    image: z.string(),
+    updatedDate: z.coerce.date().optional(),
+    image: z.string().optional().default('/images/og/socka-share.png'),
     imageAlt: z.string().optional().default(''),
     category: z.string().optional().default('Obavijest'),
     featured: z.boolean().optional().default(false),
-    draft: z.boolean().optional().default(false)
+    draft: z.boolean().optional().default(false),
+    sourceUrl: z.string().url().optional(),
+    imageCredit: z.string().optional()
   })
 });
 

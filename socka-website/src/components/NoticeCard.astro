@@ -1,5 +1,6 @@
 ---
 import { formatDate } from '../lib/notices';
+
 interface Props {
   href: string;
   title: string;
@@ -9,12 +10,24 @@ interface Props {
   imageAlt?: string;
   category?: string;
   featured?: boolean;
+  style?: string;
 }
-const { href, title, description, pubDate, image, imageAlt = '', category = 'Obavijest', featured = false } = Astro.props;
+
+const {
+  href,
+  title,
+  description,
+  pubDate,
+  image,
+  imageAlt = '',
+  category = 'Obavijest',
+  featured = false,
+  style
+} = Astro.props;
 ---
-<a class:list={["notice-card", { "notice-card--featured": featured }]} href={href}>
+<a class:list={['notice-card', { 'notice-card--featured': featured }]} href={href} style={style}>
   <span class="notice-card__image">
-    <img src={image} alt={imageAlt || title} loading="lazy" />
+    <img src={image} alt={imageAlt || title} width="800" height="500" loading="lazy" />
   </span>
   <span class="notice-card__content">
     <span class="notice-card__meta">
@@ -23,5 +36,6 @@ const { href, title, description, pubDate, image, imageAlt = '', category = 'Oba
     </span>
     <strong>{title}</strong>
     <span>{description}</span>
+    <span class="notice-card__read">Otvori obavijest <span aria-hidden="true">→</span></span>
   </span>
 </a>

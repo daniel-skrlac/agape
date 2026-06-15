@@ -1,23 +1,93 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ImpactCounters from '../components/ImpactCounters.astro';
+import InteractiveTimeline from '../components/InteractiveTimeline.astro';
 import PageHero from '../components/PageHero.astro';
 import SectionTitle from '../components/SectionTitle.astro';
-import ContentFrame from '../components/ContentFrame.astro';
+import { historicalImpact, historyTimeline, site } from '../lib/site';
 ---
-<BaseLayout title="O nama">
+<BaseLayout
+  title="O nama"
+  description="O Socijalnoj samoposluzi Kruh sv. Antuna Varaždin, volonterima, vrijednostima i učinku zajednice."
+  canonicalPath="/o-nama/"
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'O nama', href: '/o-nama/' }
+  ]}
+>
   <PageHero
-    eyebrow="O projektu"
-    title="Ovdje predstavite ljude, projekt i priču iza Socijalne samoposluge."
-    text="Stranica je pripremljena kao čist okvir za sadržaj koji ćete naknadno urediti."
+    eyebrow="O nama"
+    title="Pomoć koja dolazi do ljudi kojima treba."
+    text={'Socijalna samoposluga "Kruh sv. Antuna" Varaždin okuplja donatore i volontere oko konkretne, dostojanstvene podrške.'}
   />
-  <section class="section-tight">
-    <div class="container">
-      <SectionTitle eyebrow="Sadržaj" title="Predloženi blokovi za stranicu O nama." />
-      <div class="content-grid">
-        <ContentFrame eyebrow="Priča" title="Kako je nastao projekt" text="Ovdje dodajte kratak uvod o nastanku i razvoju projekta." number="01" />
-        <ContentFrame eyebrow="Zajednica" title="Tko sudjeluje" text="Ovdje navedite organizacije, volontere i partnere koji sudjeluju." number="02" />
-        <ContentFrame eyebrow="Rad" title="Kako djelujemo" text="Ovdje objasnite osnovni način rada i kome je projekt namijenjen." number="03" />
+
+  <section class="section section--white">
+    <div class="container split-section">
+      <div class="editorial-block reveal">
+        <p class="eyebrow">Tko smo</p>
+        <h2>Volonterska zajednica koja brine da donacije stignu do ljudi.</h2>
+        <p>
+          Samoposluga djeluje kroz prikupljanje trajnih namirnica i osnovnih potrepština, njihovo sortiranje i pripremu paketa pomoći. U središtu nisu procedure, nego ljudi: donatori, volonteri i obitelji kojima podrška vraća sigurnost u svakodnevicu.
+        </p>
+        <p>
+          Projekt je izrastao iz franjevačke inicijative i lokalne solidarnosti, a danas se nastavlja kroz škole, župe, tvrtke, udruge, studente i građane koji žele dati ono što mogu.
+        </p>
       </div>
+      <figure class="image-block image-block--portrait reveal">
+        <img src="/images/recent/volonterke-u-samoposluzi.webp" alt="Volonterke u prostoru Socijalne samoposluge uz prikupljene namirnice" width="1200" height="1600" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+
+  <section class="section section--soft">
+    <div class="container values-grid values-grid--bold">
+      <article class="reveal">
+        <p class="eyebrow">Misija</p>
+        <h2>Osigurati da osnovne namirnice i higijenske potrepštine dođu do ljudi kojima su najpotrebnije.</h2>
+      </article>
+      <article class="reveal">
+        <p class="eyebrow">Vizija</p>
+        <h2>Varaždin u kojem nitko ne ostaje sam kada mu treba podrška zajednice.</h2>
+      </article>
+      <article class="reveal">
+        <p class="eyebrow">Vrijednosti</p>
+        <h2>Dostojanstvo, odgovornost, povjerenje, zahvalnost i briga koja se vidi u djelima.</h2>
+      </article>
+    </div>
+  </section>
+
+  <section class="section timeline-section">
+    <div class="container">
+      <SectionTitle
+        eyebrow="Razvoj"
+        title="Važni koraci razvoja."
+        text="Vremenska crta prikazuje provjerene prekretnice rada Socijalne samoposluge."
+        align="center"
+      />
+      <InteractiveTimeline items={historyTimeline} />
+    </div>
+  </section>
+
+  <section class="section impact-section">
+    <div class="container">
+      <SectionTitle
+        eyebrow="Učinak zajednice"
+        title="Brojevi iza kojih stoje ljudi, vrijeme i povjerenje."
+        text="Najnoviji pregled uključuje rezultate od 2013. do kraja 2025. godine."
+        align="center"
+      />
+      <ImpactCounters items={historicalImpact} />
+    </div>
+  </section>
+
+  <section class="section section--white">
+    <div class="container cta-panel cta-panel--image reveal">
+      <div>
+        <p class="eyebrow">Sljedeći korak</p>
+        <h2>Najbolji način da upoznate samoposlugu jest da se uključite.</h2>
+        <p>{site.contactGuidance}</p>
+      </div>
+      <a class="btn btn--primary" href="/kako-pomoci/">Pogledaj kako pomoći</a>
     </div>
   </section>
 </BaseLayout>

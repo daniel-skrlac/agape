@@ -1,0 +1,93 @@
+---
+interface TimelineItem {
+  year: string;
+  title: string;
+  text: string;
+}
+
+interface Props {
+  items: readonly TimelineItem[];
+}
+
+const { items } = Astro.props;
+---
+<div class="interactive-timeline reveal" data-interactive-timeline>
+  <div class="timeline-track" aria-hidden="true">
+    <span data-timeline-progress></span>
+  </div>
+  <div class="timeline-points" aria-label="Vremenska crta razvoja">
+    {items.map((item, index) => (
+      <button
+        type="button"
+        class="timeline-point"
+        data-timeline-point
+        data-index={index}
+        aria-controls={`timeline-panel-${index}`}
+        aria-expanded={index === 0 ? 'true' : 'false'}
+      >
+        <span>{item.year}</span>
+      </button>
+    ))}
+  </div>
+  <div class="timeline-panels">
+    {items.map((item, index) => (
+      <article class="timeline-panel" id={`timeline-panel-${index}`} data-timeline-panel data-index={index}>
+        <time>{item.year}</time>
+        <h3>{item.title}</h3>
+        <p>{item.text}</p>
+      </article>
+    ))}
+  </div>
+</div>
+
+<script>
+  const timelines = document.querySelectorAll('[data-interactive-timeline]');
+
+  timelines.forEach((timeline) => {
+    const buttons = [...timeline.querySelectorAll('[data-timeline-point]')] as HTMLButtonElement[];
+    const panels = [...timeline.querySelectorAll('[data-timeline-panel]')] as HTMLElement[];
+    const progress = timeline.querySelector('[data-timeline-progress]');
+    if (buttons.length === 0 || panels.length === 0) return;
+
+    timeline.classList.add('is-enhanced');
+
+    const activate = (index: number) => {
+      buttons.forEach((button, buttonIndex) => {
+        const active = buttonIndex === index;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-expanded', String(active));
+      });
+      panels.forEach((panel, panelIndex) => {
+        const active = panelIndex === index;
+        panel.classList.toggle('is-active', active);
+        panel.hidden = !active;
+      });
+      if (progress instanceof HTMLElement) {
+        const value = buttons.length > 1 ? index / (buttons.length - 1) : 1;
+        progress.style.transform = `scaleX(${value})`;
+      }
+    };
+
+    buttons.forEach((button, index) => {
+      button.addEventListener('click', () => activate(index));
+      button.addEventListener('keydown', (event) => {
+        if (!(event instanceof KeyboardEvent)) return;
+        const current = buttons.indexOf(button);
+        const next = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+        const previous = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
+        if (!next && !previous) return;
+        event.preventDefault();
+        const target = next
+          ? (current + 1) % buttons.length
+          : (current - 1 + buttons.length) % buttons.length;
+        const nextButton = buttons[target];
+        if (nextButton instanceof HTMLElement) {
+          nextButton.focus();
+          activate(target);
+        }
+      });
+    });
+
+    activate(0);
+  });
+</script>

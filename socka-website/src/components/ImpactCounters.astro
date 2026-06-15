@@ -1,0 +1,46 @@
+---
+interface ImpactItem {
+  value: string;
+  label: string;
+  note: string;
+}
+
+interface Props {
+  items: readonly ImpactItem[];
+}
+
+const { items } = Astro.props;
+
+function counterParts(value: string) {
+  const suffixMatch = value.match(/[^\d.]+$/);
+  const suffix = suffixMatch ? suffixMatch[0] : value.endsWith('.') ? '.' : '';
+  const numeric = Number(value.replace(/[^\d]/g, ''));
+  return {
+    target: Number.isFinite(numeric) ? numeric : 0,
+    suffix,
+    plain: /^\d{4}\.?$/.test(value)
+  };
+}
+---
+<div class="impact-orbit" data-impact-counters>
+  {items.map((item, index) => {
+    const counter = counterParts(item.value);
+    return (
+      <article class="impact-card impact-card--counter reveal" style={`--i: ${index + 1}`}>
+        <strong>
+          <span
+            class="count-up"
+            data-count-to={counter.target}
+            data-count-suffix={counter.suffix}
+            data-count-plain={counter.plain ? 'true' : 'false'}
+            aria-label={item.value}
+          >
+            {item.value}
+          </span>
+        </strong>
+        <span>{item.label}</span>
+        <p>{item.note}</p>
+      </article>
+    );
+  })}
+</div>

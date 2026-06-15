@@ -1,0 +1,23 @@
+---
+import { siFacebook, siInstagram, siTiktok, siWhatsapp } from 'simple-icons';
+import type { SocialNetwork } from '../lib/site';
+
+interface Props {
+  id: SocialNetwork;
+}
+
+const { id } = Astro.props;
+
+const iconMap = {
+  facebookPage: siFacebook,
+  facebookGroup: siFacebook,
+  instagram: siInstagram,
+  tiktok: siTiktok,
+  whatsapp: siWhatsapp
+};
+
+const icon = iconMap[id];
+---
+<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+  <path d={icon.path}></path>
+</svg>

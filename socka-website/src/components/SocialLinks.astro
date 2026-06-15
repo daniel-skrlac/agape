@@ -1,9 +1,31 @@
 ---
-import { site } from '../lib/site';
+import BrandSocialIcon from './BrandSocialIcon.astro';
+import { publishedSocialLinks } from '../lib/site';
+
+interface Props {
+  compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
+
+const actionLabel = (id: string) => (id === 'facebookGroup' ? 'Uključite se' : 'Pratite nas');
 ---
-<div class="social-grid">
-  <a href={site.social.facebook} target="_blank" rel="noreferrer"><span>Facebook</span><small>Objave i novosti</small></a>
-  <a href={site.social.instagram} target="_blank" rel="noreferrer"><span>Instagram</span><small>Fotografije i priče</small></a>
-  <a href={site.social.tiktok} target="_blank" rel="noreferrer"><span>TikTok</span><small>Kratki video sadržaj</small></a>
-  <a href={site.social.whatsapp} target="_blank" rel="noreferrer"><span>WhatsApp grupa</span><small>Brze obavijesti</small></a>
+<div class:list={['social-grid', { 'social-grid--compact': compact }]}>
+  {publishedSocialLinks.map((link) => (
+    <a
+      class={`social-grid__link social-grid__link--${link.id}`}
+      href={link.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`${link.label} - otvara se u novoj kartici`}
+    >
+      <span class="social-grid__icon" aria-hidden="true">
+        <BrandSocialIcon id={link.id} />
+      </span>
+      <span>
+        <strong>{link.shortLabel}</strong>
+        {!compact && <small>{actionLabel(link.id)} <span aria-hidden="true">↗</span></small>}
+      </span>
+    </a>
+  ))}
 </div>

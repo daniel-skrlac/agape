@@ -1,42 +1,112 @@
 ---
-import { navigation, site } from '../lib/site';
+import { navigation, publishedSocialLinks, site } from '../lib/site';
+
 const currentPath = Astro.url.pathname;
 ---
 <header class="site-header" data-header>
-  <div class="top-strip">
+  <div class="top-strip" aria-label="Brzi kontakt">
     <div class="container top-strip__inner">
       <span>{site.location}</span>
-      <span class="top-strip__dot" aria-hidden="true"></span>
-      <a href={site.social.facebook} target="_blank" rel="noreferrer">Facebook</a>
-      <a href={site.social.instagram} target="_blank" rel="noreferrer">Instagram</a>
-      <a href={site.social.tiktok} target="_blank" rel="noreferrer">TikTok</a>
-      <a href={site.social.whatsapp} target="_blank" rel="noreferrer">WhatsApp grupa</a>
+      <span aria-hidden="true">/</span>
+      <a href={`tel:${site.phone.href}`}>{site.phone.display}</a>
+      {publishedSocialLinks.slice(0, 2).map((link) => (
+        <a href={link.url} target="_blank" rel="noopener noreferrer">{link.shortLabel}</a>
+      ))}
     </div>
   </div>
   <nav class="container navbar" aria-label="Glavna navigacija">
-    <a class="brand" href="/" aria-label="Početna stranica">
-      <img src="/images/logo.jpg" alt="Logo Socijalne samoposluge" width="52" height="52" />
+    <a class="brand" href="/" aria-label={`${site.name} - početna stranica`}>
+      <img src={site.logo} alt="" width="56" height="56" loading="eager" />
       <span>
         <strong>{site.shortName}</strong>
-        <small>Socijalna samoposluga</small>
+        <small>Socijalna samoposluga Varaždin</small>
       </span>
     </a>
 
-    <input class="nav-toggle" id="nav-toggle" type="checkbox" aria-label="Otvori navigaciju" />
-    <label class="nav-toggle-label" for="nav-toggle" aria-hidden="true"><span></span></label>
+    <button
+      class="nav-toggle"
+      type="button"
+      aria-controls="primary-navigation"
+      aria-expanded="false"
+      data-nav-toggle
+    >
+      <span class="nav-toggle__lines" aria-hidden="true"></span>
+      <span class="sr-only">Otvori navigaciju</span>
+    </button>
 
-    <div class="nav-panel">
+    <div class="nav-panel" id="primary-navigation" data-nav-panel>
       <ul class="nav-links">
         {navigation.map((item) => {
           const isActive = currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href));
           return (
             <li>
-              <a class:list={[{ active: isActive }]} href={item.href}>{item.label}</a>
+              <a class:list={[{ active: isActive }]} href={item.href} aria-current={isActive ? 'page' : undefined}>
+                {item.label}
+              </a>
             </li>
           );
         })}
       </ul>
-      <a class="nav-cta" href="/kontakt/">Uključi se</a>
+      <a class="nav-cta" href="/kako-pomoci/">Želim pomoći</a>
     </div>
   </nav>
 </header>
+
+<script>
+  const toggle = document.querySelector('[data-nav-toggle]');
+  const panel = document.querySelector('[data-nav-panel]');
+
+  if (toggle instanceof HTMLButtonElement && panel instanceof HTMLElement) {
+    const focusableSelector = 'a[href], button:not([disabled])';
+    let lastFocused: Element | null = null;
+
+    const setOpen = (open: boolean) => {
+      toggle.setAttribute('aria-expanded', String(open));
+      panel.classList.toggle('is-open', open);
+      document.documentElement.classList.toggle('nav-is-open', open);
+      const label = toggle.querySelector('.sr-only');
+      if (label) label.textContent = open ? 'Zatvori navigaciju' : 'Otvori navigaciju';
+
+      if (open) {
+        lastFocused = document.activeElement;
+        const firstLink = panel.querySelector(focusableSelector);
+        if (firstLink instanceof HTMLElement) firstLink.focus();
+      } else if (lastFocused instanceof HTMLElement) {
+        lastFocused.focus();
+      }
+    };
+
+    toggle.addEventListener('click', () => {
+      setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+    });
+
+    panel.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLAnchorElement) setOpen(false);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (toggle.getAttribute('aria-expanded') !== 'true') return;
+      if (event.key === 'Escape') {
+        setOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = [...panel.querySelectorAll(focusableSelector)].filter(
+        (element) => element instanceof HTMLElement
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (!(first instanceof HTMLElement) || !(last instanceof HTMLElement)) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+  }
+</script>

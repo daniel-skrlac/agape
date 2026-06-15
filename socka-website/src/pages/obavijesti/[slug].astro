@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { absoluteUrl, site } from '../../lib/site';
 import { formatDate, noticeSlug } from '../../lib/notices';
 
 export async function getStaticPaths() {
@@ -13,12 +14,47 @@ export async function getStaticPaths() {
 
 const { entry } = Astro.props;
 const { Content } = await render(entry);
+const slug = noticeSlug(entry.id);
+const articleJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: entry.data.title,
+  description: entry.data.description,
+  datePublished: entry.data.pubDate.toISOString(),
+  dateModified: (entry.data.updatedDate || entry.data.pubDate).toISOString(),
+  image: absoluteUrl(entry.data.image),
+  author: {
+    '@type': 'Organization',
+    name: site.name
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: site.name,
+    logo: {
+      '@type': 'ImageObject',
+      url: absoluteUrl(site.logo)
+    }
+  },
+  mainEntityOfPage: absoluteUrl(`/obavijesti/${slug}/`)
+};
 ---
-<BaseLayout title={entry.data.title} description={entry.data.description}>
-  <section class="section-tight">
+<BaseLayout
+  title={entry.data.title}
+  description={entry.data.description}
+  image={entry.data.image}
+  canonicalPath={`/obavijesti/${slug}/`}
+  type="article"
+  structuredData={articleJsonLd}
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Obavijesti', href: '/obavijesti/' },
+    { label: entry.data.title, href: `/obavijesti/${slug}/` }
+  ]}
+>
+  <section class="section section--white">
     <article class="article-content">
-      <img src={entry.data.image} alt={entry.data.imageAlt || entry.data.title} />
-      <p class="article-meta">{entry.data.category} • {formatDate(entry.data.pubDate)}</p>
+      <img src={entry.data.image} alt={entry.data.imageAlt || entry.data.title} width="1200" height="750" />
+      <p class="article-meta">{entry.data.category} / {formatDate(entry.data.pubDate)}</p>
       <h1>{entry.data.title}</h1>
       <Content />
     </article>

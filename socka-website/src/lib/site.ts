@@ -1,43 +1,308 @@
+export type SocialNetwork = 'facebookPage' | 'facebookGroup' | 'instagram' | 'tiktok' | 'whatsapp';
+
+export interface SocialLink {
+  id: SocialNetwork;
+  label: string;
+  shortLabel: string;
+  url: string;
+  verified: boolean;
+  description: string;
+}
+
+export interface ContactDetail {
+  label: string;
+  value: string;
+  href?: string;
+  verified: boolean;
+  verificationNote: string;
+}
+
 export const site = {
-  name: 'Socijalna samoposluga "Kruh sv. Antuna"',
+  name: 'Socijalna samoposluga "Kruh sv. Antuna" Varaždin',
   shortName: 'Kruh sv. Antuna',
+  organizationType: 'Volonterski projekt',
   location: 'Varaždin',
+  locale: 'hr_HR',
+  baseUrl: import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321',
+  logo: '/images/logo.jpg',
+  defaultImage: '/images/og/socka-share.png',
   description:
-    'Volonterski projekt za pomoć najpotrebnijima kroz prikupljanje i podjelu namirnica i osnovnih potrepština.',
-  email: 'kontakt@example.com',
-  phone: '+385 00 000 0000',
-  address: 'Adresa će biti dodana naknadno',
-  social: {
-    facebook: 'https://www.facebook.com/p/Socijalna-samoposluga-Kruh-sv-Antuna-Vara%C5%BEdin-100064545832081/',
-    instagram: '#',
-    tiktok: '#',
-    whatsapp: '#'
+    'Socijalna samoposluga "Kruh sv. Antuna" Varaždin povezuje donatore, volontere i susjede kako bi osnovne namirnice postale konkretna podrška obiteljima u potrebi.',
+  contactGuidance:
+    'Želite donirati, volontirati ili pokrenuti akciju? Javite se i zajedno ćemo dogovoriti najkorisniji sljedeći korak.',
+  address: {
+    street: 'Josipa Kozarca 26D',
+    postalCode: '42000',
+    city: 'Varaždin',
+    country: 'HR',
+    display: 'Josipa Kozarca 26D, 42000 Varaždin',
+    verified: true,
+    verificationNote: 'Potvrđeno u materijalima dostavljenima 13. travnja 2026.'
+  },
+  phone: {
+    display: '+385 99 213 9616',
+    href: '+385992139616',
+    verified: true,
+    verificationNote: 'Potvrđeno u materijalima dostavljenima 13. travnja 2026.'
+  },
+  email: {
+    display: 'socijalna.samoposluga.vz@gmail.com',
+    href: 'socijalna.samoposluga.vz@gmail.com',
+    verified: true,
+    verificationNote: 'Potvrđeno u materijalima dostavljenima 13. travnja 2026.'
+  },
+  mapLinks: {
+    google:
+      'https://www.google.com/maps/search/?api=1&query=Josipa%20Kozarca%2026D%2C%2042000%20Vara%C5%BEdin',
+    openStreetMap:
+      'https://www.openstreetmap.org/search?query=Josipa%20Kozarca%2026D%2C%2042000%20Vara%C5%BEdin',
+    embed:
+      'https://www.google.com/maps?q=Josipa%20Kozarca%2026D%2C%2042000%20Vara%C5%BEdin&output=embed'
   }
-};
+} as const;
 
 export const navigation = [
   { label: 'Početna', href: '/' },
   { label: 'Obavijesti', href: '/obavijesti/' },
   { label: 'O nama', href: '/o-nama/' },
-  { label: 'Misija i vizija', href: '/misija-vizija-ciljevi/' },
+  { label: 'Kako pomoći', href: '/kako-pomoci/' },
   { label: 'Volonteri', href: '/volonteri/' },
   { label: 'Kontakt', href: '/kontakt/' }
-];
+] as const;
 
-export const contentAreas = [
+export const footerNavigation = [
+  ...navigation,
+  { label: 'Politika privatnosti', href: '/politika-privatnosti/' },
+  { label: 'Izjava o pristupačnosti', href: '/izjava-o-pristupacnosti/' }
+] as const;
+
+export const socialLinks: SocialLink[] = [
   {
-    eyebrow: 'Informacije za građane',
-    title: 'Kako pomoći',
-    text: 'Ovdje možete dodati kratak i jasan sadržaj o načinima uključivanja, donacijama i korisnim uputama.'
+    id: 'facebookPage',
+    label: 'Facebook stranica',
+    shortLabel: 'Facebook',
+    url: 'https://www.facebook.com/p/Socijalna-samoposluga-Kruh-sv-Antuna-Vara%C5%BEdin-100064545832081/',
+    verified: true,
+    description: 'Objave, fotografije i pozivi zajednici.'
   },
   {
-    eyebrow: 'Za volontere',
-    title: 'Uključivanje u rad',
-    text: 'Ovdje možete predstaviti volonterske aktivnosti, prijave, termine i najvažnije informacije za nove volontere.'
+    id: 'facebookGroup',
+    label: 'Facebook grupa',
+    shortLabel: 'Grupa',
+    url: 'https://www.facebook.com/groups/743086419040582/',
+    verified: true,
+    description: 'Mjesto za dijeljenje akcija i podrške.'
   },
   {
-    eyebrow: 'Za zajednicu',
-    title: 'Aktualne potrebe',
-    text: 'Ovdje možete istaknuti artikle, akcije, pozive i druge obavijesti koje se često mijenjaju.'
+    id: 'instagram',
+    label: 'Instagram',
+    shortLabel: 'Instagram',
+    url: 'https://www.instagram.com/socijalna_samoposluga_varazdin',
+    verified: true,
+    description: 'Trenuci s akcija i volonterskog rada.'
+  },
+  {
+    id: 'tiktok',
+    label: 'TikTok',
+    shortLabel: 'TikTok',
+    url: 'https://www.tiktok.com/@socijalna.samopos',
+    verified: true,
+    description: 'Kratki video zapisi i pozivi na uključivanje.'
+  },
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp grupa',
+    shortLabel: 'WhatsApp',
+    url: '',
+    verified: false,
+    description: 'Podržano u konfiguraciji, ali skriveno dok se ne potvrdi pozivnica.'
   }
 ];
+
+export const publishedSocialLinks = socialLinks.filter((link) => link.url && link.verified);
+
+export const contactDetails: ContactDetail[] = [
+  {
+    label: 'Adresa',
+    value: site.address.display,
+    href: site.mapLinks.google,
+    verified: site.address.verified,
+    verificationNote: site.address.verificationNote
+  },
+  {
+    label: 'Telefon',
+    value: site.phone.display,
+    href: `tel:${site.phone.href}`,
+    verified: site.phone.verified,
+    verificationNote: site.phone.verificationNote
+  },
+  {
+    label: 'E-pošta',
+    value: site.email.display,
+    href: `mailto:${site.email.href}`,
+    verified: site.email.verified,
+    verificationNote: site.email.verificationNote
+  }
+];
+
+export const donationCategories = [
+  'brašno',
+  'šećer',
+  'ulje',
+  'trajno mlijeko',
+  'tjestenina',
+  'riža, palenta ili griz',
+  'konzervirano povrće i grahorice',
+  'pasirana rajčica i gotova jela',
+  'higijenske potrepštine',
+  'sredstva za čišćenje i pranje',
+  'dječja hrana',
+  'pelene i vlažne maramice'
+] as const;
+
+export const donationGroups = [
+  {
+    title: 'Osnovne namirnice',
+    icon: 'basket',
+    items: ['brašno', 'šećer', 'ulje', 'trajno mlijeko', 'tjestenina', 'riža, palenta ili griz']
+  },
+  {
+    title: 'Trajna hrana',
+    icon: 'pantry',
+    items: ['konzervirano povrće i grahorice', 'pasirana rajčica i gotova jela']
+  },
+  {
+    title: 'Higijena i dom',
+    icon: 'spark',
+    items: ['higijenske potrepštine', 'sredstva za čišćenje i pranje']
+  },
+  {
+    title: 'Djeca',
+    icon: 'care',
+    items: ['dječja hrana', 'pelene i vlažne maramice']
+  }
+] as const;
+
+export const supportWays = [
+  {
+    title: 'Doniraj proizvode',
+    icon: 'bag',
+    text: 'Jedna vrećica trajnih namirnica može nekome značiti mirniji tjedan.',
+    detail: 'Birajte proizvode s duljim rokom trajanja i neotvorenom ambalažom.',
+    relatedGroups: ['Osnovne namirnice', 'Trajna hrana', 'Higijena i dom', 'Djeca']
+  },
+  {
+    title: 'Volontiraj',
+    icon: 'hands',
+    text: 'Vrijeme, ruke i dobra energija jednako su vrijedni kao donacija.',
+    detail: 'Volonteri sortiraju, slažu police, pripremaju pakete i pomažu u akcijama.',
+    relatedGroups: ['Osnovne namirnice', 'Trajna hrana']
+  },
+  {
+    title: 'Organiziraj akciju',
+    icon: 'spark',
+    text: 'Razred, ured, udruga, župa ili ekipa prijatelja mogu napraviti veliku razliku.',
+    detail: 'Najbolje je unaprijed dogovoriti proizvode, poruku akcije i način predaje.',
+    relatedGroups: ['Osnovne namirnice', 'Higijena i dom']
+  },
+  {
+    title: 'Uključi zajednicu',
+    icon: 'people',
+    text: 'Pozovite ljude oko sebe da sudjeluju i podijelite provjerene informacije.',
+    detail: 'Dobra objava ili razgovor često dovede nove donatore i volontere.',
+    relatedGroups: ['Trajna hrana', 'Djeca']
+  },
+  {
+    title: 'Uključi školu ili tvrtku',
+    icon: 'building',
+    text: 'Organizirana skupina lakše prikupi više proizvoda i potakne druge na uključivanje.',
+    detail: 'Javite se prije početka kako bismo dogovorili što je najkorisnije prikupiti.',
+    relatedGroups: ['Osnovne namirnice', 'Higijena i dom', 'Djeca']
+  },
+  {
+    title: 'Dogovori predaju',
+    icon: 'pin',
+    text: 'Kratki poziv ili e-pošta pomažu da donacija stigne u pravom trenutku.',
+    detail: 'Tako volonteri mogu pripremiti prostor i odmah usmjeriti proizvode dalje.',
+    relatedGroups: ['Osnovne namirnice', 'Trajna hrana']
+  }
+] as const;
+
+export const currentSupportInfo = {
+  urgentAppeals: [] as string[],
+  currentNeededProducts: [] as string[],
+  collectionInstructions: [] as string[]
+};
+
+export const historyTimeline = [
+  {
+    year: '2013.',
+    title: 'Ideja postaje mjesto pomoći',
+    text: 'Volonteri i Franjevački svjetovni red pokreću prostor u kojem donirana hrana i higijenske potrepštine dobivaju jasan put do ljudi kojima trebaju.'
+  },
+  {
+    year: '2014. - 2020.',
+    title: 'Zajednica puni police',
+    text: 'Škole, župe, tvrtke, udruge i građani uključuju se kroz akcije prikupljanja. Sve više ljudi prepoznaje da redovita mala pomoć može puno značiti.'
+  },
+  {
+    year: '2021. - 2023.',
+    title: 'Deset godina ustrajnosti',
+    text: 'Samoposluga ulazi u drugo desetljeće rada s tisućama podijeljenih paketa i volonterima koji dokazuju da mala, redovita pomoć mijenja svakodnevicu.'
+  },
+  {
+    year: '2024. - 2025.',
+    title: 'Novi zamah',
+    text: 'Najnoviji pregled pokazuje rast broja paketa i vrijednosti pomoći. Zajednica i dalje odgovara onda kada je podrška najpotrebnija.'
+  },
+  {
+    year: 'Danas',
+    title: 'Daruj malo, pomozi puno',
+    text: 'Svaka donacija, sat volontiranja i dobro organizirana akcija pretvaraju se u konkretnu podršku za susjede u Varaždinu.'
+  }
+] as const;
+
+export const historicalImpact = [
+  {
+    value: '29.492',
+    label: 'paketa pomoći',
+    note: 'ukupno od 2013. do kraja 2025.'
+  },
+  {
+    value: '31.295',
+    label: 'volonterskih sati',
+    note: 'vrijeme darovano zajednici'
+  },
+  {
+    value: '614.000 EUR',
+    label: 'vrijednosti pomoći',
+    note: 'procijenjena vrijednost podijeljenih paketa'
+  },
+  {
+    value: '2025.',
+    label: 'najnoviji obrađeni pregled',
+    note: '2.988 paketa i 1.453 volonterska sata u toj godini'
+  }
+] as const;
+
+export const galleryImages = [
+  {
+    src: '/images/recent/volonterke-u-samoposluzi.webp',
+    alt: 'Dvije volonterke u prostoru socijalne samoposluge okružene prikupljenim namirnicama',
+    caption: 'Volonteri pretvaraju donacije u spremne pakete'
+  },
+  {
+    src: '/images/recent/volonter-s-namirnicama.webp',
+    alt: 'Volonter u prostoru socijalne samoposluge uz kutije s prehrambenim proizvodima',
+    caption: 'Svaka polica počinje nečijom odlukom da pomogne'
+  },
+  {
+    src: '/images/community/pripremljene-donacije.webp',
+    alt: 'Pripremljene kutije s namirnicama i higijenskim potrepštinama u prostoru samoposluge',
+    caption: 'Paketi se pripremaju pažljivo i odgovorno'
+  }
+] as const;
+
+export function absoluteUrl(path = '/') {
+  return new URL(path, site.baseUrl).toString();
+}

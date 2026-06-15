@@ -1,0 +1,103 @@
+---
+import { donationGroups, supportWays } from '../lib/site';
+---
+<div class="help-path" data-help-path>
+  <div class="help-path__steps" role="tablist" aria-label="Načini pomoći">
+    {supportWays.map((way, index) => (
+      <button
+        type="button"
+        class:list={['help-step reveal', { 'is-active': index === 0 }]}
+        style={`--i: ${index + 1}`}
+        role="tab"
+        aria-selected={index === 0 ? 'true' : 'false'}
+        aria-controls={`help-panel-${index}`}
+        data-help-step
+        data-related={way.relatedGroups.join('|')}
+      >
+        <span class={`help-step__icon help-step__icon--${way.icon}`} aria-hidden="true"></span>
+        <small>0{index + 1}</small>
+        <strong>{way.title}</strong>
+      </button>
+    ))}
+  </div>
+
+  <div class="help-path__content">
+    <div class="help-panels">
+      {supportWays.map((way, index) => (
+        <article
+          class:list={['help-panel reveal', { 'is-active': index === 0 }]}
+          id={`help-panel-${index}`}
+          role="tabpanel"
+          data-help-panel
+          style={`--i: ${index + 1}`}
+        >
+          <p class="eyebrow">Kako možete pomoći</p>
+          <h3>{way.title}</h3>
+          <p>{way.text}</p>
+          <strong>{way.detail}</strong>
+        </article>
+      ))}
+    </div>
+
+    <aside class="donation-groups donation-groups--path reveal" aria-label="Korisne kategorije donacija">
+      {donationGroups.map((group) => (
+        <article class="donation-group" data-donation-group={group.title}>
+          <div>
+            <span class={`donation-group__icon donation-group__icon--${group.icon}`} aria-hidden="true"></span>
+            <strong>{group.title}</strong>
+          </div>
+          <ul>
+            {group.items.map((item) => <li>{item}</li>)}
+          </ul>
+        </article>
+      ))}
+    </aside>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('[data-help-path]').forEach((root) => {
+    const steps = [...root.querySelectorAll('[data-help-step]')] as HTMLButtonElement[];
+    const panels = [...root.querySelectorAll('[data-help-panel]')] as HTMLElement[];
+    const groups = [...root.querySelectorAll('[data-donation-group]')] as HTMLElement[];
+    if (steps.length === 0 || panels.length === 0) return;
+
+    root.classList.add('is-enhanced');
+
+    const activate = (index: number) => {
+      const activeStep = steps[index];
+      const related = new Set((activeStep.dataset.related || '').split('|').filter(Boolean));
+
+      steps.forEach((step, stepIndex) => {
+        const active = stepIndex === index;
+        step.classList.toggle('is-active', active);
+        step.setAttribute('aria-selected', String(active));
+      });
+
+      panels.forEach((panel, panelIndex) => {
+        const active = panelIndex === index;
+        panel.classList.toggle('is-active', active);
+        panel.hidden = !active;
+      });
+
+      groups.forEach((group) => {
+        group.classList.toggle('is-related', related.has(group.dataset.donationGroup || ''));
+      });
+    };
+
+    steps.forEach((step, index) => {
+      step.addEventListener('click', () => activate(index));
+      step.addEventListener('keydown', (event) => {
+        if (!(event instanceof KeyboardEvent)) return;
+        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return;
+        event.preventDefault();
+        const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+        const nextIndex = (index + direction + steps.length) % steps.length;
+        steps[nextIndex].focus();
+        activate(nextIndex);
+      });
+    });
+
+    activate(0);
+  });
+</script>

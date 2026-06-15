@@ -1,19 +1,14 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import PageHero from '../components/PageHero.astro';
-import ContentFrame from '../components/ContentFrame.astro';
 ---
-<BaseLayout title="Misija i vizija">
-  <PageHero
-    eyebrow="Smjer i vrijednosti"
-    title="Misija, vizija i ciljevi."
-    text="Ovdje kasnije možete jasno napisati temeljne vrijednosti, dugoročni smjer i konkretne ciljeve projekta."
-  />
-  <section class="section-tight">
-    <div class="container content-grid">
-      <ContentFrame eyebrow="Misija" title="Zašto postojimo" text="Dodajte misiju projekta u nekoliko jasnih rečenica." number="01" />
-      <ContentFrame eyebrow="Vizija" title="Što želimo graditi" text="Dodajte dugoročnu viziju i sliku zajednice koju želite poticati." number="02" />
-      <ContentFrame eyebrow="Ciljevi" title="Što želimo postići" text="Dodajte najvažnije ciljeve i konkretne smjerove razvoja." number="03" />
+<BaseLayout title="Misija, vizija i ciljevi" description="Misija, vizija i ciljevi sada su dio stranice O nama." canonicalPath="/o-nama/" noindex>
+  <meta http-equiv="refresh" content="0; url=/o-nama/" slot="head" />
+  <section class="section section--white">
+    <div class="container empty-state empty-state--page">
+      <p class="eyebrow">Preusmjerenje</p>
+      <h1>Misija, vizija i ciljevi nalaze se na stranici O nama.</h1>
+      <p>Ako preusmjeravanje ne počne automatski, otvorite stranicu O nama.</p>
+      <a class="btn btn--primary" href="/o-nama/">O nama</a>
     </div>
   </section>
 </BaseLayout>

@@ -2,21 +2,84 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageHero from '../components/PageHero.astro';
 import SectionTitle from '../components/SectionTitle.astro';
-import ContentFrame from '../components/ContentFrame.astro';
+import VolunteerJourney from '../components/VolunteerJourney.astro';
+import VolunteerRoles from '../components/VolunteerRoles.astro';
+import { site } from '../lib/site';
 ---
-<BaseLayout title="Volonteri">
+<BaseLayout
+  title="Volonteri"
+  description="Uključite se kao volonter, škola, student, tvrtka ili skupina građana u rad Socijalne samoposluge Kruh sv. Antuna Varaždin."
+  canonicalPath="/volonteri/"
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Volonteri', href: '/volonteri/' }
+  ]}
+>
   <PageHero
-    eyebrow="Uključi se"
-    title="Stranica za volontere i sve koji žele pomoći."
-    text="Ovdje možete dodati informacije o prijavi, vrstama pomoći, očekivanjima i kontaktu za nove volontere."
+    eyebrow="Volonteri"
+    title="Pridružite se volontiranju u Varaždinu."
+    text="Volontiranje je konkretno i jednostavno: javite se, dogovorimo termin i zajedno odaberemo zadatak koji najviše pomaže."
   />
-  <section class="section-tight">
+
+  <section class="section section--white">
+    <div class="container split-section split-section--balanced">
+      <figure class="image-block image-block--wide reveal">
+        <img src="/images/recent/volonter-s-namirnicama.webp" alt="Volonter u prostoru Socijalne samoposluge uz prikupljene namirnice" width="1200" height="1600" loading="lazy" />
+      </figure>
+      <div class="editorial-block reveal">
+        <p class="eyebrow">Što volonteri rade</p>
+        <h2>Svaki zadatak pomaže da donacija stigne dalje.</h2>
+        <p>
+          Volonteri pomažu u prikupljanju proizvoda, prijevozu, istovaru, slaganju polica, pripremi paketa, akcijama u trgovinama i komunikaciji s ljudima koji žele pomoći.
+        </p>
+        <p>
+          Ne morate imati posebno iskustvo. Dovoljni su odgovornost, poštovanje i spremnost da se dio vremena daruje za nečiji mirniji dan.
+        </p>
+        <div class="button-row">
+          <a class="btn btn--primary" href="/kontakt/">Javi se za volontiranje</a>
+          <a class="btn btn--secondary" href="/kako-pomoci/">Drugi načini pomoći</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section volunteer-roles-section">
     <div class="container">
-      <SectionTitle eyebrow="Volonterski sadržaj" title="Okviri za informacije koje će ljudima pomoći da se lakše uključe." />
-      <div class="content-grid">
-        <ContentFrame eyebrow="Prijava" title="Kako se prijaviti" text="Dodajte jasan postupak prijave za nove volontere." number="01" />
-        <ContentFrame eyebrow="Aktivnosti" title="Gdje je pomoć potrebna" text="Objasnite tipične volonterske zadatke i termine." number="02" />
-        <ContentFrame eyebrow="Kontakt" title="Kome se javiti" text="Dodajte kontakt osobu, e-mail, telefon ili WhatsApp grupu." number="03" />
+      <SectionTitle
+        eyebrow="Zadaci"
+        title="Odaberite što vas zanima i pogledajte kako izgleda pomoć."
+        text="Ne morate znati sve unaprijed. Volonterski zadaci su jasni, praktični i rade se u dogovoru s ekipom."
+      />
+      <VolunteerRoles />
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <SectionTitle
+        eyebrow="Volonterski put"
+        title="Prvi dolazak može biti jednostavan."
+        text="Od prve poruke do konkretnog zadatka, sve se dogovara jasno i bez pritiska."
+      />
+      <VolunteerJourney />
+    </div>
+  </section>
+
+  <section class="section section--soft">
+    <div class="container split-section">
+      <div class="editorial-block reveal">
+        <p class="eyebrow">Kako početi</p>
+        <h2>Najbolji prvi korak je kratka poruka ili poziv.</h2>
+        <p>{site.contactGuidance}</p>
+        <p>
+          Recite jeste li pojedinac, škola, grupa ili tvrtka, koliko ljudi se želi uključiti i kakav oblik pomoći vam je najbliži.
+        </p>
+      </div>
+      <div class="volunteer-checklist reveal" aria-label="Priprema za volontiranje">
+        <span>Odaberite oblik pomoći</span>
+        <span>Dogovorite termin ili akciju</span>
+        <span>Dođite spremni za konkretan zadatak</span>
+        <span>Podijelite dobar primjer s drugima</span>
       </div>
     </div>
   </section>

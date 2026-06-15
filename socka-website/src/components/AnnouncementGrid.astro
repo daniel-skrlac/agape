@@ -1,0 +1,44 @@
+---
+import NoticeCard from './NoticeCard.astro';
+import { noticeSlug } from '../lib/notices';
+
+interface Props {
+  notices: Array<any>;
+  emptyTitle?: string;
+  emptyText?: string;
+  limit?: number;
+}
+
+const {
+  notices,
+  emptyTitle = 'Nove javne objave pojavit će se nakon objave.',
+  emptyText = 'Za donacije, volontiranje ili dogovor akcije možete nam se odmah javiti.',
+  limit
+} = Astro.props;
+
+const visibleNotices = typeof limit === 'number' ? notices.slice(0, limit) : notices;
+---
+{visibleNotices.length > 0 ? (
+  <div class="notice-grid announcement-grid">
+    {visibleNotices.map((notice, index) => (
+      <NoticeCard
+        href={`/obavijesti/${noticeSlug(notice.id)}/`}
+        title={notice.data.title}
+        description={notice.data.description}
+        pubDate={notice.data.pubDate}
+        image={notice.data.image}
+        imageAlt={notice.data.imageAlt}
+        category={notice.data.category}
+        featured={notice.data.featured}
+        style={`--i: ${index + 1}`}
+      />
+    ))}
+  </div>
+) : (
+  <div class="empty-state empty-state--announcements reveal">
+    <p class="eyebrow">Obavijesti</p>
+    <h2>{emptyTitle}</h2>
+    <p>{emptyText}</p>
+    <a class="btn btn--secondary" href="/kontakt/">Kontakt</a>
+  </div>
+)}

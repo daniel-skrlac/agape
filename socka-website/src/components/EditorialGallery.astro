@@ -1,0 +1,11 @@
+---
+import { galleryImages } from '../lib/site';
+---
+<div class="editorial-gallery">
+  {galleryImages.map((image, index) => (
+    <figure class:list={['editorial-gallery__item reveal', { 'editorial-gallery__item--wide': index === 0 }]} style={`--i: ${index + 1}`}>
+      <img src={image.src} alt={image.alt} width={index === 0 ? '1120' : '720'} height={index === 0 ? '620' : '560'} loading="lazy" />
+      <figcaption>{image.caption}</figcaption>
+    </figure>
+  ))}
+</div>

@@ -1,0 +1,73 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import HelpMethods from '../components/HelpMethods.astro';
+import PageHero from '../components/PageHero.astro';
+import SectionTitle from '../components/SectionTitle.astro';
+import { currentSupportInfo, site } from '../lib/site';
+
+const hasCurrentNeeds =
+  currentSupportInfo.urgentAppeals.length > 0 ||
+  currentSupportInfo.currentNeededProducts.length > 0 ||
+  currentSupportInfo.collectionInstructions.length > 0;
+---
+<BaseLayout
+  title="Kako pomoći"
+  description="Načini podrške Socijalnoj samoposluzi Kruh sv. Antuna Varaždin: donacije, volontiranje, organizirane akcije i uključivanje zajednice."
+  canonicalPath="/kako-pomoci/"
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Kako pomoći', href: '/kako-pomoci/' }
+  ]}
+>
+  <PageHero
+    eyebrow="Kako pomoći"
+    title="Pomoć ne mora biti velika da bi bila važna."
+    text="Donirajte trajne namirnice, pokrenite akciju, odvojite vrijeme za volontiranje ili pozovite druge da se uključe. Svaki korak vrijedi kada je dogovoren i izvediv."
+  />
+
+  {hasCurrentNeeds && (
+    <section class="section section--alert">
+      <div class="container">
+        <SectionTitle eyebrow="Aktualno" title="Trenutno najpotrebnije." />
+      </div>
+    </section>
+  )}
+
+  <section class="section section--white">
+    <div class="container">
+      <SectionTitle
+        eyebrow="Mogućnosti"
+        title="Odaberite način koji vam je najbliži."
+        text="Najbolje akcije su jednostavne: dogovorene unaprijed, jasno prikupljene i predane tamo gdje mogu odmah pomoći."
+      />
+      <HelpMethods />
+    </div>
+  </section>
+
+  <section class="section product-section">
+    <div class="container split-section split-section--balanced">
+      <figure class="image-block image-block--feature reveal">
+        <img src="/images/recent/volonterke-u-samoposluzi.webp" alt="Volonterke u prostoru Socijalne samoposluge uz prikupljene namirnice" width="1200" height="1600" loading="lazy" />
+      </figure>
+      <div class="editorial-block reveal">
+        <p class="eyebrow">Akcije prikupljanja</p>
+        <h2>Kada se zajednica pokrene, jedna košarica brzo postane puna polica.</h2>
+        <p>
+          Ako želite organizirati akciju u školi, uredu, trgovini, župi ili udruzi, javite se ranije. Zajedno možemo dogovoriti proizvode, način predaje i poruku koju ćete podijeliti s ljudima.
+        </p>
+        <a class="btn btn--primary" href="/kontakt/">Dogovori akciju</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--soft">
+    <div class="container cta-panel reveal">
+      <div>
+        <p class="eyebrow">Prvi korak</p>
+        <h2>Imate volju pomoći? To je već početak.</h2>
+        <p>{site.contactGuidance}</p>
+      </div>
+      <a class="btn btn--primary" href="/kontakt/">Kontakt</a>
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,23 @@
+---
+import { site } from '../lib/site';
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'Google karta lokacije Socijalne samoposluge' } = Astro.props;
+---
+<div class="map-embed reveal">
+  <iframe
+    title={title}
+    src={site.mapLinks.embed}
+    loading="lazy"
+    referrerpolicy="no-referrer-when-downgrade"
+    allowfullscreen
+  ></iframe>
+  <div class="map-embed__panel">
+    <span>Lokacija</span>
+    <strong>{site.address.display}</strong>
+    <a href={site.mapLinks.google} target="_blank" rel="noopener noreferrer">Otvori u Google Maps</a>
+  </div>
+</div>

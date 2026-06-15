@@ -1,30 +1,72 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import AnnouncementGrid from '../../components/AnnouncementGrid.astro';
 import PageHero from '../../components/PageHero.astro';
 import NoticeCard from '../../components/NoticeCard.astro';
-import { getPublishedNotices, noticeSlug } from '../../lib/notices';
-const notices = await getPublishedNotices();
+import { getNoticeCategories, getPublishedNotices, noticeSlug, paginateNotices } from '../../lib/notices';
+
+const allNotices = await getPublishedNotices();
+const featured = allNotices.filter((notice) => notice.data.featured);
+const categories = getNoticeCategories(allNotices);
+const { items: notices, currentPage, totalPages } = paginateNotices(allNotices);
 ---
-<BaseLayout title="Obavijesti">
+<BaseLayout
+  title="Obavijesti"
+  description="Provjerene obavijesti, akcije i pozivi Socijalne samoposluge Kruh sv. Antuna Varaždin."
+  canonicalPath="/obavijesti/"
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Obavijesti', href: '/obavijesti/' }
+  ]}
+>
   <PageHero
-    eyebrow="Novosti i pozivi"
-    title="Sve obavijesti na jednom mjestu."
-    text="Ovdje se objavljuju akcije prikupljanja, potrebe za artiklima, pozivi volonterima i druge važne informacije."
+    eyebrow="Obavijesti"
+    title="Aktualne akcije, pozivi i novosti."
+    text="Ovdje će biti objavljene javne obavijesti Socijalne samoposluge i pozivi zajednici kada budu spremni za dijeljenje."
   />
-  <section class="section-tight">
-    <div class="container notice-grid">
-      {notices.map((notice) => (
-        <NoticeCard
-          href={`/obavijesti/${noticeSlug(notice.id)}/`}
-          title={notice.data.title}
-          description={notice.data.description}
-          pubDate={notice.data.pubDate}
-          image={notice.data.image}
-          imageAlt={notice.data.imageAlt}
-          category={notice.data.category}
-          featured={notice.data.featured}
-        />
-      ))}
+
+  <section class="section section--announcements">
+    <div class="container">
+      {categories.length > 0 && (
+        <div class="filter-row" aria-label="Kategorije obavijesti">
+          <span>Kategorije:</span>
+          <a href="/obavijesti/" aria-current="page">Sve</a>
+          {categories.map((category) => <a href={`#${category.toLowerCase().replaceAll(' ', '-')}`}>{category}</a>)}
+        </div>
+      )}
+
+      {featured.length > 0 && (
+        <div class="featured-notices">
+          <h2>Izdvojeno</h2>
+          <div class="notice-grid">
+            {featured.map((notice) => (
+              <NoticeCard
+                href={`/obavijesti/${noticeSlug(notice.id)}/`}
+                title={notice.data.title}
+                description={notice.data.description}
+                pubDate={notice.data.pubDate}
+                image={notice.data.image}
+                imageAlt={notice.data.imageAlt}
+                category={notice.data.category}
+                featured={notice.data.featured}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {notices.length > 0 ? (
+        <>
+          <AnnouncementGrid notices={notices} />
+          {totalPages > 1 && (
+            <nav class="pagination" aria-label="Stranice obavijesti">
+              <span>Stranica {currentPage} od {totalPages}</span>
+            </nav>
+          )}
+        </>
+      ) : (
+        <AnnouncementGrid notices={[]} />
+      )}
     </div>
   </section>
 </BaseLayout>

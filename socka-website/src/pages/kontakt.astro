@@ -1,55 +1,76 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import GoogleMapEmbed from '../components/GoogleMapEmbed.astro';
 import PageHero from '../components/PageHero.astro';
 import SocialLinks from '../components/SocialLinks.astro';
-import { site } from '../lib/site';
+import { contactDetails, site } from '../lib/site';
 ---
-<BaseLayout title="Kontakt">
+<BaseLayout
+  title="Kontakt"
+  description="Kontakt podaci, lokacija i službeni društveni kanali Socijalne samoposluge Kruh sv. Antuna Varaždin."
+  canonicalPath="/kontakt/"
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Kontakt', href: '/kontakt/' }
+  ]}
+>
   <PageHero
-    eyebrow="Kontakt i društvene mreže"
-    title="Povežite se sa Socijalnom samoposlugom."
-    text="Ovdje možete urediti kontakt podatke, društvene mreže i osnovne upute za javljanje."
+    eyebrow="Kontakt"
+    title="Javite nam se."
+    text="Javite nam se za donacije, volontiranje ili organiziranje akcije. Zajedno ćemo dogovoriti najkorisniji sljedeći korak."
   />
-  <section class="section-tight">
-    <div class="container contact-grid">
-      <div class="contact-card">
+
+  <section class="section section--white">
+    <div class="container contact-grid contact-grid--modern">
+      <div class="contact-card reveal">
+        <p class="eyebrow">Podaci</p>
+        <h2>Kontakt za dogovor pomoći</h2>
+        <p>Najlakše je nazvati ili poslati e-poštu prije dolaska.</p>
+        <div class="quick-actions" aria-label="Brze kontakt akcije">
+          <a class="btn btn--primary" href={`tel:${site.phone.href}`}>Nazovi</a>
+          <a class="btn btn--secondary" href={`mailto:${site.email.href}`}>Pošalji e-poštu</a>
+        </div>
         <dl>
           <div>
-            <dt>Adresa</dt>
-            <dd>{site.address}</dd>
+            <dt>Naziv</dt>
+            <dd>{site.name}</dd>
           </div>
-          <div>
-            <dt>Email</dt>
-            <dd><a href={`mailto:${site.email}`}>{site.email}</a></dd>
-          </div>
-          <div>
-            <dt>Telefon</dt>
-            <dd><a href={`tel:${site.phone}`}>{site.phone}</a></dd>
-          </div>
+          {contactDetails.map((item) => (
+            <div>
+              <dt>{item.label}</dt>
+              <dd>
+                {item.href ? <a href={item.href} target={item.href.startsWith('http') ? '_blank' : undefined} rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}>{item.value}</a> : item.value}
+              </dd>
+            </div>
+          ))}
         </dl>
       </div>
-      <div class="form-card">
-        <form class="form-grid">
-          <div class="field">
-            <label for="name">Ime i prezime</label>
-            <input id="name" name="name" placeholder="Vaše ime" />
-          </div>
-          <div class="field">
-            <label for="email">Email</label>
-            <input id="email" name="email" type="email" placeholder="vas@email.com" />
-          </div>
-          <div class="field">
-            <label for="message">Poruka</label>
-            <textarea id="message" name="message" placeholder="Ovdje unesite poruku..."></textarea>
-          </div>
-          <button class="btn btn--primary" type="button">Forma je pripremljena za kasnije spajanje</button>
-        </form>
-      </div>
+
+      <GoogleMapEmbed />
     </div>
   </section>
-  <section class="section-tight">
-    <div class="container">
+
+  <section class="section social-contact-section">
+    <div class="container split-section">
+      <div class="editorial-block reveal">
+        <p class="eyebrow">Društvene mreže</p>
+        <h2>Pratite službene kanale i podijelite akcije s ljudima koji žele pomoći.</h2>
+        <p>
+          Društvene mreže najbrži su način da doznate za nove akcije, fotografije s terena i pozive zajednici.
+        </p>
+      </div>
       <SocialLinks />
+    </div>
+  </section>
+
+  <section class="section section--soft">
+    <div class="container cta-panel reveal">
+      <div>
+        <p class="eyebrow">Sljedeći korak</p>
+        <h2>Javite nam se za donacije, volontiranje ili organiziranje akcije.</h2>
+        <p>Kratak dogovor pomaže da svaka donacija i svaki sat volontiranja budu dobro iskorišteni.</p>
+      </div>
+      <a class="btn btn--primary" href="/kako-pomoci/">Pogledaj načine pomoći</a>
     </div>
   </section>
 </BaseLayout>

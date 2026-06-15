@@ -1,0 +1,109 @@
+---
+import { historicalImpact, site } from '../lib/site';
+
+const heroStats = historicalImpact;
+---
+<section class="hero hero--home hero--typographic hero-story" data-pointer-accent>
+  <div class="hero-connection" aria-hidden="true">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+
+  <div class="container hero__grid hero__grid--type">
+    <div class="hero__copy reveal">
+      <p class="eyebrow">Socijalna samoposluga Varaždin</p>
+      <h1 class="hero-title">
+        <span class="hero-title__line">Daruj malo.</span>
+        <span class="hero-title__line hero-title__line--accent">Pomozi puno.</span>
+      </h1>
+      <p class="lead">
+        Donacije, volonterski sati i dobro organizirane akcije ovdje brzo postaju konkretna pomoć za ljude kojima je potrebna podrška.
+      </p>
+      <div class="hero__actions">
+        <a class="btn btn--primary btn--pulse" href="/kako-pomoci/">Želim pomoći</a>
+        <a class="btn btn--secondary" href="/volonteri/">Postani volonter</a>
+        <a class="hero__link" href="/obavijesti/">Aktualne obavijesti <span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+
+    <aside class="hero-impact reveal" aria-label="Učinak zajednice od 2013. do kraja 2025." data-hero-impact>
+      <div class="hero-impact__path" aria-hidden="true"></div>
+      <p class="hero-impact__period">Od 2013. do kraja 2025.</p>
+      <div class="hero-impact__main">
+        <span data-hero-impact-value>{heroStats[0].value}</span>
+        <strong data-hero-impact-label>{heroStats[0].label}</strong>
+        <p data-hero-impact-note>{heroStats[0].note}</p>
+      </div>
+      <div class="hero-impact__choices" role="tablist" aria-label="Odaberite podatak o učinku">
+        {heroStats.map((item, index) => (
+          <button
+            type="button"
+            class:list={['hero-impact__choice', { 'is-active': index === 0 }]}
+            role="tab"
+            aria-selected={index === 0 ? 'true' : 'false'}
+            data-hero-impact-button
+            data-value={item.value}
+            data-label={item.label}
+            data-note={item.note}
+          >
+            <span>{item.value}</span>
+            <small>{item.label}</small>
+          </button>
+        ))}
+      </div>
+      <a class="hero-impact__location" href={site.mapLinks.google} target="_blank" rel="noopener noreferrer">
+        {site.address.display}
+      </a>
+    </aside>
+  </div>
+</section>
+
+<script>
+  const reduceHeroMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  document.querySelectorAll('[data-hero-impact]').forEach((heroImpact) => {
+    const buttons = [...heroImpact.querySelectorAll('[data-hero-impact-button]')] as HTMLButtonElement[];
+    const value = heroImpact.querySelector('[data-hero-impact-value]');
+    const label = heroImpact.querySelector('[data-hero-impact-label]');
+    const note = heroImpact.querySelector('[data-hero-impact-note]');
+
+    const activate = (button: HTMLButtonElement) => {
+      buttons.forEach((item) => {
+        const active = item === button;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-selected', String(active));
+      });
+      if (value) value.textContent = button.dataset.value || '';
+      if (label) label.textContent = button.dataset.label || '';
+      if (note) note.textContent = button.dataset.note || '';
+    };
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => activate(button));
+      button.addEventListener('keydown', (event) => {
+        if (!(event instanceof KeyboardEvent)) return;
+        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return;
+        event.preventDefault();
+        const current = buttons.indexOf(button);
+        const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+        const next = buttons[(current + direction + buttons.length) % buttons.length];
+        next.focus();
+        activate(next);
+      });
+    });
+  });
+
+  if (!reduceHeroMotion && window.matchMedia('(pointer: fine)').matches) {
+    document.querySelectorAll('[data-pointer-accent]').forEach((section) => {
+      if (!(section instanceof HTMLElement)) return;
+      section.addEventListener('pointermove', (event) => {
+        const rect = section.getBoundingClientRect();
+        const x = ((event.clientX - rect.left) / rect.width - 0.5).toFixed(3);
+        const y = ((event.clientY - rect.top) / rect.height - 0.5).toFixed(3);
+        section.style.setProperty('--pointer-x', x);
+        section.style.setProperty('--pointer-y', y);
+      });
+    });
+  }
+</script>
