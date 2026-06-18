@@ -9599,9 +9599,15 @@ video {
   }
 
   .site-header.nav-open .nav-toggle {
-    opacity: 0;
-    pointer-events: none;
-    transform: scale(0.92);
+    position: fixed;
+    top: calc(18px + env(safe-area-inset-top));
+    right: max(18px, var(--mobile-gutter));
+    z-index: calc(var(--z-nav-panel) + 2);
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 18px 42px rgba(42, 23, 52, 0.22);
   }
 
   .nav-backdrop {
@@ -9633,6 +9639,8 @@ video {
     max-height: 100dvh;
     gap: 18px;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     padding: calc(18px + env(safe-area-inset-top)) 18px calc(22px + env(safe-area-inset-bottom));
     border: 0;
     border-radius: 28px 0 0 28px;
@@ -9640,22 +9648,25 @@ video {
       radial-gradient(circle at 92% 8%, rgba(255, 209, 102, 0.24), transparent 12rem),
       linear-gradient(155deg, #fffaf4, #fff3e9 48%, #fffdf8);
     box-shadow: -28px 0 70px rgba(42, 23, 52, 0.22);
-    opacity: 1;
+    opacity: 0;
     pointer-events: none;
-    transform: none;
-    clip-path: inset(0 0 0 100% round 28px 0 0 28px);
+    transform: translate3d(104%, 0, 0);
     visibility: hidden;
+    will-change: transform;
     transition:
-      clip-path 260ms cubic-bezier(.2, .8, .2, 1),
+      transform 260ms cubic-bezier(.2, .8, .2, 1),
+      opacity 180ms ease,
       visibility 0s linear 260ms;
   }
 
   .nav-panel.is-open {
-    clip-path: inset(0 0 0 0 round 28px 0 0 28px);
+    opacity: 1;
     pointer-events: auto;
+    transform: translate3d(0, 0, 0);
     visibility: visible;
     transition:
-      clip-path 260ms cubic-bezier(.2, .8, .2, 1),
+      transform 260ms cubic-bezier(.2, .8, .2, 1),
+      opacity 180ms ease,
       visibility 0s;
   }
 
@@ -9663,8 +9674,9 @@ video {
     display: flex;
     min-height: 48px;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 16px;
+    padding-right: 62px;
     color: var(--studio-ink, var(--text));
     font-weight: 950;
   }
@@ -9797,7 +9809,6 @@ video {
 
   .nav-is-open body {
     overflow: hidden;
-    touch-action: none;
   }
 }
 

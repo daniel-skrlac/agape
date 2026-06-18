@@ -45,9 +45,6 @@ const currentPath = Astro.url.pathname;
     <div class="nav-panel" id="primary-navigation" data-nav-panel>
       <div class="nav-panel__mobile-head">
         <span>Izbornik</span>
-        <button class="nav-panel__close" type="button" data-nav-close aria-label="Zatvori navigaciju">
-          <span aria-hidden="true"></span>
-        </button>
       </div>
 
       <ul class="nav-links">
@@ -133,7 +130,6 @@ const currentPath = Astro.url.pathname;
     if (!(header instanceof HTMLElement) || header.dataset.navReady === 'true') return;
 
     const toggle = header.querySelector('[data-nav-toggle]');
-    const close = header.querySelector('[data-nav-close]');
     const panel = header.querySelector('[data-nav-panel]');
     const backdrop = header.querySelector('[data-nav-backdrop]');
     if (!(toggle instanceof HTMLButtonElement) || !(panel instanceof HTMLElement)) return;
@@ -145,6 +141,13 @@ const currentPath = Astro.url.pathname;
     const focusableSelector = 'a[href], button:not([disabled])';
     let lastFocused: Element | null = null;
     let open = false;
+
+    const getFocusableElements = () => [toggle, ...panel.querySelectorAll(focusableSelector)].filter(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement &&
+        !element.hasAttribute('disabled') &&
+        element.getClientRects().length > 0
+    );
 
     const syncMobileState = () => {
       if (mobileQuery.matches) {
@@ -180,7 +183,6 @@ const currentPath = Astro.url.pathname;
     };
 
     const onToggleClick = () => setOpen(toggle.getAttribute('aria-expanded') !== 'true');
-    const onCloseClick = () => setOpen(false);
     const onPanelClick = (event: Event) => {
       const target = event.target;
       const link = target instanceof Element ? target.closest('a[href]') : null;
@@ -199,9 +201,7 @@ const currentPath = Astro.url.pathname;
       }
       if (event.key !== 'Tab') return;
 
-      const focusable = [...panel.querySelectorAll(focusableSelector)].filter(
-        (element): element is HTMLElement => element instanceof HTMLElement
-      );
+      const focusable = getFocusableElements();
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
 
@@ -220,7 +220,6 @@ const currentPath = Astro.url.pathname;
     };
 
     toggle.addEventListener('click', onToggleClick);
-    if (close instanceof HTMLButtonElement) close.addEventListener('click', onCloseClick);
     panel.addEventListener('click', onPanelClick);
     if (backdrop instanceof HTMLElement) backdrop.addEventListener('click', onBackdropClick);
     document.addEventListener('keydown', onKeydown);
@@ -231,7 +230,6 @@ const currentPath = Astro.url.pathname;
       setOpen(false, false);
       resetGlobalNavState();
       toggle.removeEventListener('click', onToggleClick);
-      if (close instanceof HTMLButtonElement) close.removeEventListener('click', onCloseClick);
       panel.removeEventListener('click', onPanelClick);
       if (backdrop instanceof HTMLElement) backdrop.removeEventListener('click', onBackdropClick);
       document.removeEventListener('keydown', onKeydown);
