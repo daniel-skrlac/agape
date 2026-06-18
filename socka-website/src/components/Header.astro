@@ -1,4 +1,5 @@
 ---
+import ExternalLinkIcon from './icons/ExternalLinkIcon.astro';
 import { navigation, publishedSocialLinks, site } from '../lib/site';
 
 const currentPath = Astro.url.pathname;
@@ -10,7 +11,10 @@ const currentPath = Astro.url.pathname;
       <span aria-hidden="true">/</span>
       <a href={`tel:${site.phone.href}`}>{site.phone.display}</a>
       {publishedSocialLinks.slice(0, 2).map((link) => (
-        <a href={link.url} target="_blank" rel="noopener noreferrer">{link.shortLabel}</a>
+        <a class="top-strip__external" href={link.url} target="_blank" rel="noopener noreferrer" aria-label={`${link.shortLabel} - otvara se u novoj kartici`}>
+          {link.shortLabel}
+          <ExternalLinkIcon />
+        </a>
       ))}
     </div>
   </div>

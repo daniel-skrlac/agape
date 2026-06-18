@@ -1,6 +1,5 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import PageHero from '../components/PageHero.astro';
 import SectionTitle from '../components/SectionTitle.astro';
 import VolunteerJourney from '../components/VolunteerJourney.astro';
 import VolunteerRoles from '../components/VolunteerRoles.astro';
@@ -15,13 +14,47 @@ import { site } from '../lib/site';
     { label: 'Volonteri', href: '/volonteri/' }
   ]}
 >
-  <PageHero
-    eyebrow="Volonteri"
-    title="Pridružite se volontiranju u Varaždinu."
-    text="Volontiranje je konkretno i jednostavno: javite se, dogovorimo termin i zajedno odaberemo zadatak koji najviše pomaže."
-  />
+  <section class="volunteer-page-hero" data-scroll-story>
+    <div class="container volunteer-page-hero__grid">
+      <div class="volunteer-page-hero__copy reveal">
+        <p class="eyebrow">Volonteri</p>
+        <h1>Pridružite se volontiranju u Varaždinu.</h1>
+        <p class="lead">
+          Volontiranje je konkretno i jednostavno: javite se, dogovorimo termin i zajedno odaberemo zadatak koji najviše pomaže.
+        </p>
+        <div class="button-row">
+          <a class="btn btn--primary btn--pulse" href="/kontakt/">Javi se za volontiranje</a>
+          <a class="btn btn--secondary" href="#zadaci">Pogledaj zadatke</a>
+        </div>
+      </div>
 
-  <section class="section section--white">
+      <div class="volunteer-page-hero__visual reveal" style="--i: 1">
+        <figure class="volunteer-page-hero__photo volunteer-page-hero__photo--main">
+          <img src="/images/recent/volonteri-potvrde-2026.webp" alt="Volonteri s potvrdama nakon završene volonterske aktivnosti" width="1400" height="782" loading="eager" />
+        </figure>
+        <figure class="volunteer-page-hero__photo volunteer-page-hero__photo--side">
+          <img src="/images/recent/volonter-s-namirnicama.webp" alt="Volonter u prostoru Socijalne samoposluge uz prikupljene namirnice" width="1200" height="1600" loading="eager" />
+        </figure>
+        <div class="volunteer-page-hero__badge">
+          <strong>Volja + dogovor</strong>
+          <span>to je dovoljno za prvi korak</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section volunteer-roles-section" id="zadaci" data-scroll-story>
+    <div class="container">
+      <SectionTitle
+        eyebrow="Zadaci"
+        title="Odaberite zadatak koji vam najviše leži."
+        text="Fotografija i objašnjenje mijenjaju se u istom slideru."
+      />
+      <VolunteerRoles />
+    </div>
+  </section>
+
+  <section class="section section--white" data-scroll-story>
     <div class="container split-section split-section--balanced">
       <figure class="image-block image-block--wide reveal">
         <img src="/images/recent/volonter-s-namirnicama.webp" alt="Volonter u prostoru Socijalne samoposluge uz prikupljene namirnice" width="1200" height="1600" loading="lazy" />
@@ -43,18 +76,7 @@ import { site } from '../lib/site';
     </div>
   </section>
 
-  <section class="section volunteer-roles-section">
-    <div class="container">
-      <SectionTitle
-        eyebrow="Zadaci"
-        title="Odaberite što vas zanima i pogledajte kako izgleda pomoć."
-        text="Ne morate znati sve unaprijed. Volonterski zadaci su jasni, praktični i rade se u dogovoru s ekipom."
-      />
-      <VolunteerRoles />
-    </div>
-  </section>
-
-  <section class="section">
+  <section class="section" data-scroll-story>
     <div class="container">
       <SectionTitle
         eyebrow="Volonterski put"
@@ -65,7 +87,7 @@ import { site } from '../lib/site';
     </div>
   </section>
 
-  <section class="section section--soft">
+  <section class="section section--soft" data-scroll-story>
     <div class="container split-section">
       <div class="editorial-block reveal">
         <p class="eyebrow">Kako početi</p>

@@ -1,109 +1,218 @@
 ---
-import { historicalImpact, site } from '../lib/site';
+import { historicalImpact } from '../lib/site';
 
-const heroStats = historicalImpact;
+const [packages, hours, value] = historicalImpact;
+const counterTarget = (input: string) => Number(input.replace(/\D/g, ''));
 ---
-<section class="hero hero--home hero--typographic hero-story" data-pointer-accent>
-  <div class="hero-connection" aria-hidden="true">
-    <span></span>
-    <span></span>
-    <span></span>
-  </div>
+<section class="hero hero--home hero-cinema" data-hero-cinema data-scroll-story>
+  <div class="hero-cinema__wash" aria-hidden="true" data-parallax-layer="background"></div>
+  <svg class="hero-cinema__path" viewBox="0 0 900 420" aria-hidden="true" focusable="false" data-hero-path data-parallax-layer="line">
+    <path d="M60 310 C 210 120, 420 90, 540 210 S 760 340, 840 120"></path>
+  </svg>
 
-  <div class="container hero__grid hero__grid--type">
-    <div class="hero__copy reveal">
-      <p class="eyebrow">Socijalna samoposluga Varaždin</p>
-      <h1 class="hero-title">
-        <span class="hero-title__line">Daruj malo.</span>
-        <span class="hero-title__line hero-title__line--accent">Pomozi puno.</span>
+  <div class="container hero-cinema__grid">
+    <div class="hero-cinema__copy">
+      <p class="eyebrow" data-hero-eyebrow>Socijalna samoposluga Varaždin</p>
+      <h1 class="hero-title hero-title--infinity" aria-label="Daruj malo. Pomozi puno.">
+        <svg class="hero-title__infinity" viewBox="0 0 520 220" aria-hidden="true" focusable="false">
+          <path d="M48 112 C 120 18, 190 18, 260 112 S 400 206, 472 112 C 400 18, 330 18, 260 112 S 120 206, 48 112"></path>
+        </svg>
+        <span class="hero-title__line">
+          <span data-hero-line data-hero-word="Daruj" style="--hero-delay: 100ms">Daruj</span>
+          <span data-hero-line data-hero-word="malo." style="--hero-delay: 200ms">malo.</span>
+        </span>
+        <span class="hero-title__line hero-title__line--accent">
+          <span data-hero-line data-hero-word="Pomozi" style="--hero-delay: 350ms">Pomozi</span>
+          <span data-hero-line data-hero-word="puno." style="--hero-delay: 450ms">puno.</span>
+        </span>
       </h1>
-      <p class="lead">
-        Donacije, volonterski sati i dobro organizirane akcije ovdje brzo postaju konkretna pomoć za ljude kojima je potrebna podrška.
+      <p class="lead hero-lead" data-hero-description>
+        Donacije, volontiranje i dobro organizirane akcije pretvaramo u konkretnu podršku za susjede u Varaždinu.
       </p>
-      <div class="hero__actions">
+      <div class="hero__actions hero-actions" data-hero-actions>
         <a class="btn btn--primary btn--pulse" href="/kako-pomoci/">Želim pomoći</a>
         <a class="btn btn--secondary" href="/volonteri/">Postani volonter</a>
-        <a class="hero__link" href="/obavijesti/">Aktualne obavijesti <span aria-hidden="true">→</span></a>
+        <a class="hero__link" href="/obavijesti/">Aktualne obavijesti <span class="hero__link-arrow" aria-hidden="true">→</span></a>
       </div>
     </div>
 
-    <aside class="hero-impact reveal" aria-label="Učinak zajednice od 2013. do kraja 2025." data-hero-impact>
-      <div class="hero-impact__path" aria-hidden="true"></div>
-      <p class="hero-impact__period">Od 2013. do kraja 2025.</p>
-      <div class="hero-impact__main">
-        <span data-hero-impact-value>{heroStats[0].value}</span>
-        <strong data-hero-impact-label>{heroStats[0].label}</strong>
-        <p data-hero-impact-note>{heroStats[0].note}</p>
+    <div class="hero-cinema__visual" aria-label="Učinak i volonterski rad od 2013. do kraja 2025." data-parallax-layer="visual">
+      <figure class="hero-cinema__photo hero-cinema__photo--main" data-hero-photo-main data-parallax-layer="photo-main">
+        <div class="hero-cinema__photo-lift">
+          <img src="/images/recent/volonter-s-namirnicama.webp" alt="Volonter uz prikupljene namirnice u prostoru Socijalne samoposluge" width="900" height="1120" loading="eager" />
+        </div>
+      </figure>
+      <figure class="hero-cinema__photo hero-cinema__photo--side" data-hero-photo-secondary data-parallax-layer="photo-secondary">
+        <div class="hero-cinema__photo-lift">
+          <img src="/images/recent/volonterke-u-samoposluzi.webp" alt="Volonterke u prostoru Socijalne samoposluge uz prikupljene proizvode" width="760" height="980" loading="eager" />
+        </div>
+      </figure>
+      <div class="hero-cinema__impact" data-stat-card="primary" data-parallax-layer="stats">
+        <span class="hero-cinema__period">2013. - kraj 2025.</span>
+        <strong data-hero-counter data-counter-to={counterTarget(packages.value)} data-counter-final={packages.value} aria-label={packages.value}>
+          <span data-counter-output>{packages.value}</span>
+        </strong>
+        <p>{packages.label}</p>
       </div>
-      <div class="hero-impact__choices" role="tablist" aria-label="Odaberite podatak o učinku">
-        {heroStats.map((item, index) => (
-          <button
-            type="button"
-            class:list={['hero-impact__choice', { 'is-active': index === 0 }]}
-            role="tab"
-            aria-selected={index === 0 ? 'true' : 'false'}
-            data-hero-impact-button
-            data-value={item.value}
-            data-label={item.label}
-            data-note={item.note}
-          >
-            <span>{item.value}</span>
-            <small>{item.label}</small>
-          </button>
-        ))}
+      <div class="hero-cinema__facts" aria-label="Dodatni povijesni podaci">
+        <span data-stat-card="supporting">
+          <strong data-hero-counter data-counter-to={counterTarget(hours.value)} data-counter-final={hours.value} aria-label={hours.value}>
+            <span data-counter-output>{hours.value}</span>
+          </strong>
+          {hours.label}
+        </span>
+        <span data-stat-card="supporting">
+          <strong data-hero-counter data-counter-to={counterTarget(value.value)} data-counter-final={value.value} aria-label={value.value}>
+            <span data-counter-output>{value.value}</span>
+          </strong>
+          {value.label}
+        </span>
       </div>
-      <a class="hero-impact__location" href={site.mapLinks.google} target="_blank" rel="noopener noreferrer">
-        {site.address.display}
-      </a>
-    </aside>
+    </div>
   </div>
 </section>
 
 <script>
-  const reduceHeroMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  type HeroCleanup = () => void;
 
-  document.querySelectorAll('[data-hero-impact]').forEach((heroImpact) => {
-    const buttons = [...heroImpact.querySelectorAll('[data-hero-impact-button]')] as HTMLButtonElement[];
-    const value = heroImpact.querySelector('[data-hero-impact-value]');
-    const label = heroImpact.querySelector('[data-hero-impact-label]');
-    const note = heroImpact.querySelector('[data-hero-impact-note]');
+  const heroWindow = window as typeof window & {
+    sockaHeroInit?: boolean;
+    sockaHeroCleanups?: WeakMap<HTMLElement, HeroCleanup>;
+    sockaHeroRoots?: Set<HTMLElement>;
+  };
 
-    const activate = (button: HTMLButtonElement) => {
-      buttons.forEach((item) => {
-        const active = item === button;
-        item.classList.toggle('is-active', active);
-        item.setAttribute('aria-selected', String(active));
-      });
-      if (value) value.textContent = button.dataset.value || '';
-      if (label) label.textContent = button.dataset.label || '';
-      if (note) note.textContent = button.dataset.note || '';
+  heroWindow.sockaHeroCleanups ??= new WeakMap<HTMLElement, HeroCleanup>();
+  heroWindow.sockaHeroRoots ??= new Set<HTMLElement>();
+
+  const formatHeroNumber = (value: number) => new Intl.NumberFormat('hr-HR').format(value);
+
+  const setHeroCounterFinal = (counter: HTMLElement) => {
+    const output = counter.querySelector('[data-counter-output]');
+    const finalValue = counter.dataset.counterFinal || counter.textContent?.trim() || '';
+    if (output instanceof HTMLElement) {
+      output.textContent = finalValue;
+    } else {
+      counter.textContent = finalValue;
+    }
+  };
+
+  const animateHeroCounter = (counter: HTMLElement) => {
+    if (counter.dataset.counterStarted === 'true') return;
+    counter.dataset.counterStarted = 'true';
+
+    const output = counter.querySelector('[data-counter-output]');
+    const target = Number(counter.dataset.counterTo || '0');
+    const finalValue = counter.dataset.counterFinal || formatHeroNumber(target);
+    const targetNode = output instanceof HTMLElement ? output : counter;
+
+    if (!Number.isFinite(target) || target <= 0) {
+      targetNode.textContent = finalValue;
+      return;
+    }
+
+    const duration = 1750;
+    const start = performance.now();
+
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      targetNode.textContent = progress >= 1 ? finalValue : formatHeroNumber(Math.round(target * eased));
+      if (progress < 1) requestAnimationFrame(tick);
     };
 
-    buttons.forEach((button) => {
-      button.addEventListener('click', () => activate(button));
-      button.addEventListener('keydown', (event) => {
-        if (!(event instanceof KeyboardEvent)) return;
-        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return;
-        event.preventDefault();
-        const current = buttons.indexOf(button);
-        const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
-        const next = buttons[(current + direction + buttons.length) % buttons.length];
-        next.focus();
-        activate(next);
-      });
+    requestAnimationFrame(tick);
+  };
+
+  const cleanupHero = (hero: HTMLElement) => {
+    const cleanup = heroWindow.sockaHeroCleanups?.get(hero);
+    if (cleanup) cleanup();
+    heroWindow.sockaHeroCleanups?.delete(hero);
+    heroWindow.sockaHeroRoots?.delete(hero);
+  };
+
+  const cleanupAllHeroes = () => {
+    heroWindow.sockaHeroRoots?.forEach((hero) => cleanupHero(hero));
+  };
+
+  const initHeroCinematics = () => document.querySelectorAll('[data-hero-cinema]').forEach((hero) => {
+    if (!(hero instanceof HTMLElement) || hero.dataset.heroReady === 'true') return;
+
+    hero.dataset.heroReady = 'true';
+    heroWindow.sockaHeroRoots?.add(hero);
+
+    const reduceHeroMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const counters = [...hero.querySelectorAll('[data-hero-counter]')].filter((counter): counter is HTMLElement => counter instanceof HTMLElement);
+    const timers: number[] = [];
+    let raf = 0;
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+
+    const finishImmediately = () => {
+      counters.forEach(setHeroCounterFinal);
+      hero.classList.add('is-ready', 'is-complete');
+    };
+
+    if (reduceHeroMotion) {
+      finishImmediately();
+      return;
+    }
+
+    requestAnimationFrame(() => hero.classList.add('is-ready'));
+    timers.push(window.setTimeout(() => counters.forEach(animateHeroCounter), 1200));
+    timers.push(window.setTimeout(() => hero.classList.add('is-complete'), 1800));
+
+    const canParallax = window.matchMedia('(pointer: fine)').matches && window.matchMedia('(min-width: 900px)').matches;
+
+    const drawParallax = () => {
+      currentX += (targetX - currentX) * 0.08;
+      currentY += (targetY - currentY) * 0.08;
+      hero.style.setProperty('--hero-px', currentX.toFixed(4));
+      hero.style.setProperty('--hero-py', currentY.toFixed(4));
+
+      if (Math.abs(targetX - currentX) > 0.001 || Math.abs(targetY - currentY) > 0.001) {
+        raf = requestAnimationFrame(drawParallax);
+      } else {
+        raf = 0;
+      }
+    };
+
+    const requestParallax = () => {
+      if (!raf) raf = requestAnimationFrame(drawParallax);
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const rect = hero.getBoundingClientRect();
+      targetX = Math.max(-0.5, Math.min(0.5, (event.clientX - rect.left) / rect.width - 0.5));
+      targetY = Math.max(-0.5, Math.min(0.5, (event.clientY - rect.top) / rect.height - 0.5));
+      requestParallax();
+    };
+
+    const onPointerLeave = () => {
+      targetX = 0;
+      targetY = 0;
+      requestParallax();
+    };
+
+    if (canParallax) {
+      hero.addEventListener('pointermove', onPointerMove, { passive: true });
+      hero.addEventListener('pointerleave', onPointerLeave, { passive: true });
+    }
+
+    heroWindow.sockaHeroCleanups?.set(hero, () => {
+      timers.forEach(window.clearTimeout);
+      if (raf) cancelAnimationFrame(raf);
+      hero.removeEventListener('pointermove', onPointerMove);
+      hero.removeEventListener('pointerleave', onPointerLeave);
     });
   });
 
-  if (!reduceHeroMotion && window.matchMedia('(pointer: fine)').matches) {
-    document.querySelectorAll('[data-pointer-accent]').forEach((section) => {
-      if (!(section instanceof HTMLElement)) return;
-      section.addEventListener('pointermove', (event) => {
-        const rect = section.getBoundingClientRect();
-        const x = ((event.clientX - rect.left) / rect.width - 0.5).toFixed(3);
-        const y = ((event.clientY - rect.top) / rect.height - 0.5).toFixed(3);
-        section.style.setProperty('--pointer-x', x);
-        section.style.setProperty('--pointer-y', y);
-      });
-    });
+  initHeroCinematics();
+
+  if (!heroWindow.sockaHeroInit) {
+    heroWindow.sockaHeroInit = true;
+    document.addEventListener('astro:before-swap', cleanupAllHeroes);
+    document.addEventListener('astro:page-load', initHeroCinematics);
   }
 </script>

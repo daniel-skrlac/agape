@@ -1,103 +1,124 @@
 ---
 import { donationGroups, supportWays } from '../lib/site';
 ---
-<div class="help-path" data-help-path>
-  <div class="help-path__steps" role="tablist" aria-label="Načini pomoći">
+<div class="help-orbit" data-help-orbit>
+  <div class="help-orbit__methods" role="tablist" aria-label="Načini pomoći">
     {supportWays.map((way, index) => (
       <button
         type="button"
-        class:list={['help-step reveal', { 'is-active': index === 0 }]}
-        style={`--i: ${index + 1}`}
+        class:list={['help-orbit__method', { 'is-active': index === 0 }]}
+        id={`help-orbit-tab-${index}`}
         role="tab"
         aria-selected={index === 0 ? 'true' : 'false'}
-        aria-controls={`help-panel-${index}`}
-        data-help-step
-        data-related={way.relatedGroups.join('|')}
+        aria-controls={`help-orbit-panel-${index}`}
+        data-help-orbit-button
       >
         <span class={`help-step__icon help-step__icon--${way.icon}`} aria-hidden="true"></span>
-        <small>0{index + 1}</small>
-        <strong>{way.title}</strong>
+        <span>
+          <small>0{index + 1}</small>
+          <strong>{way.title}</strong>
+        </span>
       </button>
     ))}
   </div>
 
-  <div class="help-path__content">
-    <div class="help-panels">
-      {supportWays.map((way, index) => (
-        <article
-          class:list={['help-panel reveal', { 'is-active': index === 0 }]}
-          id={`help-panel-${index}`}
-          role="tabpanel"
-          data-help-panel
-          style={`--i: ${index + 1}`}
-        >
+  <div class="help-orbit__stage" aria-live="polite">
+    {supportWays.map((way, index) => (
+      <article
+        class:list={['help-orbit__panel', { 'is-active': index === 0 }]}
+        id={`help-orbit-panel-${index}`}
+        role="tabpanel"
+        aria-labelledby={`help-orbit-tab-${index}`}
+        aria-hidden={index === 0 ? 'false' : 'true'}
+        data-help-orbit-panel
+      >
+        <div class="help-orbit__copy">
           <p class="eyebrow">Kako možete pomoći</p>
           <h3>{way.title}</h3>
           <p>{way.text}</p>
           <strong>{way.detail}</strong>
-        </article>
-      ))}
-    </div>
+          <a class="btn btn--primary" href={way.actionHref}>{way.actionLabel}</a>
+        </div>
 
-    <aside class="donation-groups donation-groups--path reveal" aria-label="Korisne kategorije donacija">
-      {donationGroups.map((group) => (
-        <article class="donation-group" data-donation-group={group.title}>
-          <div>
-            <span class={`donation-group__icon donation-group__icon--${group.icon}`} aria-hidden="true"></span>
-            <strong>{group.title}</strong>
+        {index === 0 && (
+          <div class="help-products" aria-label="Korisne kategorije donacija">
+            {donationGroups.map((group) => (
+              <article>
+                <span class={`donation-group__icon donation-group__icon--${group.icon}`} aria-hidden="true"></span>
+                <strong>{group.title}</strong>
+                <ul>
+                  {group.items.slice(0, 3).map((item) => <li>{item}</li>)}
+                </ul>
+              </article>
+            ))}
           </div>
-          <ul>
-            {group.items.map((item) => <li>{item}</li>)}
-          </ul>
-        </article>
-      ))}
-    </aside>
+        )}
+      </article>
+    ))}
   </div>
 </div>
 
 <script>
-  document.querySelectorAll('[data-help-path]').forEach((root) => {
-    const steps = [...root.querySelectorAll('[data-help-step]')] as HTMLButtonElement[];
-    const panels = [...root.querySelectorAll('[data-help-panel]')] as HTMLElement[];
-    const groups = [...root.querySelectorAll('[data-donation-group]')] as HTMLElement[];
-    if (steps.length === 0 || panels.length === 0) return;
+  const initHelpOrbits = () => document.querySelectorAll('[data-help-orbit]').forEach((root) => {
+    if (!(root instanceof HTMLElement) || root.dataset.helpOrbitReady === 'true') return;
 
+    const buttons = [...root.querySelectorAll('[data-help-orbit-button]')] as HTMLButtonElement[];
+    const panels = [...root.querySelectorAll('[data-help-orbit-panel]')] as HTMLElement[];
+    if (buttons.length === 0 || panels.length === 0) return;
+
+    root.dataset.helpOrbitReady = 'true';
     root.classList.add('is-enhanced');
+    let activeIndex = buttons.findIndex((button) => button.classList.contains('is-active'));
+    if (activeIndex < 0) activeIndex = 0;
 
-    const activate = (index: number) => {
-      const activeStep = steps[index];
-      const related = new Set((activeStep.dataset.related || '').split('|').filter(Boolean));
+    const activate = (index: number, focusButton = false) => {
+      activeIndex = (index + buttons.length) % buttons.length;
+      root.style.setProperty('--active-index', String(activeIndex));
 
-      steps.forEach((step, stepIndex) => {
-        const active = stepIndex === index;
-        step.classList.toggle('is-active', active);
-        step.setAttribute('aria-selected', String(active));
+      buttons.forEach((button, buttonIndex) => {
+        const active = buttonIndex === activeIndex;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-selected', String(active));
+        button.setAttribute('tabindex', '0');
+        if (focusButton && active) button.focus();
       });
 
       panels.forEach((panel, panelIndex) => {
-        const active = panelIndex === index;
+        const active = panelIndex === activeIndex;
         panel.classList.toggle('is-active', active);
         panel.hidden = !active;
-      });
-
-      groups.forEach((group) => {
-        group.classList.toggle('is-related', related.has(group.dataset.donationGroup || ''));
+        panel.inert = !active;
+        panel.setAttribute('aria-hidden', String(!active));
       });
     };
 
-    steps.forEach((step, index) => {
-      step.addEventListener('click', () => activate(index));
-      step.addEventListener('keydown', (event) => {
+    buttons.forEach((button, index) => {
+      button.addEventListener('click', () => activate(index));
+      button.addEventListener('keydown', (event) => {
         if (!(event instanceof KeyboardEvent)) return;
-        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return;
+        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
+        if (event.key === 'Home') {
+          activate(0, true);
+          return;
+        }
+        if (event.key === 'End') {
+          activate(buttons.length - 1, true);
+          return;
+        }
         const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
-        const nextIndex = (index + direction + steps.length) % steps.length;
-        steps[nextIndex].focus();
-        activate(nextIndex);
+        activate(activeIndex + direction, true);
       });
     });
 
-    activate(0);
+    activate(activeIndex);
+    requestAnimationFrame(() => root.classList.add('is-ready'));
   });
+
+  initHelpOrbits();
+
+  if (!(window as typeof window & { sockaHelpOrbitInit?: boolean }).sockaHelpOrbitInit) {
+    (window as typeof window & { sockaHelpOrbitInit?: boolean }).sockaHelpOrbitInit = true;
+    document.addEventListener('astro:page-load', initHelpOrbits);
+  }
 </script>

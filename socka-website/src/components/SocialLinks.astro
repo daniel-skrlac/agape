@@ -1,5 +1,6 @@
 ---
 import BrandSocialIcon from './BrandSocialIcon.astro';
+import ExternalLinkIcon from './icons/ExternalLinkIcon.astro';
 import { publishedSocialLinks } from '../lib/site';
 
 interface Props {
@@ -7,8 +8,6 @@ interface Props {
 }
 
 const { compact = false } = Astro.props;
-
-const actionLabel = (id: string) => (id === 'facebookGroup' ? 'Uključite se' : 'Pratite nas');
 ---
 <div class:list={['social-grid', { 'social-grid--compact': compact }]}>
   {publishedSocialLinks.map((link) => (
@@ -22,9 +21,11 @@ const actionLabel = (id: string) => (id === 'facebookGroup' ? 'Uključite se' : 
       <span class="social-grid__icon" aria-hidden="true">
         <BrandSocialIcon id={link.id} />
       </span>
-      <span>
+      <span class="social-grid__label">
         <strong>{link.shortLabel}</strong>
-        {!compact && <small>{actionLabel(link.id)} <span aria-hidden="true">↗</span></small>}
+      </span>
+      <span class="social-grid__external" aria-hidden="true">
+        <ExternalLinkIcon />
       </span>
     </a>
   ))}

@@ -1,6 +1,7 @@
 ---
 interface ImpactItem {
   value: string;
+  unit?: string;
   label: string;
   note: string;
 }
@@ -10,6 +11,8 @@ interface Props {
 }
 
 const { items } = Astro.props;
+const [primary, ...supportingItems] = items;
+const primaryCounter = counterParts(primary.value);
 
 function counterParts(value: string) {
   const suffixMatch = value.match(/[^\d.]+$/);
@@ -22,25 +25,45 @@ function counterParts(value: string) {
   };
 }
 ---
-<div class="impact-orbit" data-impact-counters>
-  {items.map((item, index) => {
-    const counter = counterParts(item.value);
-    return (
-      <article class="impact-card impact-card--counter reveal" style={`--i: ${index + 1}`}>
-        <strong>
-          <span
-            class="count-up"
-            data-count-to={counter.target}
-            data-count-suffix={counter.suffix}
-            data-count-plain={counter.plain ? 'true' : 'false'}
-            aria-label={item.value}
-          >
-            {item.value}
-          </span>
-        </strong>
-        <span>{item.label}</span>
-        <p>{item.note}</p>
-      </article>
-    );
-  })}
+<div class="impact-constellation" data-scroll-story>
+  <div class="impact-constellation__statement">
+    <p class="impact-card__period">Podaci obuhvaćaju razdoblje od 2013. do kraja 2025.</p>
+    <strong class="impact-constellation__number">
+      <span
+        class="count-up"
+        data-count-to={primaryCounter.target}
+        data-count-suffix={primaryCounter.suffix}
+        data-count-plain={primaryCounter.plain ? 'true' : 'false'}
+        aria-label={primary.value}
+      >
+        {primary.value}
+      </span>
+    </strong>
+    <h3>{primary.label}</h3>
+    <p>{primary.note}</p>
+  </div>
+
+  <div class="impact-constellation__facts" aria-label="Dodatni podaci o učinku">
+    {supportingItems.map((item, index) => {
+      const counter = counterParts(item.value);
+      return (
+        <article style={`--i: ${index + 1}`}>
+          <strong>
+            <span
+              class="count-up"
+              data-count-to={counter.target}
+              data-count-suffix={counter.suffix}
+              data-count-plain={counter.plain ? 'true' : 'false'}
+              aria-label={item.unit ? `${item.value} ${item.unit}` : item.value}
+            >
+              {item.value}
+            </span>
+            {item.unit && <span class="impact-value__unit" aria-hidden="true">{item.unit}</span>}
+          </strong>
+          <span>{item.label}</span>
+          <p>{item.note}</p>
+        </article>
+      );
+    })}
+  </div>
 </div>

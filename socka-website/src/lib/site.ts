@@ -177,7 +177,7 @@ export const donationGroups = [
     items: ['higijenske potrepštine', 'sredstva za čišćenje i pranje']
   },
   {
-    title: 'Djeca',
+    title: 'Proizvodi za djecu',
     icon: 'care',
     items: ['dječja hrana', 'pelene i vlažne maramice']
   }
@@ -187,43 +187,55 @@ export const supportWays = [
   {
     title: 'Doniraj proizvode',
     icon: 'bag',
-    text: 'Jedna vrećica trajnih namirnica može nekome značiti mirniji tjedan.',
-    detail: 'Birajte proizvode s duljim rokom trajanja i neotvorenom ambalažom.',
-    relatedGroups: ['Osnovne namirnice', 'Trajna hrana', 'Higijena i dom', 'Djeca']
+    text: 'Najkorisnije su trajne namirnice i higijenske potrepštine u zatvorenoj ambalaži.',
+    detail: 'Prije dolaska provjerite aktualne potrebe ili dogovorite termin predaje.',
+    actionLabel: 'Dogovorite predaju',
+    actionHref: '/kontakt/',
+    relatedGroups: ['Osnovne namirnice', 'Trajna hrana', 'Higijena i dom', 'Proizvodi za djecu']
   },
   {
     title: 'Volontiraj',
     icon: 'hands',
-    text: 'Vrijeme, ruke i dobra energija jednako su vrijedni kao donacija.',
-    detail: 'Volonteri sortiraju, slažu police, pripremaju pakete i pomažu u akcijama.',
+    text: 'Volonteri pomažu u prostoru samoposluge, na akcijama i kod pripreme donacija.',
+    detail: 'Javite kada možete doći i zajedno ćemo odabrati zadatak koji vam odgovara.',
+    actionLabel: 'Pridružite se volontiranju',
+    actionHref: '/volonteri/',
     relatedGroups: ['Osnovne namirnice', 'Trajna hrana']
   },
   {
-    title: 'Organiziraj akciju',
+    title: 'Pokreni akciju',
     icon: 'spark',
-    text: 'Razred, ured, udruga, župa ili ekipa prijatelja mogu napraviti veliku razliku.',
-    detail: 'Najbolje je unaprijed dogovoriti proizvode, poruku akcije i način predaje.',
+    text: 'Škola, tvrtka, udruga, župa ili grupa prijatelja mogu zajedno prikupiti više.',
+    detail: 'Dogovorite proizvode, rok i način predaje prije nego akcija krene.',
+    actionLabel: 'Pokrenite akciju',
+    actionHref: '/kontakt/',
     relatedGroups: ['Osnovne namirnice', 'Higijena i dom']
   },
   {
     title: 'Uključi zajednicu',
     icon: 'people',
-    text: 'Pozovite ljude oko sebe da sudjeluju i podijelite provjerene informacije.',
-    detail: 'Dobra objava ili razgovor često dovede nove donatore i volontere.',
-    relatedGroups: ['Trajna hrana', 'Djeca']
+    text: 'Podijelite provjeren poziv, pozovite ljude oko sebe i usmjerite ih na kontakt.',
+    detail: 'Najviše pomažu jasne informacije: što se prikuplja, do kada i gdje se predaje.',
+    actionLabel: 'Podijelite službeni kontakt',
+    actionHref: '/kontakt/#drustvene-mreze',
+    relatedGroups: ['Trajna hrana', 'Proizvodi za djecu']
   },
   {
     title: 'Uključi školu ili tvrtku',
     icon: 'building',
-    text: 'Organizirana skupina lakše prikupi više proizvoda i potakne druge na uključivanje.',
-    detail: 'Javite se prije početka kako bismo dogovorili što je najkorisnije prikupiti.',
-    relatedGroups: ['Osnovne namirnice', 'Higijena i dom', 'Djeca']
+    text: 'Organizirana skupina lakše prikupi proizvode i potakne druge da se uključe.',
+    detail: 'Javite se prije početka kako bismo preporučili najpotrebnije proizvode.',
+    actionLabel: 'Dogovorite zajedničku akciju',
+    actionHref: '/kontakt/',
+    relatedGroups: ['Osnovne namirnice', 'Higijena i dom', 'Proizvodi za djecu']
   },
   {
     title: 'Dogovori predaju',
     icon: 'pin',
-    text: 'Kratki poziv ili e-pošta pomažu da donacija stigne u pravom trenutku.',
+    text: 'Kratki poziv ili e-pošta pomažu da donacija stigne u dobar trenutak.',
     detail: 'Tako volonteri mogu pripremiti prostor i odmah usmjeriti proizvode dalje.',
+    actionLabel: 'Kontaktirajte nas',
+    actionHref: '/kontakt/',
     relatedGroups: ['Osnovne namirnice', 'Trajna hrana']
   }
 ] as const;
@@ -274,7 +286,8 @@ export const historicalImpact = [
     note: 'vrijeme darovano zajednici'
   },
   {
-    value: '614.000 EUR',
+    value: '614.000',
+    unit: '€',
     label: 'vrijednosti pomoći',
     note: 'procijenjena vrijednost podijeljenih paketa'
   },

@@ -17,13 +17,13 @@ const notices = await getPublishedNotices();
 <BaseLayout title="Početna" description={site.description} canonicalPath="/">
   <InteractiveHero />
 
-  <section class="section section--announcements">
+  <section class="section section--announcements" data-scroll-story>
     <div class="container">
-      <div class="section-head">
+      <div class="section-head reveal" data-scroll-reveal>
         <SectionTitle
           eyebrow="Aktualne obavijesti"
-          title="Nove akcije i pozivi bit će odmah vidljivi."
-          text="Kada postoji javna obavijest, prikazujemo tri najnovije. Bez izmišljanja hitnosti i bez neprovjerenih poziva."
+          title="Kada krenu nove akcije, ovdje ćete ih odmah vidjeti."
+          text="Prikazujemo najnovije javne objave kako biste brzo znali kada, gdje i kako se uključiti."
         />
         <a class="text-link" href="/obavijesti/">Sve obavijesti</a>
       </div>
@@ -31,19 +31,19 @@ const notices = await getPublishedNotices();
     </div>
   </section>
 
-  <section class="section impact-section">
+  <section class="section impact-section" data-scroll-story>
     <div class="container">
       <SectionTitle
         eyebrow="Učinak"
         title="Pomoć se vidi u paketima, satima i povjerenju."
-        text="Pregled uključuje razdoblje od 2013. do kraja 2025. i nije živi brojač."
+        text="Pregled uključuje razdoblje od 2013. do kraja 2025."
         align="center"
       />
       <ImpactCounters items={historicalImpact} />
     </div>
   </section>
 
-  <section class="section section--soft help-preview">
+  <section class="section section--soft help-preview" data-scroll-story>
     <div class="container">
       <SectionTitle
         eyebrow="Kako možete pomoći"
@@ -54,7 +54,7 @@ const notices = await getPublishedNotices();
     </div>
   </section>
 
-  <section class="section volunteer-home-section">
+  <section class="section volunteer-home-section" data-scroll-story>
     <div class="container split-section split-section--balanced">
       <figure class="image-block image-block--wide reveal">
         <img src="/images/recent/volonterke-u-samoposluzi.webp" alt="Volonterke u prostoru Socijalne samoposluge uz prikupljene namirnice" width="1200" height="1600" loading="lazy" />
@@ -76,7 +76,19 @@ const notices = await getPublishedNotices();
     </div>
   </section>
 
-  <section class="section location-section">
+  <section class="section gallery-section" data-scroll-story>
+    <div class="container">
+      <SectionTitle
+        eyebrow="Zajednica"
+        title="Ruke, police i spremni paketi."
+        text="Fotografije prikazuju volonterski rad i donacije."
+        align="center"
+      />
+      <EditorialGallery />
+    </div>
+  </section>
+
+  <section class="section location-section" data-scroll-story>
     <div class="container split-section">
       <div class="editorial-block reveal">
         <p class="eyebrow">Lokacija</p>
@@ -93,15 +105,8 @@ const notices = await getPublishedNotices();
     </div>
   </section>
 
-  <section class="section gallery-section">
+  <section class="section social-home-section" data-scroll-story>
     <div class="container">
-      <SectionTitle
-        eyebrow="Zajednica"
-        title="Rad se vidi u rukama, policama i pripremljenim paketima."
-        text="Fotografije prikazuju volonterski rad i donacije, bez prikazivanja korisnika pomoći."
-        align="center"
-      />
-      <EditorialGallery />
       <div class="social-section social-section--panel reveal">
         <div>
           <p class="eyebrow">Službeni kanali</p>

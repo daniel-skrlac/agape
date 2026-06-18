@@ -1,4 +1,6 @@
 ---
+import SliderChevronIcon from './icons/SliderChevronIcon.astro';
+
 interface Props {
   compact?: boolean;
 }
@@ -7,107 +9,233 @@ const { compact = false } = Astro.props;
 
 const roles = [
   {
-    title: 'Preuzimanje',
-    text: 'Volonteri pomažu zaprimiti donacije, provjeriti ambalažu i sigurno unijeti proizvode u prostor.',
+    title: 'Prikupljanje proizvoda',
+    text: 'Volonteri pomažu prikupiti proizvode i usmjeriti ih prema prostoru samoposluge.',
     image: '/images/community/prikupljene-namirnice.webp',
-    alt: 'Prikupljene namirnice spremne za sortiranje'
+    alt: 'Prikupljene namirnice spremne za sortiranje',
+    caption: 'Prvi korak je uredno prikupljena donacija.',
+    position: 'center center'
+  },
+  {
+    title: 'Preuzimanje donacija',
+    text: 'Kod predaje donacija pomažu unos, provjera ambalaže i dogovor gdje proizvodi idu dalje.',
+    image: '/images/recent/volonter-s-namirnicama.webp',
+    alt: 'Volonter uz kutije s prikupljenim namirnicama',
+    caption: 'Donacija se preuzima mirno, jasno i odgovorno.',
+    position: 'center 42%'
   },
   {
     title: 'Sortiranje',
-    text: 'Proizvodi se razvrstavaju po vrsti i roku trajanja kako bi se police mogle brzo i jasno nadopuniti.',
+    text: 'Proizvodi se razvrstavaju po vrsti i roku trajanja kako bi ih bilo lakše pripremiti.',
     image: '/images/community/uredivanje-polica.webp',
-    alt: 'Police s namirnicama u prostoru Socijalne samoposluge'
+    alt: 'Police s namirnicama u prostoru Socijalne samoposluge',
+    caption: 'Sortiranje čuva preglednost i sigurnost proizvoda.',
+    position: 'center center'
   },
   {
     title: 'Slaganje polica',
-    text: 'Uredne police olakšavaju pripremu paketa i čuvaju dostojanstven, miran prostor rada.',
+    text: 'Uredne police olakšavaju pripremu paketa i pomažu da prostor ostane dostojanstven.',
     image: '/images/recent/volonterke-u-samoposluzi.webp',
-    alt: 'Volonterke u prostoru samoposluge uz prikupljene namirnice'
+    alt: 'Volonterke u prostoru samoposluge uz prikupljene namirnice',
+    caption: 'Police pokazuju koliko zajednica može napraviti zajedno.',
+    position: 'center 45%'
   },
   {
     title: 'Priprema paketa',
-    text: 'Od doniranih proizvoda pripremaju se paketi koji ljudima daju konkretnu podršku u svakodnevici.',
+    text: 'Od doniranih proizvoda pripremaju se paketi koji ljudima daju konkretnu podršku.',
     image: '/images/community/pripremljene-donacije.webp',
-    alt: 'Pripremljene donacije u kutijama'
+    alt: 'Pripremljene donacije u kutijama',
+    caption: 'Svaki paket nastaje iz više malih odluka da se pomogne.',
+    position: 'center center'
   },
   {
-    title: 'Akcije',
-    text: 'Kod organiziranih akcija volonteri pomažu u dogovoru, komunikaciji, prijevozu i završnoj predaji donacija.',
-    image: '/images/community/volonterska-ekipa.webp',
-    alt: 'Volonterska ekipa s potvrdama'
+    title: 'Pomoć na akcijama',
+    text: 'Kod organiziranih akcija volonteri pomažu u komunikaciji, prijevozu i završnoj predaji.',
+    image: '/images/recent/volonteri-potvrde-2026.webp',
+    alt: 'Volonteri s potvrdama nakon završene volonterske aktivnosti',
+    caption: 'Akcije su najlakše kada svatko zna svoj zadatak.',
+    position: 'center 62%'
   }
 ] as const;
----
-<div class:list={['volunteer-roles reveal', { 'volunteer-roles--compact': compact }]} data-volunteer-roles>
-  <div class="volunteer-roles__tabs" role="tablist" aria-label="Što rade volonteri">
-    {roles.map((role, index) => (
-      <button
-        type="button"
-        class:list={['volunteer-role-tab', { 'is-active': index === 0 }]}
-        role="tab"
-        aria-selected={index === 0 ? 'true' : 'false'}
-        aria-controls={`volunteer-role-panel-${compact ? 'home' : 'page'}-${index}`}
-        data-role-tab
-      >
-        <span>0{index + 1}</span>
-        {role.title}
-      </button>
-    ))}
-  </div>
 
-  <div class="volunteer-roles__panels">
-    {roles.map((role, index) => (
-      <article
-        class:list={['volunteer-role-panel', { 'is-active': index === 0 }]}
-        id={`volunteer-role-panel-${compact ? 'home' : 'page'}-${index}`}
-        role="tabpanel"
-        data-role-panel
-      >
-        <img src={role.image} alt={role.alt} width="900" height="620" loading="lazy" />
-        <div>
-          <p class="eyebrow">Volonterski zadatak</p>
-          <h3>{role.title}</h3>
-          <p>{role.text}</p>
-        </div>
-      </article>
-    ))}
+---
+<div class:list={['volunteer-roles volunteer-slider', { 'volunteer-roles--compact': compact }]} data-volunteer-slider>
+  <div class="volunteer-slider__stage">
+    <div class="volunteer-slider__controls">
+      <button class="slider-arrow-button" type="button" data-role-prev aria-label="Prikaži prethodnu aktivnost">
+        <SliderChevronIcon direction="previous" />
+      </button>
+      <button class="slider-arrow-button" type="button" data-role-next aria-label="Prikaži sljedeću aktivnost">
+        <SliderChevronIcon direction="next" />
+      </button>
+    </div>
+
+    <div class="volunteer-slider__viewport" tabindex="0" aria-label="Volonterski zadaci" data-role-viewport>
+      <div class="volunteer-slider__track" data-role-track>
+        {roles.map((role, index) => (
+          <article
+            class:list={['volunteer-role-panel volunteer-slide', { 'is-active': index === 0 }]}
+            id={`volunteer-role-panel-${compact ? 'home' : 'page'}-${index}`}
+            aria-hidden={index === 0 ? 'false' : 'true'}
+            data-role-panel
+            data-real-index={index}
+          >
+            <figure class="volunteer-slide__image">
+              <img src={role.image} alt={role.alt} width="900" height="675" loading="lazy" style={`object-position: ${role.position}`} />
+            </figure>
+            <div class="volunteer-slide__content">
+              <p class="eyebrow">Volonterski zadatak</p>
+              <h3>{role.title}</h3>
+              <p>{role.text}</p>
+              <small>{role.caption}</small>
+              <a class="text-link" href={`/kontakt/?zadatak=${encodeURIComponent(role.title)}`}>Javi se za ovaj zadatak</a>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
-  document.querySelectorAll('[data-volunteer-roles]').forEach((rolesRoot) => {
-    const tabs = [...rolesRoot.querySelectorAll('[data-role-tab]')] as HTMLButtonElement[];
+  const initVolunteerSliders = () => document.querySelectorAll('[data-volunteer-slider]').forEach((rolesRoot) => {
+    if (!(rolesRoot instanceof HTMLElement) || rolesRoot.dataset.sliderReady === 'true') return;
+
     const panels = [...rolesRoot.querySelectorAll('[data-role-panel]')] as HTMLElement[];
-    if (tabs.length === 0 || panels.length === 0) return;
+    const track = rolesRoot.querySelector('[data-role-track]');
+    const viewport = rolesRoot.querySelector('[data-role-viewport]');
+    const previous = rolesRoot.querySelector('[data-role-prev]');
+    const next = rolesRoot.querySelector('[data-role-next]');
+    if (!(track instanceof HTMLElement) || panels.length === 0) return;
 
+    rolesRoot.dataset.sliderReady = 'true';
     rolesRoot.classList.add('is-enhanced');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const total = panels.length;
+    let current = 0;
+    let dragStart = 0;
+    let dragging = false;
+    let isAnimating = false;
+    let fallbackTimer = 0;
 
-    const activate = (index: number) => {
-      tabs.forEach((tab, tabIndex) => {
-        const active = tabIndex === index;
-        tab.classList.toggle('is-active', active);
-        tab.setAttribute('aria-selected', String(active));
+    const controls = [previous, next].filter((control): control is HTMLButtonElement => control instanceof HTMLButtonElement);
+    const isInteractiveTarget = (target: EventTarget | null) =>
+      target instanceof Element && Boolean(target.closest('a[href], button, input, select, textarea, label, summary, [role="button"], [contenteditable="true"]'));
+
+    const setControlsBusy = (busy: boolean) => {
+      controls.forEach((control) => {
+        control.setAttribute('aria-disabled', String(busy));
       });
-      panels.forEach((panel, panelIndex) => {
-        const active = panelIndex === index;
-        panel.classList.toggle('is-active', active);
-        panel.hidden = !active;
+      rolesRoot.classList.toggle('is-animating', busy);
+    };
+
+    const setSlideFocusable = (slide: HTMLElement, active: boolean) => {
+      slide.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]').forEach((element) => {
+        if (active) {
+          if (element.dataset.sliderTabindex) {
+            element.setAttribute('tabindex', element.dataset.sliderTabindex);
+            delete element.dataset.sliderTabindex;
+          } else {
+            element.removeAttribute('tabindex');
+          }
+          return;
+        }
+
+        if (element.hasAttribute('tabindex') && !element.dataset.sliderTabindex) {
+          element.dataset.sliderTabindex = element.getAttribute('tabindex') || '';
+        }
+        element.setAttribute('tabindex', '-1');
       });
     };
 
-    tabs.forEach((tab, index) => {
-      tab.addEventListener('click', () => activate(index));
-      tab.addEventListener('keydown', (event) => {
-        if (!(event instanceof KeyboardEvent)) return;
-        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return;
-        event.preventDefault();
-        const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
-        const nextIndex = (index + direction + tabs.length) % tabs.length;
-        tabs[nextIndex].focus();
-        activate(nextIndex);
+    const updateActive = (previousIndex = current) => {
+      panels.forEach((panel, panelIndex) => {
+        const active = panelIndex === current;
+        panel.classList.toggle('is-active', active);
+        panel.classList.toggle('was-active', panelIndex === previousIndex && previousIndex !== current);
+        panel.setAttribute('aria-hidden', String(!active));
+        setSlideFocusable(panel, active);
       });
-    });
+    };
 
-    activate(0);
+    const finishTransition = () => {
+      window.clearTimeout(fallbackTimer);
+      panels.forEach((panel) => panel.classList.remove('was-active'));
+      isAnimating = false;
+      setControlsBusy(false);
+    };
+
+    const moveBy = (direction: number) => {
+      if (isAnimating) return;
+      const previousIndex = current;
+      isAnimating = true;
+      setControlsBusy(true);
+      current = (current + direction + total) % total;
+      rolesRoot.dataset.slideDirection = direction > 0 ? 'next' : 'previous';
+      updateActive(previousIndex);
+
+      if (reduceMotion) {
+        finishTransition();
+        return;
+      }
+
+      fallbackTimer = window.setTimeout(finishTransition, 620);
+    };
+
+    if (previous instanceof HTMLButtonElement) previous.addEventListener('click', () => moveBy(-1));
+    if (next instanceof HTMLButtonElement) next.addEventListener('click', () => moveBy(1));
+
+    if (viewport instanceof HTMLElement) {
+      viewport.addEventListener('keydown', (event) => {
+        if (!(event instanceof KeyboardEvent)) return;
+        if (!['ArrowRight', 'ArrowLeft'].includes(event.key)) return;
+        event.preventDefault();
+        moveBy(event.key === 'ArrowRight' ? 1 : -1);
+      });
+
+      viewport.addEventListener('pointerdown', (event) => {
+        if (!(event instanceof PointerEvent)) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        if (isInteractiveTarget(event.target)) return;
+        dragStart = event.clientX;
+        dragging = true;
+        try {
+          if (viewport.hasPointerCapture(event.pointerId) === false) viewport.setPointerCapture(event.pointerId);
+        } catch {
+          // Some synthetic or older touch events cannot be captured; the swipe still works from coordinates.
+        }
+      });
+
+      viewport.addEventListener('pointerup', (event) => {
+        if (!(event instanceof PointerEvent) || !dragging) return;
+        dragging = false;
+        try {
+          if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore capture-release mismatches from synthetic events.
+        }
+        const delta = event.clientX - dragStart;
+        if (Math.abs(delta) > 42) moveBy(delta < 0 ? 1 : -1);
+      });
+
+      viewport.addEventListener('pointercancel', (event) => {
+        try {
+          if (event instanceof PointerEvent && viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore capture-release mismatches from synthetic events.
+        }
+        dragging = false;
+      });
+    }
+
+    updateActive();
+    requestAnimationFrame(() => rolesRoot.classList.add('is-ready'));
   });
+
+  initVolunteerSliders();
+
+  if (!(window as typeof window & { sockaVolunteerSliderInit?: boolean }).sockaVolunteerSliderInit) {
+    (window as typeof window & { sockaVolunteerSliderInit?: boolean }).sockaVolunteerSliderInit = true;
+    document.addEventListener('astro:page-load', initVolunteerSliders);
+  }
 </script>

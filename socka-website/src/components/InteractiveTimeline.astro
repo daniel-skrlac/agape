@@ -11,83 +11,93 @@ interface Props {
 
 const { items } = Astro.props;
 ---
-<div class="interactive-timeline reveal" data-interactive-timeline>
-  <div class="timeline-track" aria-hidden="true">
-    <span data-timeline-progress></span>
-  </div>
-  <div class="timeline-points" aria-label="Vremenska crta razvoja">
+<div class="timeline-signature" data-timeline-signature>
+  <div class="timeline-signature__years" role="tablist" aria-label="Vremenska crta razvoja">
     {items.map((item, index) => (
       <button
         type="button"
-        class="timeline-point"
-        data-timeline-point
-        data-index={index}
-        aria-controls={`timeline-panel-${index}`}
-        aria-expanded={index === 0 ? 'true' : 'false'}
+        class:list={['timeline-signature__year', { 'is-active': index === 0 }]}
+        id={`timeline-signature-year-${index}`}
+        role="tab"
+        aria-selected={index === 0 ? 'true' : 'false'}
+        aria-controls={`timeline-signature-panel-${index}`}
+        data-timeline-year
       >
-        <span>{item.year}</span>
+        {item.year}
       </button>
     ))}
   </div>
-  <div class="timeline-panels">
+
+  <div class="timeline-signature__stage">
     {items.map((item, index) => (
-      <article class="timeline-panel" id={`timeline-panel-${index}`} data-timeline-panel data-index={index}>
-        <time>{item.year}</time>
-        <h3>{item.title}</h3>
-        <p>{item.text}</p>
+      <article
+        class:list={['timeline-signature__panel', { 'is-active': index === 0 }]}
+        id={`timeline-signature-panel-${index}`}
+        role="tabpanel"
+        aria-labelledby={`timeline-signature-year-${index}`}
+        aria-hidden={index === 0 ? 'false' : 'true'}
+        data-timeline-panel
+      >
+        <div class="timeline-signature__number" aria-hidden="true">{item.year}</div>
+        <div class="timeline-signature__copy">
+          <time>{item.year}</time>
+          <h3>{item.title}</h3>
+          <p>{item.text}</p>
+        </div>
       </article>
     ))}
   </div>
 </div>
 
 <script>
-  const timelines = document.querySelectorAll('[data-interactive-timeline]');
-
-  timelines.forEach((timeline) => {
-    const buttons = [...timeline.querySelectorAll('[data-timeline-point]')] as HTMLButtonElement[];
+  document.querySelectorAll('[data-timeline-signature]').forEach((timeline) => {
+    const buttons = [...timeline.querySelectorAll('[data-timeline-year]')] as HTMLButtonElement[];
     const panels = [...timeline.querySelectorAll('[data-timeline-panel]')] as HTMLElement[];
-    const progress = timeline.querySelector('[data-timeline-progress]');
     if (buttons.length === 0 || panels.length === 0) return;
 
     timeline.classList.add('is-enhanced');
+    let activeIndex = 0;
 
-    const activate = (index: number) => {
+    const activate = (index: number, focusButton = false) => {
+      activeIndex = (index + buttons.length) % buttons.length;
+      if (timeline instanceof HTMLElement) timeline.style.setProperty('--active-index', String(activeIndex));
+
       buttons.forEach((button, buttonIndex) => {
-        const active = buttonIndex === index;
+        const active = buttonIndex === activeIndex;
         button.classList.toggle('is-active', active);
-        button.setAttribute('aria-expanded', String(active));
+        button.setAttribute('aria-selected', String(active));
+        button.setAttribute('tabindex', active ? '0' : '-1');
+        if (focusButton && active) button.focus();
       });
+
       panels.forEach((panel, panelIndex) => {
-        const active = panelIndex === index;
+        const active = panelIndex === activeIndex;
         panel.classList.toggle('is-active', active);
         panel.hidden = !active;
+        panel.setAttribute('aria-hidden', String(!active));
       });
-      if (progress instanceof HTMLElement) {
-        const value = buttons.length > 1 ? index / (buttons.length - 1) : 1;
-        progress.style.transform = `scaleX(${value})`;
-      }
     };
 
     buttons.forEach((button, index) => {
       button.addEventListener('click', () => activate(index));
       button.addEventListener('keydown', (event) => {
         if (!(event instanceof KeyboardEvent)) return;
-        const current = buttons.indexOf(button);
-        const next = event.key === 'ArrowRight' || event.key === 'ArrowDown';
-        const previous = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
-        if (!next && !previous) return;
+        if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
-        const target = next
-          ? (current + 1) % buttons.length
-          : (current - 1 + buttons.length) % buttons.length;
-        const nextButton = buttons[target];
-        if (nextButton instanceof HTMLElement) {
-          nextButton.focus();
-          activate(target);
+        if (event.key === 'Home') {
+          activate(0, true);
+          return;
         }
+        if (event.key === 'End') {
+          activate(buttons.length - 1, true);
+          return;
+        }
+        const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+        activate(activeIndex + direction, true);
       });
     });
 
     activate(0);
+    requestAnimationFrame(() => timeline.classList.add('is-ready'));
   });
 </script>

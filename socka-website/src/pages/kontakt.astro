@@ -1,9 +1,28 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ExternalLinkIcon from '../components/icons/ExternalLinkIcon.astro';
 import GoogleMapEmbed from '../components/GoogleMapEmbed.astro';
-import PageHero from '../components/PageHero.astro';
+import SectionTitle from '../components/SectionTitle.astro';
 import SocialLinks from '../components/SocialLinks.astro';
 import { contactDetails, site } from '../lib/site';
+
+const contactReasons = [
+  {
+    label: 'Donacije',
+    title: 'Prije dolaska dogovaramo što je najpotrebnije.',
+    text: 'Tako proizvodi stižu u pravom trenutku i odmah se mogu usmjeriti prema policama ili paketima.'
+  },
+  {
+    label: 'Volontiranje',
+    title: 'Zajedno biramo zadatak koji vam odgovara.',
+    text: 'Možete pomoći u sortiranju, slaganju polica, pripremi paketa ili na organiziranim akcijama.'
+  },
+  {
+    label: 'Akcije',
+    title: 'Škole, tvrtke i grupe lakše kreću uz kratak dogovor.',
+    text: 'Jasno dogovorimo proizvode, rok, poruku akcije i način predaje prikupljenog.'
+  }
+] as const;
 ---
 <BaseLayout
   title="Kontakt"
@@ -14,60 +33,107 @@ import { contactDetails, site } from '../lib/site';
     { label: 'Kontakt', href: '/kontakt/' }
   ]}
 >
-  <PageHero
-    eyebrow="Kontakt"
-    title="Javite nam se."
-    text="Javite nam se za donacije, volontiranje ili organiziranje akcije. Zajedno ćemo dogovoriti najkorisniji sljedeći korak."
-  />
+  <section class="contact-hero" data-scroll-story>
+    <div class="container contact-hero__grid">
+      <div class="contact-hero__copy reveal">
+        <p class="eyebrow">Kontakt</p>
+        <h1>Kontakt za donacije, volontiranje i akcije.</h1>
+        <p class="lead">Nazovite ili pošaljite e-poštu prije dolaska kako bismo dogovorili najkorisniji način pomoći.</p>
+        <div class="button-row">
+          <a class="btn btn--primary btn--pulse" href={`tel:${site.phone.href}`}>{site.phone.display}</a>
+          <a class="btn btn--secondary" href={`mailto:${site.email.href}`}>Pošalji e-poštu</a>
+        </div>
+      </div>
 
-  <section class="section section--white">
+      <aside class="contact-hero__panel reveal" aria-label="Brzi plan dogovora" style="--i: 1">
+        <span class="contact-hero__badge">Najbrži put</span>
+        <h2>Odmah odaberite kanal.</h2>
+        <div class="contact-hero__quick">
+          <a href={`tel:${site.phone.href}`}>
+            <span>Telefon</span>
+            <strong>{site.phone.display}</strong>
+          </a>
+          <a href={`mailto:${site.email.href}`}>
+            <span>E-pošta</span>
+            <strong>{site.email.display}</strong>
+          </a>
+          <a href={site.mapLinks.google} target="_blank" rel="noopener noreferrer">
+            <span>Lokacija</span>
+            <strong>{site.address.display}</strong>
+          </a>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section section--white contact-main-section" data-scroll-story>
     <div class="container contact-grid contact-grid--modern">
-      <div class="contact-card reveal">
-        <p class="eyebrow">Podaci</p>
-        <h2>Kontakt za dogovor pomoći</h2>
-        <p>Najlakše je nazvati ili poslati e-poštu prije dolaska.</p>
+      <GoogleMapEmbed />
+
+      <div class="contact-card contact-card--compact reveal">
+        <p class="eyebrow">Brzi kontakt</p>
+        <h2>Dogovorite dolazak.</h2>
+        <p>Kratka poruka dovoljna je da uskladimo termin, prostor i najpotrebnije proizvode.</p>
         <div class="quick-actions" aria-label="Brze kontakt akcije">
-          <a class="btn btn--primary" href={`tel:${site.phone.href}`}>Nazovi</a>
+          <a class="btn btn--primary" href={`tel:${site.phone.href}`}>{site.phone.display}</a>
           <a class="btn btn--secondary" href={`mailto:${site.email.href}`}>Pošalji e-poštu</a>
         </div>
         <dl>
-          <div>
-            <dt>Naziv</dt>
-            <dd>{site.name}</dd>
-          </div>
           {contactDetails.map((item) => (
             <div>
               <dt>{item.label}</dt>
               <dd>
-                {item.href ? <a href={item.href} target={item.href.startsWith('http') ? '_blank' : undefined} rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}>{item.value}</a> : item.value}
+                {item.href ? (
+                  <a href={item.href} target={item.href.startsWith('http') ? '_blank' : undefined} rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}>
+                    {item.value}
+                    {item.href.startsWith('http') && <ExternalLinkIcon />}
+                  </a>
+                ) : item.value}
               </dd>
             </div>
           ))}
         </dl>
       </div>
-
-      <GoogleMapEmbed />
     </div>
   </section>
 
-  <section class="section social-contact-section">
-    <div class="container split-section">
-      <div class="editorial-block reveal">
-        <p class="eyebrow">Društvene mreže</p>
-        <h2>Pratite službene kanale i podijelite akcije s ljudima koji žele pomoći.</h2>
-        <p>
-          Društvene mreže najbrži su način da doznate za nove akcije, fotografije s terena i pozive zajednici.
-        </p>
+  <section class="section contact-reasons-section" data-scroll-story>
+    <div class="container">
+      <SectionTitle
+        eyebrow="Kada se javiti"
+        title="Najbolje pomažemo kada se koraci dogovore unaprijed."
+        text="Kontakt je tu da donacija, vrijeme i dobra volja odmah dobiju jasan smjer."
+        align="center"
+      />
+      <div class="contact-reasons">
+        {contactReasons.map((reason, index) => (
+          <article class="contact-reason reveal" style={`--i: ${index + 1}`}>
+            <span>{reason.label}</span>
+            <h2>{reason.title}</h2>
+            <p>{reason.text}</p>
+          </article>
+        ))}
       </div>
-      <SocialLinks />
     </div>
   </section>
 
-  <section class="section section--soft">
-    <div class="container cta-panel reveal">
+  <section class="section social-contact-section" id="drustvene-mreze" data-scroll-story>
+    <div class="container">
+      <div class="social-section social-section--panel reveal">
+        <div>
+          <p class="eyebrow">Društvene mreže</p>
+          <h2>Pratite službene kanale i podijelite akcije.</h2>
+        </div>
+        <SocialLinks />
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--soft" data-scroll-story>
+    <div class="container cta-panel cta-panel--compact reveal">
       <div>
         <p class="eyebrow">Sljedeći korak</p>
-        <h2>Javite nam se za donacije, volontiranje ili organiziranje akcije.</h2>
+        <h2>Spremni ste pomoći?</h2>
         <p>Kratak dogovor pomaže da svaka donacija i svaki sat volontiranja budu dobro iskorišteni.</p>
       </div>
       <a class="btn btn--primary" href="/kako-pomoci/">Pogledaj načine pomoći</a>

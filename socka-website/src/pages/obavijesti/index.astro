@@ -22,10 +22,10 @@ const { items: notices, currentPage, totalPages } = paginateNotices(allNotices);
   <PageHero
     eyebrow="Obavijesti"
     title="Aktualne akcije, pozivi i novosti."
-    text="Ovdje će biti objavljene javne obavijesti Socijalne samoposluge i pozivi zajednici kada budu spremni za dijeljenje."
+    text="Javne obavijesti i pozivi zajednici objavljuju se kada su spremni za dijeljenje."
   />
 
-  <section class="section section--announcements">
+  <section class="section section--announcements" data-scroll-story>
     <div class="container">
       {categories.length > 0 && (
         <div class="filter-row" aria-label="Kategorije obavijesti">

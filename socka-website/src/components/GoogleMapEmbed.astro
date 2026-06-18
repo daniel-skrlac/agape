@@ -1,4 +1,5 @@
 ---
+import ExternalLinkIcon from './icons/ExternalLinkIcon.astro';
 import { site } from '../lib/site';
 
 interface Props {
@@ -18,6 +19,9 @@ const { title = 'Google karta lokacije Socijalne samoposluge' } = Astro.props;
   <div class="map-embed__panel">
     <span>Lokacija</span>
     <strong>{site.address.display}</strong>
-    <a href={site.mapLinks.google} target="_blank" rel="noopener noreferrer">Otvori u Google Maps</a>
+    <a href={site.mapLinks.google} target="_blank" rel="noopener noreferrer" aria-label="Otvori lokaciju u Google Maps, otvara se u novoj kartici">
+      Otvori u Google Maps
+      <ExternalLinkIcon />
+    </a>
   </div>
 </div>
