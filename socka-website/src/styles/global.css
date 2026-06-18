@@ -10243,6 +10243,21 @@ video {
   }
 }
 
+/* Final polish: keep social-panel borders visually even and remove the
+   unwanted gold orb from the contact hero card. */
+.social-section--panel {
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background-clip: padding-box;
+  box-shadow:
+    0 24px 60px rgba(20, 16, 28, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.contact-hero__panel::before {
+  content: none !important;
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nav-panel,
   .nav-backdrop,

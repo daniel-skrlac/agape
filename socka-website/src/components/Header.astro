@@ -140,6 +140,7 @@ const currentPath = Astro.url.pathname;
     const mobileQuery = window.matchMedia('(max-width: 1020px)');
     const focusableSelector = 'a[href], button:not([disabled])';
     let lastFocused: Element | null = null;
+    let scrollBeforeOpen = 0;
     let open = false;
 
     const getFocusableElements = () => [toggle, ...panel.querySelectorAll(focusableSelector)].filter(
@@ -159,6 +160,9 @@ const currentPath = Astro.url.pathname;
     };
 
     const setOpen = (nextOpen: boolean, restoreFocus = true) => {
+      const wasOpen = open;
+      if (!wasOpen && nextOpen && mobileQuery.matches) scrollBeforeOpen = window.scrollY;
+
       open = nextOpen && mobileQuery.matches;
       toggle.setAttribute('aria-expanded', String(open));
       toggle.setAttribute('aria-label', open ? 'Zatvori navigaciju' : 'Otvori navigaciju');
@@ -172,14 +176,13 @@ const currentPath = Astro.url.pathname;
         lastFocused = document.activeElement;
         panel.removeAttribute('inert');
         requestAnimationFrame(() => {
-          const firstLink = panel.querySelector(focusableSelector);
-          if (firstLink instanceof HTMLElement) firstLink.focus();
+          window.scrollTo({ top: scrollBeforeOpen, left: window.scrollX, behavior: 'auto' });
         });
         return;
       }
 
       if (mobileQuery.matches) panel.setAttribute('inert', '');
-      if (restoreFocus && lastFocused instanceof HTMLElement) lastFocused.focus();
+      if (restoreFocus && lastFocused instanceof HTMLElement) lastFocused.focus({ preventScroll: true });
     };
 
     const onToggleClick = () => setOpen(toggle.getAttribute('aria-expanded') !== 'true');
