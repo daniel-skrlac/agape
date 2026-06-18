@@ -140,8 +140,11 @@ const currentPath = Astro.url.pathname;
     const mobileQuery = window.matchMedia('(max-width: 1020px)');
     const focusableSelector = 'a[href], button:not([disabled])';
     let lastFocused: Element | null = null;
-    let scrollBeforeOpen = 0;
     let open = false;
+
+    const keepViewportPosition = (scrollX: number, scrollY: number) => {
+      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+    };
 
     const getFocusableElements = () => [toggle, ...panel.querySelectorAll(focusableSelector)].filter(
       (element): element is HTMLElement =>
@@ -160,29 +163,26 @@ const currentPath = Astro.url.pathname;
     };
 
     const setOpen = (nextOpen: boolean, restoreFocus = true) => {
-      const wasOpen = open;
-      if (!wasOpen && nextOpen && mobileQuery.matches) scrollBeforeOpen = window.scrollY;
-
+      const currentScrollX = window.scrollX;
+      const currentScrollY = window.scrollY;
       open = nextOpen && mobileQuery.matches;
       toggle.setAttribute('aria-expanded', String(open));
       toggle.setAttribute('aria-label', open ? 'Zatvori navigaciju' : 'Otvori navigaciju');
       panel.classList.toggle('is-open', open);
       header.classList.toggle('nav-open', open);
-      document.documentElement.classList.toggle('nav-is-open', open);
       const label = toggle.querySelector('.sr-only');
       if (label) label.textContent = open ? 'Zatvori navigaciju' : 'Otvori navigaciju';
 
       if (open) {
         lastFocused = document.activeElement;
         panel.removeAttribute('inert');
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: scrollBeforeOpen, left: window.scrollX, behavior: 'auto' });
-        });
+        keepViewportPosition(currentScrollX, currentScrollY);
         return;
       }
 
       if (mobileQuery.matches) panel.setAttribute('inert', '');
       if (restoreFocus && lastFocused instanceof HTMLElement) lastFocused.focus({ preventScroll: true });
+      keepViewportPosition(currentScrollX, currentScrollY);
     };
 
     const onToggleClick = () => setOpen(toggle.getAttribute('aria-expanded') !== 'true');

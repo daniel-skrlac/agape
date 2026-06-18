@@ -1992,7 +1992,7 @@ body {
   }
 
   .nav-is-open {
-    overflow: hidden;
+    overflow: visible;
   }
 
   .nav-links {
@@ -9648,24 +9648,26 @@ video {
       radial-gradient(circle at 92% 8%, rgba(255, 209, 102, 0.24), transparent 12rem),
       linear-gradient(155deg, #fffaf4, #fff3e9 48%, #fffdf8);
     box-shadow: -28px 0 70px rgba(42, 23, 52, 0.22);
+    clip-path: inset(0 0 0 100% round 28px 0 0 28px);
     opacity: 0;
     pointer-events: none;
-    transform: translate3d(104%, 0, 0);
+    transform: translate3d(0, 0, 0);
     visibility: hidden;
-    will-change: transform;
+    will-change: clip-path, opacity;
     transition:
-      transform 260ms cubic-bezier(.2, .8, .2, 1),
+      clip-path 260ms cubic-bezier(.2, .8, .2, 1),
       opacity 180ms ease,
       visibility 0s linear 260ms;
   }
 
   .nav-panel.is-open {
+    clip-path: inset(0 0 0 0 round 28px 0 0 28px);
     opacity: 1;
     pointer-events: auto;
     transform: translate3d(0, 0, 0);
     visibility: visible;
     transition:
-      transform 260ms cubic-bezier(.2, .8, .2, 1),
+      clip-path 260ms cubic-bezier(.2, .8, .2, 1),
       opacity 180ms ease,
       visibility 0s;
   }
@@ -9804,11 +9806,11 @@ video {
   }
 
   .nav-is-open {
-    overflow: clip;
+    overflow: visible !important;
   }
 
   .nav-is-open body {
-    overflow: hidden;
+    overflow: visible !important;
   }
 }
 
@@ -10272,4 +10274,11 @@ video {
   .hero-cinema__photo--side {
     right: 4% !important;
   }
+}
+
+/* Mobile nav fail-safe: the drawer has its own state, so this legacy class
+   must never lock the document if it appears during browser navigation. */
+html.nav-is-open,
+html.nav-is-open body {
+  overflow: visible !important;
 }
