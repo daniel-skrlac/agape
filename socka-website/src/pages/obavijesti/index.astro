@@ -7,8 +7,10 @@ import { getNoticeCategories, getPublishedNotices, noticeSlug, paginateNotices }
 
 const allNotices = await getPublishedNotices();
 const featured = allNotices.filter((notice) => notice.data.featured);
+const featuredIds = new Set(featured.map((notice) => notice.id));
+const regularNotices = featured.length > 0 ? allNotices.filter((notice) => !featuredIds.has(notice.id)) : allNotices;
 const categories = getNoticeCategories(allNotices);
-const { items: notices, currentPage, totalPages } = paginateNotices(allNotices);
+const { items: notices, currentPage, totalPages } = paginateNotices(regularNotices);
 ---
 <BaseLayout
   title="Obavijesti"
@@ -55,7 +57,7 @@ const { items: notices, currentPage, totalPages } = paginateNotices(allNotices);
         </div>
       )}
 
-      {notices.length > 0 ? (
+      {notices.length > 0 && (
         <>
           <AnnouncementGrid notices={notices} />
           {totalPages > 1 && (
@@ -64,7 +66,9 @@ const { items: notices, currentPage, totalPages } = paginateNotices(allNotices);
             </nav>
           )}
         </>
-      ) : (
+      )}
+
+      {allNotices.length === 0 && (
         <AnnouncementGrid notices={[]} />
       )}
     </div>

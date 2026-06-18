@@ -7,18 +7,57 @@ interface Props {
   emptyTitle?: string;
   emptyText?: string;
   limit?: number;
+  slider?: boolean;
 }
 
 const {
   notices,
   emptyTitle = 'Trenutno nema novih javnih objava.',
   emptyText = 'Za donaciju, volontiranje ili dogovor akcije slobodno nam se javite.',
-  limit
+  limit,
+  slider = false
 } = Astro.props;
 
 const visibleNotices = typeof limit === 'number' ? notices.slice(0, limit) : notices;
+const isSlider = slider && visibleNotices.length > 1;
 ---
-{visibleNotices.length > 0 ? (
+{visibleNotices.length > 0 && isSlider ? (
+  <section class="announcement-slider" data-announcement-slider aria-label="Najnovije obavijesti">
+    <div class="announcement-slider__controls" aria-label="Upravljanje obavijestima">
+      <button class="slider-arrow-button announcement-slider__button" type="button" data-announcement-prev aria-label="Prethodna obavijest">
+        <span class="slider-chevron slider-chevron--left" aria-hidden="true"></span>
+      </button>
+      <button class="slider-arrow-button announcement-slider__button" type="button" data-announcement-next aria-label="Sljedeća obavijest">
+        <span class="slider-chevron slider-chevron--right" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <div class="announcement-slider__viewport" data-announcement-viewport tabindex="0" aria-label="Klizni prikaz obavijesti">
+      <div class="announcement-slider__track">
+        {visibleNotices.map((notice, index) => (
+          <NoticeCard
+            href={`/obavijesti/${noticeSlug(notice.id)}/`}
+            title={notice.data.title}
+            description={notice.data.description}
+            pubDate={notice.data.pubDate}
+            image={notice.data.image}
+            imageAlt={notice.data.imageAlt}
+            category={notice.data.category}
+            featured={notice.data.featured}
+            className="announcement-slider__card reveal"
+            style={`--i: ${index + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+
+    <div class="announcement-slider__dots" data-announcement-dots aria-label="Odabir obavijesti">
+      {visibleNotices.map((notice, index) => (
+        <button type="button" data-announcement-dot={index} aria-label={`Prikaži obavijest: ${notice.data.title}`} aria-current={index === 0 ? 'true' : undefined}></button>
+      ))}
+    </div>
+  </section>
+) : visibleNotices.length > 0 ? (
   <div class="announcement-feature-grid">
     {visibleNotices.map((notice, index) => (
       <NoticeCard
@@ -47,3 +86,137 @@ const visibleNotices = typeof limit === 'number' ? notices.slice(0, limit) : not
     </div>
   </div>
 )}
+
+<script>
+  type AnnouncementCleanup = () => void;
+
+  const announcementWindow = window as typeof window & {
+    sockaAnnouncementSliderInit?: boolean;
+    sockaAnnouncementSliderCleanups?: WeakMap<HTMLElement, AnnouncementCleanup>;
+    sockaAnnouncementSliderRoots?: Set<HTMLElement>;
+  };
+
+  announcementWindow.sockaAnnouncementSliderCleanups ??= new WeakMap<HTMLElement, AnnouncementCleanup>();
+  announcementWindow.sockaAnnouncementSliderRoots ??= new Set<HTMLElement>();
+
+  const cleanupAnnouncementSlider = (slider: HTMLElement) => {
+    const cleanup = announcementWindow.sockaAnnouncementSliderCleanups?.get(slider);
+    if (cleanup) cleanup();
+    announcementWindow.sockaAnnouncementSliderCleanups?.delete(slider);
+    announcementWindow.sockaAnnouncementSliderRoots?.delete(slider);
+  };
+
+  const cleanupAnnouncementSliders = () => {
+    announcementWindow.sockaAnnouncementSliderRoots?.forEach((slider) => cleanupAnnouncementSlider(slider));
+  };
+
+  const initAnnouncementSliders = () => document.querySelectorAll('[data-announcement-slider]').forEach((slider) => {
+    if (!(slider instanceof HTMLElement) || slider.dataset.sliderReady === 'true') return;
+
+    const viewport = slider.querySelector('[data-announcement-viewport]');
+    const prevButton = slider.querySelector('[data-announcement-prev]');
+    const nextButton = slider.querySelector('[data-announcement-next]');
+    const cards = [...slider.querySelectorAll('.announcement-slider__card')].filter(
+      (card): card is HTMLElement => card instanceof HTMLElement
+    );
+    const dots = [...slider.querySelectorAll('[data-announcement-dot]')].filter(
+      (dot): dot is HTMLButtonElement => dot instanceof HTMLButtonElement
+    );
+
+    if (!(viewport instanceof HTMLElement) || !(prevButton instanceof HTMLButtonElement) || !(nextButton instanceof HTMLButtonElement) || cards.length === 0) return;
+
+    slider.dataset.sliderReady = 'true';
+    announcementWindow.sockaAnnouncementSliderRoots?.add(slider);
+
+    let frame = 0;
+    let currentIndex = 0;
+
+    const maxScrollLeft = () => Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+
+    const nearestIndex = () => {
+      const scrollLeft = viewport.scrollLeft;
+      return cards.reduce((nearest, card, index) => {
+        const nearestDistance = Math.abs(cards[nearest].offsetLeft - scrollLeft);
+        const distance = Math.abs(card.offsetLeft - scrollLeft);
+        return distance < nearestDistance ? index : nearest;
+      }, 0);
+    };
+
+    const updateState = () => {
+      currentIndex = nearestIndex();
+      const canScroll = maxScrollLeft() > 2;
+      const atStart = viewport.scrollLeft <= 2;
+      const atEnd = viewport.scrollLeft >= maxScrollLeft() - 2;
+
+      prevButton.disabled = !canScroll || atStart;
+      nextButton.disabled = !canScroll || atEnd;
+      dots.forEach((dot, index) => {
+        if (index === currentIndex) {
+          dot.setAttribute('aria-current', 'true');
+        } else {
+          dot.removeAttribute('aria-current');
+        }
+      });
+    };
+
+    const requestStateUpdate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updateState);
+    };
+
+    const goTo = (index: number) => {
+      const target = cards[Math.min(Math.max(index, 0), cards.length - 1)];
+      if (!target) return;
+      viewport.scrollTo({
+        left: target.offsetLeft,
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+      });
+    };
+
+    const onPrevious = () => goTo(currentIndex - 1);
+    const onNext = () => goTo(currentIndex + 1);
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        onPrevious();
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        onNext();
+      }
+    };
+    const onDotClick = (event: Event) => {
+      const target = event.currentTarget;
+      if (!(target instanceof HTMLButtonElement)) return;
+      goTo(Number(target.dataset.announcementDot || 0));
+    };
+
+    prevButton.addEventListener('click', onPrevious);
+    nextButton.addEventListener('click', onNext);
+    viewport.addEventListener('scroll', requestStateUpdate, { passive: true });
+    viewport.addEventListener('keydown', onKeydown);
+    window.addEventListener('resize', requestStateUpdate, { passive: true });
+    dots.forEach((dot) => dot.addEventListener('click', onDotClick));
+    updateState();
+
+    announcementWindow.sockaAnnouncementSliderCleanups?.set(slider, () => {
+      window.cancelAnimationFrame(frame);
+      prevButton.removeEventListener('click', onPrevious);
+      nextButton.removeEventListener('click', onNext);
+      viewport.removeEventListener('scroll', requestStateUpdate);
+      viewport.removeEventListener('keydown', onKeydown);
+      window.removeEventListener('resize', requestStateUpdate);
+      dots.forEach((dot) => dot.removeEventListener('click', onDotClick));
+      slider.removeAttribute('data-slider-ready');
+    });
+  });
+
+  cleanupAnnouncementSliders();
+  initAnnouncementSliders();
+
+  if (!announcementWindow.sockaAnnouncementSliderInit) {
+    announcementWindow.sockaAnnouncementSliderInit = true;
+    document.addEventListener('astro:before-swap', cleanupAnnouncementSliders);
+    document.addEventListener('astro:page-load', initAnnouncementSliders);
+  }
+</script>

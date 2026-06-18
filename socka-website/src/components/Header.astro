@@ -105,6 +105,30 @@ const currentPath = Astro.url.pathname;
     headerWindow.sockaHeaderRoots?.forEach((header) => cleanupHeader(header));
   };
 
+  const resetGlobalNavState = () => {
+    document.documentElement.classList.remove('nav-is-open');
+
+    document.querySelectorAll('[data-header]').forEach((header) => {
+      if (!(header instanceof HTMLElement)) return;
+
+      const toggle = header.querySelector('[data-nav-toggle]');
+      const panel = header.querySelector('[data-nav-panel]');
+      header.classList.remove('nav-open');
+
+      if (toggle instanceof HTMLButtonElement) {
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-label', 'Otvori navigaciju');
+        const label = toggle.querySelector('.sr-only');
+        if (label) label.textContent = 'Otvori navigaciju';
+      }
+
+      if (panel instanceof HTMLElement) {
+        panel.classList.remove('is-open');
+        if (window.matchMedia('(max-width: 1020px)').matches) panel.setAttribute('inert', '');
+      }
+    });
+  };
+
   const initHeaderNavigation = () => document.querySelectorAll('[data-header]').forEach((header) => {
     if (!(header instanceof HTMLElement) || header.dataset.navReady === 'true') return;
 
@@ -159,7 +183,11 @@ const currentPath = Astro.url.pathname;
     const onCloseClick = () => setOpen(false);
     const onPanelClick = (event: Event) => {
       const target = event.target;
-      if (target instanceof HTMLAnchorElement) setOpen(false, false);
+      const link = target instanceof Element ? target.closest('a[href]') : null;
+      if (link) {
+        setOpen(false, false);
+        resetGlobalNavState();
+      }
     };
     const onBackdropClick = () => setOpen(false);
     const onKeydown = (event: KeyboardEvent) => {
@@ -201,6 +229,7 @@ const currentPath = Astro.url.pathname;
 
     headerWindow.sockaHeaderCleanups?.set(header, () => {
       setOpen(false, false);
+      resetGlobalNavState();
       toggle.removeEventListener('click', onToggleClick);
       if (close instanceof HTMLButtonElement) close.removeEventListener('click', onCloseClick);
       panel.removeEventListener('click', onPanelClick);
@@ -212,11 +241,21 @@ const currentPath = Astro.url.pathname;
   });
 
   cleanupAllHeaders();
+  resetGlobalNavState();
   initHeaderNavigation();
 
   if (!headerWindow.sockaHeaderInit) {
     headerWindow.sockaHeaderInit = true;
-    document.addEventListener('astro:before-swap', cleanupAllHeaders);
-    document.addEventListener('astro:page-load', initHeaderNavigation);
+    document.addEventListener('astro:before-preparation', resetGlobalNavState);
+    document.addEventListener('astro:before-swap', () => {
+      cleanupAllHeaders();
+      resetGlobalNavState();
+    });
+    document.addEventListener('astro:after-swap', resetGlobalNavState);
+    document.addEventListener('astro:page-load', () => {
+      resetGlobalNavState();
+      initHeaderNavigation();
+    });
+    window.addEventListener('pageshow', resetGlobalNavState);
   }
 </script>

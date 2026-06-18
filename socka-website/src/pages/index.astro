@@ -17,7 +17,7 @@ const notices = await getPublishedNotices();
 <BaseLayout title="Početna" description={site.description} canonicalPath="/">
   <InteractiveHero />
 
-  <section class="section section--announcements" data-scroll-story>
+  <section class="section section--announcements home-announcements" data-scroll-story>
     <div class="container">
       <div class="section-head reveal" data-scroll-reveal>
         <SectionTitle
@@ -27,7 +27,7 @@ const notices = await getPublishedNotices();
         />
         <a class="text-link" href="/obavijesti/">Sve obavijesti</a>
       </div>
-      <AnnouncementGrid notices={notices} limit={3} />
+      <AnnouncementGrid notices={notices} limit={4} slider />
     </div>
   </section>
 
