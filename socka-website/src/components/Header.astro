@@ -1,4 +1,5 @@
 ---
+import BrandSocialIcon from './BrandSocialIcon.astro';
 import ExternalLinkIcon from './icons/ExternalLinkIcon.astro';
 import { navigation, publishedSocialLinks, site } from '../lib/site';
 
@@ -32,13 +33,23 @@ const currentPath = Astro.url.pathname;
       type="button"
       aria-controls="primary-navigation"
       aria-expanded="false"
+      aria-label="Otvori navigaciju"
       data-nav-toggle
     >
       <span class="nav-toggle__lines" aria-hidden="true"></span>
       <span class="sr-only">Otvori navigaciju</span>
     </button>
 
+    <div class="nav-backdrop" data-nav-backdrop aria-hidden="true"></div>
+
     <div class="nav-panel" id="primary-navigation" data-nav-panel>
+      <div class="nav-panel__mobile-head">
+        <span>Izbornik</span>
+        <button class="nav-panel__close" type="button" data-nav-close aria-label="Zatvori navigaciju">
+          <span aria-hidden="true"></span>
+        </button>
+      </div>
+
       <ul class="nav-links">
         {navigation.map((item) => {
           const isActive = currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href));
@@ -52,53 +63,116 @@ const currentPath = Astro.url.pathname;
         })}
       </ul>
       <a class="nav-cta" href="/kako-pomoci/">Želim pomoći</a>
+
+      <div class="nav-panel__mobile-meta" aria-label="Brzi kontakt">
+        <a class="nav-panel__contact" href={`tel:${site.phone.href}`}>
+          <span>Telefon</span>
+          <strong>{site.phone.display}</strong>
+        </a>
+        <div class="nav-panel__socials" aria-label="Društvene mreže">
+          {publishedSocialLinks.map((link) => (
+            <a href={link.url} target="_blank" rel="noopener noreferrer" aria-label={`${link.shortLabel} - otvara se u novoj kartici`}>
+              <BrandSocialIcon id={link.id} />
+              <span>{link.shortLabel}</span>
+            </a>
+          ))}
+        </div>
+      </div>
     </div>
   </nav>
 </header>
 
 <script>
-  const toggle = document.querySelector('[data-nav-toggle]');
-  const panel = document.querySelector('[data-nav-panel]');
+  type HeaderCleanup = () => void;
 
-  if (toggle instanceof HTMLButtonElement && panel instanceof HTMLElement) {
+  const headerWindow = window as typeof window & {
+    sockaHeaderInit?: boolean;
+    sockaHeaderCleanups?: WeakMap<HTMLElement, HeaderCleanup>;
+    sockaHeaderRoots?: Set<HTMLElement>;
+  };
+
+  headerWindow.sockaHeaderCleanups ??= new WeakMap<HTMLElement, HeaderCleanup>();
+  headerWindow.sockaHeaderRoots ??= new Set<HTMLElement>();
+
+  const cleanupHeader = (header: HTMLElement) => {
+    const cleanup = headerWindow.sockaHeaderCleanups?.get(header);
+    if (cleanup) cleanup();
+    headerWindow.sockaHeaderCleanups?.delete(header);
+    headerWindow.sockaHeaderRoots?.delete(header);
+  };
+
+  const cleanupAllHeaders = () => {
+    headerWindow.sockaHeaderRoots?.forEach((header) => cleanupHeader(header));
+  };
+
+  const initHeaderNavigation = () => document.querySelectorAll('[data-header]').forEach((header) => {
+    if (!(header instanceof HTMLElement) || header.dataset.navReady === 'true') return;
+
+    const toggle = header.querySelector('[data-nav-toggle]');
+    const close = header.querySelector('[data-nav-close]');
+    const panel = header.querySelector('[data-nav-panel]');
+    const backdrop = header.querySelector('[data-nav-backdrop]');
+    if (!(toggle instanceof HTMLButtonElement) || !(panel instanceof HTMLElement)) return;
+
+    header.dataset.navReady = 'true';
+    headerWindow.sockaHeaderRoots?.add(header);
+
+    const mobileQuery = window.matchMedia('(max-width: 1020px)');
     const focusableSelector = 'a[href], button:not([disabled])';
     let lastFocused: Element | null = null;
+    let open = false;
 
-    const setOpen = (open: boolean) => {
+    const syncMobileState = () => {
+      if (mobileQuery.matches) {
+        if (!open) panel.setAttribute('inert', '');
+      } else {
+        panel.removeAttribute('inert');
+        document.documentElement.classList.remove('nav-is-open');
+      }
+    };
+
+    const setOpen = (nextOpen: boolean, restoreFocus = true) => {
+      open = nextOpen && mobileQuery.matches;
       toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Zatvori navigaciju' : 'Otvori navigaciju');
       panel.classList.toggle('is-open', open);
+      header.classList.toggle('nav-open', open);
       document.documentElement.classList.toggle('nav-is-open', open);
       const label = toggle.querySelector('.sr-only');
       if (label) label.textContent = open ? 'Zatvori navigaciju' : 'Otvori navigaciju';
 
       if (open) {
         lastFocused = document.activeElement;
-        const firstLink = panel.querySelector(focusableSelector);
-        if (firstLink instanceof HTMLElement) firstLink.focus();
-      } else if (lastFocused instanceof HTMLElement) {
-        lastFocused.focus();
+        panel.removeAttribute('inert');
+        requestAnimationFrame(() => {
+          const firstLink = panel.querySelector(focusableSelector);
+          if (firstLink instanceof HTMLElement) firstLink.focus();
+        });
+        return;
       }
+
+      if (mobileQuery.matches) panel.setAttribute('inert', '');
+      if (restoreFocus && lastFocused instanceof HTMLElement) lastFocused.focus();
     };
 
-    toggle.addEventListener('click', () => {
-      setOpen(toggle.getAttribute('aria-expanded') !== 'true');
-    });
-
-    panel.addEventListener('click', (event) => {
+    const onToggleClick = () => setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+    const onCloseClick = () => setOpen(false);
+    const onPanelClick = (event: Event) => {
       const target = event.target;
-      if (target instanceof HTMLAnchorElement) setOpen(false);
-    });
-
-    document.addEventListener('keydown', (event) => {
-      if (toggle.getAttribute('aria-expanded') !== 'true') return;
+      if (target instanceof HTMLAnchorElement) setOpen(false, false);
+    };
+    const onBackdropClick = () => setOpen(false);
+    const onKeydown = (event: KeyboardEvent) => {
+      if (!open) return;
       if (event.key === 'Escape') {
+        event.preventDefault();
         setOpen(false);
         return;
       }
       if (event.key !== 'Tab') return;
 
       const focusable = [...panel.querySelectorAll(focusableSelector)].filter(
-        (element) => element instanceof HTMLElement
+        (element): element is HTMLElement => element instanceof HTMLElement
       );
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -111,6 +185,38 @@ const currentPath = Astro.url.pathname;
         event.preventDefault();
         first.focus();
       }
+    };
+    const onMediaChange = () => {
+      if (!mobileQuery.matches) setOpen(false, false);
+      syncMobileState();
+    };
+
+    toggle.addEventListener('click', onToggleClick);
+    if (close instanceof HTMLButtonElement) close.addEventListener('click', onCloseClick);
+    panel.addEventListener('click', onPanelClick);
+    if (backdrop instanceof HTMLElement) backdrop.addEventListener('click', onBackdropClick);
+    document.addEventListener('keydown', onKeydown);
+    mobileQuery.addEventListener('change', onMediaChange);
+    syncMobileState();
+
+    headerWindow.sockaHeaderCleanups?.set(header, () => {
+      setOpen(false, false);
+      toggle.removeEventListener('click', onToggleClick);
+      if (close instanceof HTMLButtonElement) close.removeEventListener('click', onCloseClick);
+      panel.removeEventListener('click', onPanelClick);
+      if (backdrop instanceof HTMLElement) backdrop.removeEventListener('click', onBackdropClick);
+      document.removeEventListener('keydown', onKeydown);
+      mobileQuery.removeEventListener('change', onMediaChange);
+      header.removeAttribute('data-nav-ready');
     });
+  });
+
+  cleanupAllHeaders();
+  initHeaderNavigation();
+
+  if (!headerWindow.sockaHeaderInit) {
+    headerWindow.sockaHeaderInit = true;
+    document.addEventListener('astro:before-swap', cleanupAllHeaders);
+    document.addEventListener('astro:page-load', initHeaderNavigation);
   }
 </script>
