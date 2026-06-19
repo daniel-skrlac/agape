@@ -122,14 +122,69 @@ const jsonLd = [organizationJsonLd, breadcrumbJsonLd, ...(Array.isArray(structur
         if (window.__sockaScrollNavigationReady) return;
         window.__sockaScrollNavigationReady = true;
 
+        const scrollStateKey = 'socka:navigation-scroll-target';
         const sameOrigin = (url) => url.origin === window.location.origin;
         let pendingScrollTarget = null;
-        const scrollToTop = () => window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+        if ('scrollRestoration' in history) {
+          history.scrollRestoration = 'manual';
+        }
+
+        const currentPath = () => `${window.location.pathname}${window.location.search}`;
+        const writeScrollTarget = (target) => {
+          pendingScrollTarget = target;
+
+          try {
+            sessionStorage.setItem(scrollStateKey, JSON.stringify(target));
+          } catch {
+            // Session storage can be unavailable in restricted browser modes.
+          }
+        };
+        const readScrollTarget = () => {
+          if (pendingScrollTarget) return pendingScrollTarget;
+
+          try {
+            const raw = sessionStorage.getItem(scrollStateKey);
+            return raw ? JSON.parse(raw) : null;
+          } catch {
+            return null;
+          }
+        };
+        const clearScrollTarget = () => {
+          pendingScrollTarget = null;
+
+          try {
+            sessionStorage.removeItem(scrollStateKey);
+          } catch {
+            // No-op for restricted browser modes.
+          }
+        };
+        const runAfterLayout = (callback) => {
+          callback();
+          requestAnimationFrame(callback);
+          requestAnimationFrame(() => requestAnimationFrame(callback));
+          window.setTimeout(callback, 40);
+          window.setTimeout(callback, 140);
+          window.setTimeout(callback, 320);
+        };
+        const jumpTo = (top) => {
+          const root = document.documentElement;
+          const body = document.body;
+          const previousRootBehavior = root.style.scrollBehavior;
+          const previousBodyBehavior = body.style.scrollBehavior;
+
+          root.style.scrollBehavior = 'auto';
+          body.style.scrollBehavior = 'auto';
+          window.scrollTo({ top, left: 0, behavior: 'auto' });
+          root.style.scrollBehavior = previousRootBehavior;
+          body.style.scrollBehavior = previousBodyBehavior;
+        };
+        const scrollToTop = () => jumpTo(0);
         const scrollToElement = (element) => {
           const header = document.querySelector('[data-header]');
           const offset = header instanceof HTMLElement ? header.getBoundingClientRect().height + 14 : 14;
           const top = element.getBoundingClientRect().top + window.scrollY - offset;
-          window.scrollTo({ top: Math.max(0, top), left: 0, behavior: 'auto' });
+          jumpTo(Math.max(0, top));
         };
 
         document.addEventListener(
@@ -146,36 +201,52 @@ const jsonLd = [organizationJsonLd, breadcrumbJsonLd, ...(Array.isArray(structur
             const currentPath = `${window.location.pathname}${window.location.search}`;
             const nextPath = `${url.pathname}${url.search}`;
             if (currentPath === nextPath) {
-              pendingScrollTarget = url.hash ? null : 'top';
-              if (!url.hash) requestAnimationFrame(scrollToTop);
+              const hash = url.hash ? decodeURIComponent(url.hash.slice(1)) : '';
+              writeScrollTarget({ path: nextPath, hash, createdAt: Date.now() });
+
+              if (!hash) {
+                requestAnimationFrame(scrollToTop);
+              } else {
+                const element = document.getElementById(hash);
+                if (element) requestAnimationFrame(() => scrollToElement(element));
+              }
+
               return;
             }
 
-            pendingScrollTarget = url.hash ? decodeURIComponent(url.hash.slice(1)) : 'top';
+            writeScrollTarget({
+              path: nextPath,
+              hash: url.hash ? decodeURIComponent(url.hash.slice(1)) : '',
+              createdAt: Date.now()
+            });
           },
           true
         );
 
         const restoreExpectedScroll = () => {
-          if (!pendingScrollTarget) return;
-          const target = pendingScrollTarget;
-          pendingScrollTarget = null;
+          const target = readScrollTarget();
+          if (!target || target.path !== currentPath()) return;
+          if (Date.now() - Number(target.createdAt || 0) > 15000) {
+            clearScrollTarget();
+            return;
+          }
 
-          requestAnimationFrame(() => {
-            if (target === 'top') {
+          clearScrollTarget();
+
+          runAfterLayout(() => {
+            if (!target.hash) {
               scrollToTop();
               return;
             }
 
-            const element = document.getElementById(target);
-            if (element) {
-              scrollToElement(element);
-            } else {
-              scrollToTop();
-            }
+            const element = document.getElementById(target.hash);
+            if (element) scrollToElement(element);
+            else scrollToTop();
           });
         };
 
+        window.addEventListener('pageshow', restoreExpectedScroll);
+        document.addEventListener('astro:before-preparation', restoreExpectedScroll);
         document.addEventListener('astro:after-swap', restoreExpectedScroll);
         document.addEventListener('astro:page-load', restoreExpectedScroll);
       })();
