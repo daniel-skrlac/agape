@@ -39,6 +39,11 @@ export const site = {
     verified: true,
     verificationNote: 'Potvrđeno u materijalima dostavljenima 13. travnja 2026.'
   },
+  mapPlaceName: 'Socijalna samoposluga "Kruh sv. Antuna"',
+  coordinates: {
+    lat: 46.3002279,
+    lng: 16.3415806
+  },
   phone: {
     display: '+385 99 213 9616',
     href: '+385992139616',
@@ -53,11 +58,11 @@ export const site = {
   },
   mapLinks: {
     google:
-      'https://www.google.com/maps/search/?api=1&query=Josipa%20Kozarca%2026D%2C%2042000%20Vara%C5%BEdin',
+      'https://maps.app.goo.gl/7Jnj5wx8cVRa5veY7?g_st=aw',
     openStreetMap:
       'https://www.openstreetmap.org/search?query=Josipa%20Kozarca%2026D%2C%2042000%20Vara%C5%BEdin',
     embed:
-      'https://www.google.com/maps?q=Josipa%20Kozarca%2026D%2C%2042000%20Vara%C5%BEdin&output=embed'
+      'https://www.google.com/maps?q=Socijalna%20samoposluga%20%22Kruh%20sv.%20Antuna%22%2C%20Josipa%20Kozarca%2026D%2C%2042000%20Vara%C5%BEdin&ll=46.3002279%2C16.3415806&z=17&output=embed'
   }
 } as const;
 
@@ -79,8 +84,8 @@ export const footerNavigation = [
 export const socialLinks: SocialLink[] = [
   {
     id: 'facebookPage',
-    label: 'Facebook stranica',
-    shortLabel: 'Facebook',
+    label: 'Službena Facebook stranica',
+    shortLabel: 'Službena stranica',
     url: 'https://www.facebook.com/p/Socijalna-samoposluga-Kruh-sv-Antuna-Vara%C5%BEdin-100064545832081/',
     verified: true,
     description: 'Objave, fotografije i pozivi zajednici.'
@@ -88,7 +93,7 @@ export const socialLinks: SocialLink[] = [
   {
     id: 'facebookGroup',
     label: 'Facebook grupa',
-    shortLabel: 'Grupa',
+    shortLabel: 'Facebook grupa',
     url: 'https://www.facebook.com/groups/743086419040582/',
     verified: true,
     description: 'Mjesto za dijeljenje akcija i podrške.'
@@ -295,6 +300,56 @@ export const historicalImpact = [
     value: '2025.',
     label: 'najnoviji obrađeni pregled',
     note: '2.988 paketa i 1.453 volonterska sata u toj godini'
+  }
+] as const;
+
+export const futureGoals = [
+  {
+    label: 'Prostor',
+    title: 'Pronaći bolji i pristupačniji prostor za samoposlugu.',
+    text:
+      'Trenutni prostor je skučen, ima stepenice i nije građen za ovakav način rada. Starijim korisnicima i osobama slabije pokretljivosti dolazak je težak, a zimi stepenice dodatno traže oprez. Cilj je prostor u kojem se donacije mogu lakše zaprimati, sortirati i podijeliti dostojanstveno.',
+    image: '/images/future-goals/pristupacniji-prostor.webp',
+    alt: 'Ulaz sa stepenicama kao prikaz potrebe za pristupačnijim prostorom',
+    note: 'Sigurniji ulaz, više mjesta za rad i lakši dolazak korisnika.'
+  },
+  {
+    label: 'Prijevoz',
+    title: 'Nabaviti vozilo za brži prijevoz hrane i donacija.',
+    text:
+      'Bijeli Caddy ili manji kombi omogućio bi učinkovitije preuzimanje hrane, prijevoz većih donacija i bržu reakciju kada se pojavi prilika za pomoć. Time bi volonteri manje ovisili o osobnim automobilima, a proizvodi bi lakše dolazili do samoposluge i korisnika.',
+    image: '/images/future-goals/prijevoz-donacija.webp',
+    alt: 'Volonter istovaruje donacije iz bijelog kombija',
+    note: 'Više preuzimanja, manje logističkih prepreka.'
+  },
+  {
+    label: 'Digitalizacija',
+    title: 'Modernizirati rad kroz Agape aplikaciju.',
+    text:
+      'U razvoju je Agape aplikacija koja će olakšati knjiženje donacija, evidenciju paketa i praćenje korisnika. Cilj je da administracija bude jednostavnija, preglednija i sigurnija, kako bi više vremena ostalo za ljude. U razvoj se mogu uključiti i oni koji žele pomoći znanjem.',
+    image: '/images/future-goals/agape-aplikacija.webp',
+    alt: 'Prikaz Agape aplikacije na mobitelu',
+    note: 'Jednostavnije praćenje rada i manje ručnog posla.',
+    actionLabel: 'Pogledaj Agape projekt',
+    actionHref: 'https://github.com/daniel-skrlac/agape'
+  },
+  {
+    label: 'Terenska pomoć',
+    title: 'Pomagati ljudima u domu i oko kuće.',
+    text:
+      'Plan je razvijati podršku osobama kojima nije dovoljna samo podjela paketa: posjetiti ih, razgovarati, praviti društvo, pomoći oko kuće, obojiti zid, popraviti sitne kvarove ili nabaviti osnovne dijelove kako bi životni prostor bio sigurniji i topliji.',
+    image: '/images/future-goals/pomoc-u-domu.webp',
+    alt: 'Volonteri pomažu starijoj osobi u domu',
+    note: 'Pomoć koja ne staje na pragu samoposluge.'
+  },
+  {
+    label: 'Mladi',
+    title: 'Radionice i prezentacije po školama.',
+    text:
+      'Želimo češće dolaziti među mlade, pokazati im kako volontiranje izgleda u praksi i otvoriti prostor za njihove ideje. Radionice, prezentacije i školske akcije mogu potaknuti novu generaciju ljudi koja razumije da se velika promjena često gradi malim, redovitim djelima.',
+    image: '/images/future-goals/radionice-mladi.webp',
+    alt: 'Radionica s mladima i prezentacijom o volontiranju',
+    note: 'Više mladih koji znaju kako se uključiti.'
   }
 ] as const;
 

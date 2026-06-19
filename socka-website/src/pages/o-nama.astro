@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import FutureGoals from '../components/FutureGoals.astro';
 import ImpactCounters from '../components/ImpactCounters.astro';
 import InteractiveTimeline from '../components/InteractiveTimeline.astro';
 import PageHero from '../components/PageHero.astro';
@@ -67,6 +68,8 @@ import { historicalImpact, historyTimeline, site } from '../lib/site';
       <InteractiveTimeline items={historyTimeline} />
     </div>
   </section>
+
+  <FutureGoals />
 
   <section class="section impact-section" data-scroll-story>
     <div class="container">

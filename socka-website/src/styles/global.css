@@ -1804,6 +1804,15 @@ body {
     #fff;
 }
 
+.cta-panel--image .btn {
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding-inline: 18px;
+  border-radius: 12px;
+  white-space: nowrap;
+  box-shadow: 0 12px 24px rgba(239, 78, 50, 0.18);
+}
+
 .volunteer-checklist {
   display: grid;
   gap: 12px;
@@ -2116,6 +2125,11 @@ body {
   .contact-card,
   .cta-panel {
     padding: 24px;
+  }
+
+  .cta-panel--image .btn {
+    width: fit-content;
+    max-width: 100%;
   }
 }
 
@@ -9226,25 +9240,25 @@ h3,
   }
 }
 
-/* Requested hero polish: clearer photo hierarchy and a subtle purple infinity
+/* Requested hero polish: clearer photo hierarchy and a subtle Christian fish
    trace around the promise line. */
-.hero-title--infinity {
+.hero-title--fish {
   position: relative;
   isolation: isolate;
 }
 
-.hero-title--infinity .hero-title__line {
+.hero-title--fish .hero-title__line {
   position: relative;
   z-index: 2;
 }
 
-.hero-title--infinity [data-hero-line] {
+.hero-title--fish [data-hero-line] {
   position: relative;
   display: inline-block;
   text-shadow: 0 14px 30px rgba(42, 23, 52, 0.1);
 }
 
-.hero-title--infinity [data-hero-line]::after {
+.hero-title--fish [data-hero-line]::after {
   content: attr(data-hero-word);
   position: absolute;
   inset: 0;
@@ -9272,30 +9286,34 @@ h3,
   animation: heroWordPurpleSweep 9800ms cubic-bezier(.45, 0, .2, 1) calc(1800ms + var(--hero-delay, 0ms)) infinite;
 }
 
-.hero-title__infinity {
+.hero-title__fish {
   position: absolute;
   z-index: 1;
-  right: -0.22em;
-  bottom: 0.02em;
-  width: min(4.15em, 82%);
+  right: -0.16em;
+  bottom: 0.08em;
+  width: min(4.35em, 86%);
   height: auto;
   overflow: visible;
-  opacity: 0.48;
+  opacity: 0.5;
   pointer-events: none;
-  transform: rotate(-7deg);
+  transform: rotate(-5deg);
   filter: drop-shadow(0 18px 28px rgba(76, 38, 108, 0.18));
   mix-blend-mode: multiply;
 }
 
-.hero-title__infinity path {
+.hero-title__fish path {
   fill: none;
   stroke: #4a245f;
-  stroke-width: 15;
+  stroke-width: 13;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 1500;
   stroke-dashoffset: 1500;
-  animation: heroInfinityTrace 5600ms cubic-bezier(.65, 0, .22, 1) 900ms infinite;
+  animation: heroFishTrace 6200ms cubic-bezier(.65, 0, .22, 1) 900ms infinite;
+}
+
+.hero-title__fish-tail {
+  animation-delay: 1350ms !important;
 }
 
 .hero-cinema__photo--main {
@@ -9314,7 +9332,7 @@ h3,
   z-index: 2;
 }
 
-@keyframes heroInfinityTrace {
+@keyframes heroFishTrace {
   0% {
     opacity: 0;
     stroke-dashoffset: 1500;
@@ -9376,15 +9394,15 @@ h3,
 }
 
 @media (max-width: 760px) {
-  .hero-title__infinity {
+  .hero-title__fish {
     right: -0.1em;
     bottom: 0.08em;
-    width: min(3.5em, 92%);
+    width: min(3.65em, 94%);
     opacity: 0.34;
   }
 
-  .hero-title__infinity path {
-    stroke-width: 13;
+  .hero-title__fish path {
+    stroke-width: 12;
   }
 
   .hero-cinema__photo--main {
@@ -9402,12 +9420,12 @@ h3,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-title--infinity [data-hero-line]::after {
+  .hero-title--fish [data-hero-line]::after {
     animation: none;
     opacity: 0;
   }
 
-  .hero-title__infinity path {
+  .hero-title__fish path {
     animation: none;
     opacity: 0.36;
     stroke-dashoffset: 0;
@@ -9633,11 +9651,14 @@ video {
     display: grid;
     grid-template-rows: auto auto auto 1fr;
     align-content: start;
-    width: min(390px, calc(100% - 20px));
+    justify-content: stretch;
+    justify-items: stretch;
+    align-items: stretch;
+    width: min(380px, calc(100% - 24px));
     max-width: none;
     min-height: 100dvh;
     max-height: 100dvh;
-    gap: 18px;
+    gap: 14px;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -9715,16 +9736,17 @@ video {
 
   .nav-links {
     display: grid;
+    width: 100%;
     gap: 8px;
   }
 
   .nav-links a,
   .nav-cta {
-    min-height: 52px;
+    min-height: 50px;
     width: 100%;
     justify-content: flex-start;
     border-radius: 16px;
-    font-size: 1.03rem;
+    font-size: 1rem;
   }
 
   .nav-links a {
@@ -9751,6 +9773,7 @@ video {
 
   .nav-panel__mobile-meta {
     display: grid;
+    width: 100%;
     gap: 14px;
     margin-top: 6px;
     padding-top: 18px;
@@ -9783,7 +9806,7 @@ video {
 
   .nav-panel__socials {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 10px;
   }
 
@@ -9861,7 +9884,7 @@ video {
     letter-spacing: -0.055em;
   }
 
-  .hero-title__infinity {
+  .hero-title__fish {
     right: -0.06em;
     bottom: 0.1em;
     width: min(3.45em, 96%);
@@ -10248,11 +10271,23 @@ video {
 /* Final polish: keep social-panel borders visually even and remove the
    unwanted gold orb from the contact hero card. */
 .social-section--panel {
+  position: relative;
+  isolation: isolate;
   border: 1px solid rgba(255, 255, 255, 0.42);
   background-clip: padding-box;
   box-shadow:
     0 24px 60px rgba(20, 16, 28, 0.22),
     inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.social-section--panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1.5px solid rgba(255, 255, 255, 0.52);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .contact-hero__panel::before {
@@ -10281,4 +10316,440 @@ video {
 html.nav-is-open,
 html.nav-is-open body {
   overflow: visible !important;
+}
+
+/* Final QA pass: keep social labels readable and make the map card identify
+   the exact Google Maps place, not only the street address. */
+.social-section--panel .social-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+}
+
+.social-section--panel .social-grid__link {
+  grid-template-columns: 44px minmax(0, 1fr) 36px !important;
+  min-height: 76px;
+  align-items: center;
+}
+
+.social-section--panel .social-grid__label strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: 1.12;
+}
+
+.site-footer .social-grid__label strong,
+.nav-panel__socials span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.map-embed {
+  border: 1px solid rgba(43, 61, 92, 0.08);
+}
+
+.map-embed iframe {
+  min-height: 390px;
+}
+
+.map-embed__panel {
+  display: grid;
+  gap: 4px;
+}
+
+.map-embed__panel small {
+  display: block;
+  color: rgba(47, 33, 29, 0.72);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.map-embed__panel a {
+  margin-top: 2px;
+}
+
+@media (max-width: 760px) {
+  .map-embed iframe {
+    min-height: 430px;
+  }
+}
+
+/* Mobile gallery QA: photos should be the subject, with captions helping
+   instead of covering the useful part of the image. */
+@media (max-width: 760px) {
+  .gallery-section {
+    overflow: hidden;
+  }
+
+  .editorial-gallery {
+    grid-template-columns: 1fr !important;
+    grid-auto-rows: auto;
+    gap: 18px;
+  }
+
+  .editorial-gallery__item,
+  .editorial-gallery__item--wide {
+    grid-row: auto !important;
+    border-radius: 24px;
+  }
+
+  .editorial-gallery__item img,
+  .editorial-gallery__item--wide img {
+    width: 100%;
+    height: clamp(280px, 74vw, 380px);
+    min-height: 0;
+    aspect-ratio: auto;
+    object-fit: cover;
+    object-position: center;
+    transform: none !important;
+  }
+
+  .editorial-gallery__item:nth-child(1) img {
+    object-position: center 45%;
+  }
+
+  .editorial-gallery__item:nth-child(2) img {
+    object-position: center 42%;
+  }
+
+  .editorial-gallery__item figcaption {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: min(86%, 23rem);
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255, 250, 242, 0.82);
+    box-shadow: 0 14px 34px rgba(42, 23, 52, 0.16);
+    backdrop-filter: blur(10px);
+    font-size: clamp(0.98rem, 4vw, 1.08rem);
+    line-height: 1.34;
+    transform: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .editorial-gallery__item img,
+  .editorial-gallery__item--wide img {
+    height: clamp(300px, 82vw, 360px);
+  }
+
+  .editorial-gallery__item figcaption {
+    max-width: calc(100% - 24px);
+  }
+}
+
+/* Future goals: a visual roadmap for the next chapter of the samoposluga. */
+.future-goals-section {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 209, 102, 0.24), transparent 22rem),
+    radial-gradient(circle at 96% 14%, rgba(239, 78, 50, 0.18), transparent 24rem),
+    linear-gradient(135deg, #fffaf4 0%, #f4f8fb 54%, #fff3e8 100%);
+}
+
+.future-goals-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(42, 23, 52, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(42, 23, 52, 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(180deg, transparent, #000 12%, #000 86%, transparent);
+  pointer-events: none;
+}
+
+.future-goals-section .container {
+  position: relative;
+  z-index: 1;
+}
+
+.future-goals__head {
+  max-width: 820px;
+  margin: 0 auto clamp(28px, 5vw, 48px);
+  text-align: center;
+}
+
+.future-goals__head h2 {
+  max-width: 12ch;
+  margin-inline: auto;
+  font-size: clamp(2.45rem, 6vw, 5rem);
+  line-height: 0.94;
+  letter-spacing: -0.045em;
+}
+
+.future-goals__head p:not(.eyebrow) {
+  max-width: 700px;
+  margin: 16px auto 0;
+  color: rgba(47, 33, 29, 0.76);
+  font-size: clamp(1.02rem, 1.5vw, 1.18rem);
+}
+
+.future-goals__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(16px, 2vw, 24px);
+}
+
+.future-goal-card {
+  position: relative;
+  display: grid;
+  grid-column: span 3;
+  overflow: hidden;
+  min-height: 100%;
+  border: 1px solid rgba(234, 217, 208, 0.78);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 241, 0.94));
+  box-shadow: 0 24px 70px rgba(42, 23, 52, 0.12);
+  transition:
+    transform 220ms var(--ease-standard, ease),
+    box-shadow 220ms var(--ease-standard, ease),
+    border-color 220ms var(--ease-standard, ease);
+}
+
+.future-goal-card::after {
+  content: "";
+  position: absolute;
+  inset: auto 24px 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(90deg, var(--primary), var(--accent), #4a245f);
+  opacity: 0.8;
+}
+
+.future-goal-card:hover,
+.future-goal-card:focus-within {
+  transform: translateY(-5px);
+  border-color: rgba(239, 78, 50, 0.28);
+  box-shadow: 0 32px 86px rgba(42, 23, 52, 0.16);
+}
+
+.future-goal-card--featured {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  align-items: stretch;
+}
+
+.future-goal-card__media {
+  display: grid;
+  min-height: clamp(260px, 31vw, 430px);
+  place-items: center;
+  padding: clamp(14px, 2vw, 24px);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 209, 102, 0.32), transparent 15rem),
+    radial-gradient(circle at 88% 82%, rgba(74, 36, 95, 0.12), transparent 16rem),
+    linear-gradient(135deg, rgba(255, 232, 211, 0.96), rgba(236, 249, 246, 0.92) 58%, rgba(251, 241, 255, 0.86));
+}
+
+.future-goal-card__media img {
+  width: 100%;
+  height: 100%;
+  max-height: 430px;
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 18px 24px rgba(42, 23, 52, 0.1));
+  transition: transform 360ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.future-goal-card:hover .future-goal-card__media img,
+.future-goal-card:focus-within .future-goal-card__media img {
+  transform: translateY(-4px) scale(1.015);
+}
+
+.future-goal-card__body {
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  padding: clamp(22px, 3.2vw, 42px);
+}
+
+.future-goal-card__label {
+  width: fit-content;
+  padding: 6px 10px;
+  border: 1px solid rgba(239, 78, 50, 0.18);
+  border-radius: 999px;
+  background: rgba(239, 78, 50, 0.08);
+  color: var(--primary-dark);
+  font-size: 0.76rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.future-goal-card h3 {
+  margin: 0;
+  color: var(--studio-ink, var(--text));
+  font-size: clamp(1.65rem, 3.5vw, 3.05rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.future-goal-card:not(.future-goal-card--featured) h3 {
+  font-size: clamp(1.55rem, 2.2vw, 2.2rem);
+}
+
+.future-goal-card p {
+  margin: 0;
+  color: rgba(47, 33, 29, 0.76);
+  font-size: clamp(0.98rem, 1.2vw, 1.06rem);
+  line-height: 1.72;
+}
+
+.future-goal-card strong {
+  display: block;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 14px;
+  background: rgba(255, 246, 219, 0.76);
+  color: var(--studio-ink, var(--text));
+  line-height: 1.4;
+}
+
+.future-goal-card__link {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid rgba(74, 36, 95, 0.16);
+  border-radius: 999px;
+  background: rgba(74, 36, 95, 0.08);
+  color: #4a245f;
+  font-weight: 950;
+}
+
+.future-goal-card__link .icon-external {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 940px) {
+  .future-goals__grid,
+  .future-goal-card,
+  .future-goal-card--featured {
+    grid-template-columns: 1fr;
+  }
+
+  .future-goal-card,
+  .future-goal-card--featured {
+    grid-column: 1 / -1;
+  }
+
+  .future-goal-card__media {
+    min-height: clamp(250px, 58vw, 420px);
+  }
+}
+
+@media (max-width: 560px) {
+  .future-goals__head {
+    text-align: left;
+  }
+
+  .future-goals__head h2 {
+    max-width: 10.5ch;
+    margin-inline: 0;
+    font-size: clamp(2.5rem, 13vw, 3.75rem);
+  }
+
+  .future-goal-card {
+    border-radius: 24px;
+  }
+
+  .future-goal-card__media {
+    min-height: clamp(255px, 74vw, 350px);
+    padding: 12px;
+  }
+
+  .future-goal-card__media img {
+    max-height: 340px;
+  }
+
+  .future-goal-card__body {
+    padding: 20px;
+  }
+
+  .future-goal-card h3,
+  .future-goal-card:not(.future-goal-card--featured) h3 {
+    font-size: clamp(1.7rem, 8vw, 2.35rem);
+  }
+
+  .future-goal-card p {
+    font-size: 0.98rem;
+    line-height: 1.64;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .future-goal-card,
+  .future-goal-card__media img {
+    transition: none !important;
+  }
+}
+
+/* Final mobile type pass: keep the large editorial headlines bold without
+   letting words feel clipped on narrow screens. */
+@media (max-width: 560px) {
+  .page-hero__inner,
+  .editorial-block,
+  .section-title,
+  .future-goals__head,
+  .future-goal-card__body {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .page-hero h1,
+  .editorial-block h2,
+  .section-title h2,
+  .cta-panel h2,
+  .contact-card h2,
+  .future-goals__head h2,
+  .future-goal-card h3,
+  .future-goal-card:not(.future-goal-card--featured) h3 {
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: auto;
+    text-wrap: balance;
+  }
+
+  .page-hero h1 {
+    font-size: clamp(2.05rem, 9.7vw, 2.85rem);
+    line-height: 1.04;
+  }
+
+  .editorial-block h2,
+  .section-title h2,
+  .cta-panel h2,
+  .contact-card h2 {
+    font-size: clamp(2.05rem, 9.2vw, 2.75rem);
+    line-height: 1.04;
+  }
+
+  .future-goals__head h2 {
+    max-width: 100%;
+    font-size: clamp(2.35rem, 11.2vw, 3.15rem);
+    line-height: 0.98;
+  }
+
+  .future-goal-card h3,
+  .future-goal-card:not(.future-goal-card--featured) h3 {
+    font-size: clamp(1.55rem, 7.2vw, 2.05rem);
+    line-height: 1.04;
+  }
+}
+
+@media (max-width: 380px) {
+  .page-hero h1,
+  .editorial-block h2,
+  .section-title h2,
+  .cta-panel h2,
+  .contact-card h2 {
+    font-size: clamp(1.95rem, 9vw, 2.45rem);
+  }
 }

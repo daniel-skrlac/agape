@@ -18,9 +18,10 @@ const { title = 'Google karta lokacije Socijalne samoposluge' } = Astro.props;
   ></iframe>
   <div class="map-embed__panel">
     <span>Lokacija</span>
-    <strong>{site.address.display}</strong>
+    <strong>{site.mapPlaceName}</strong>
+    <small>{site.address.display}</small>
     <a href={site.mapLinks.google} target="_blank" rel="noopener noreferrer" aria-label="Otvori lokaciju u Google Maps, otvara se u novoj kartici">
-      Otvori u Google Maps
+      Otvori u Google Maps / upute
       <ExternalLinkIcon />
     </a>
   </div>

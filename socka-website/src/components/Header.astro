@@ -143,7 +143,9 @@ const currentPath = Astro.url.pathname;
     let open = false;
 
     const keepViewportPosition = (scrollX: number, scrollY: number) => {
-      requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
+      requestAnimationFrame(() => {
+        window.scrollTo({ left: scrollX, top: scrollY, behavior: 'auto' });
+      });
     };
 
     const getFocusableElements = () => [toggle, ...panel.querySelectorAll(focusableSelector)].filter(
@@ -162,7 +164,7 @@ const currentPath = Astro.url.pathname;
       }
     };
 
-    const setOpen = (nextOpen: boolean, restoreFocus = true) => {
+    const setOpen = (nextOpen: boolean, restoreFocus = true, preserveScroll = true) => {
       const currentScrollX = window.scrollX;
       const currentScrollY = window.scrollY;
       open = nextOpen && mobileQuery.matches;
@@ -176,13 +178,13 @@ const currentPath = Astro.url.pathname;
       if (open) {
         lastFocused = document.activeElement;
         panel.removeAttribute('inert');
-        keepViewportPosition(currentScrollX, currentScrollY);
+        if (preserveScroll) keepViewportPosition(currentScrollX, currentScrollY);
         return;
       }
 
       if (mobileQuery.matches) panel.setAttribute('inert', '');
       if (restoreFocus && lastFocused instanceof HTMLElement) lastFocused.focus({ preventScroll: true });
-      keepViewportPosition(currentScrollX, currentScrollY);
+      if (preserveScroll) keepViewportPosition(currentScrollX, currentScrollY);
     };
 
     const onToggleClick = () => setOpen(toggle.getAttribute('aria-expanded') !== 'true');
@@ -190,7 +192,7 @@ const currentPath = Astro.url.pathname;
       const target = event.target;
       const link = target instanceof Element ? target.closest('a[href]') : null;
       if (link) {
-        setOpen(false, false);
+        setOpen(false, false, false);
         resetGlobalNavState();
       }
     };

@@ -1,0 +1,37 @@
+---
+import ExternalLinkIcon from './icons/ExternalLinkIcon.astro';
+import { futureGoals } from '../lib/site';
+---
+<section class="section future-goals-section" id="buduci-ciljevi" data-scroll-story>
+  <div class="container">
+    <div class="future-goals__head reveal">
+      <p class="eyebrow">Budući ciljevi</p>
+      <h2>Želimo pomagati više, brže i dostojanstvenije.</h2>
+      <p>
+        Sljedeći koraci nisu samo popis želja. To su konkretni smjerovi koji bi volonterima olakšali rad, korisnicima olakšali dolazak i zajednici otvorili više načina da se uključi.
+      </p>
+    </div>
+
+    <div class="future-goals__grid" aria-label="Budući ciljevi Socijalne samoposluge">
+      {futureGoals.map((goal, index) => (
+        <article class:list={['future-goal-card reveal', { 'future-goal-card--featured': index === 0 }]} style={`--i: ${index + 1}`}>
+          <div class="future-goal-card__media">
+            <img src={goal.image} alt={goal.alt} width="980" height={index === 0 || index === 2 ? '1225' : '980'} loading="lazy" />
+          </div>
+          <div class="future-goal-card__body">
+            <span class="future-goal-card__label">{goal.label}</span>
+            <h3>{goal.title}</h3>
+            <p>{goal.text}</p>
+            <strong>{goal.note}</strong>
+            {'actionHref' in goal && goal.actionHref && (
+              <a class="future-goal-card__link" href={goal.actionHref} target="_blank" rel="noopener noreferrer">
+                {goal.actionLabel}
+                <ExternalLinkIcon />
+              </a>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

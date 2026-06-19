@@ -117,5 +117,68 @@ const jsonLd = [organizationJsonLd, breadcrumbJsonLd, ...(Array.isArray(structur
 
       initSiteMotion();
     </script>
+    <script is:inline>
+      (() => {
+        if (window.__sockaScrollNavigationReady) return;
+        window.__sockaScrollNavigationReady = true;
+
+        const sameOrigin = (url) => url.origin === window.location.origin;
+        let pendingScrollTarget = null;
+        const scrollToTop = () => window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        const scrollToElement = (element) => {
+          const header = document.querySelector('[data-header]');
+          const offset = header instanceof HTMLElement ? header.getBoundingClientRect().height + 14 : 14;
+          const top = element.getBoundingClientRect().top + window.scrollY - offset;
+          window.scrollTo({ top: Math.max(0, top), left: 0, behavior: 'auto' });
+        };
+
+        document.addEventListener(
+          'click',
+          (event) => {
+            if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+            const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            if (!anchor) return;
+
+            const url = new URL(anchor.href, window.location.href);
+            if (!sameOrigin(url) || anchor.target || anchor.hasAttribute('download')) return;
+
+            const currentPath = `${window.location.pathname}${window.location.search}`;
+            const nextPath = `${url.pathname}${url.search}`;
+            if (currentPath === nextPath) {
+              pendingScrollTarget = url.hash ? null : 'top';
+              if (!url.hash) requestAnimationFrame(scrollToTop);
+              return;
+            }
+
+            pendingScrollTarget = url.hash ? decodeURIComponent(url.hash.slice(1)) : 'top';
+          },
+          true
+        );
+
+        const restoreExpectedScroll = () => {
+          if (!pendingScrollTarget) return;
+          const target = pendingScrollTarget;
+          pendingScrollTarget = null;
+
+          requestAnimationFrame(() => {
+            if (target === 'top') {
+              scrollToTop();
+              return;
+            }
+
+            const element = document.getElementById(target);
+            if (element) {
+              scrollToElement(element);
+            } else {
+              scrollToTop();
+            }
+          });
+        };
+
+        document.addEventListener('astro:after-swap', restoreExpectedScroll);
+        document.addEventListener('astro:page-load', restoreExpectedScroll);
+      })();
+    </script>
   </body>
 </html>
