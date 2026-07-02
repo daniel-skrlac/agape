@@ -74,7 +74,7 @@ public class DispatchBookingValidateService {
                 return ServiceResponseDirector.errorBadRequest("No valid quantities > 0");
             }
 
-            WarehouseValidationState state = initWarehouseState(req.getWarehouseId(), qtyByItemId.keySet());
+            WarehouseValidationState state = initWarehouseState(req.getWarehouseId(), req.getDocumentId(), qtyByItemId.keySet());
             if (state.initError() != null) {
                 return ServiceResponseDirector.errorBadRequest(state.initError());
             }
@@ -110,7 +110,7 @@ public class DispatchBookingValidateService {
             }
 
             List<PreparedBulkValidationItem> prepared = new ArrayList<>(input.size());
-            Map<Long, LinkedHashSet<Long>> itemIdsByWarehouse = new LinkedHashMap<>();
+            Map<ValidationStateKey, LinkedHashSet<Long>> itemIdsByState = new LinkedHashMap<>();
 
             for (DispatchBulkValidationItemDTO item : input) {
                 Map<Long, BigDecimal> qtyByItemId = normalizeQty(item.getRequest());
@@ -124,20 +124,21 @@ public class DispatchBookingValidateService {
                         qtyByItemId
                 ));
 
-                itemIdsByWarehouse
-                        .computeIfAbsent(item.getRequest().getWarehouseId(), x -> new LinkedHashSet<>())
+                itemIdsByState
+                        .computeIfAbsent(stateKey(item.getRequest()), x -> new LinkedHashSet<>())
                         .addAll(qtyByItemId.keySet());
             }
 
-            Map<Long, WarehouseValidationState> stateByWarehouse = new LinkedHashMap<>();
-            for (Map.Entry<Long, LinkedHashSet<Long>> e : itemIdsByWarehouse.entrySet()) {
-                stateByWarehouse.put(e.getKey(), initWarehouseState(e.getKey(), e.getValue()));
+            Map<ValidationStateKey, WarehouseValidationState> stateByKey = new LinkedHashMap<>();
+            for (Map.Entry<ValidationStateKey, LinkedHashSet<Long>> e : itemIdsByState.entrySet()) {
+                ValidationStateKey key = e.getKey();
+                stateByKey.put(key, initWarehouseState(key.warehouseId(), key.documentId(), e.getValue()));
             }
 
             List<DispatchBulkValidationRowDTO> results = new ArrayList<>(prepared.size());
 
             for (PreparedBulkValidationItem item : prepared) {
-                WarehouseValidationState state = stateByWarehouse.get(item.request().getWarehouseId());
+                WarehouseValidationState state = stateByKey.get(stateKey(item.request()));
 
                 if (state == null) {
                     results.add(DispatchBulkValidationRowDTO.builder()
@@ -192,9 +193,21 @@ public class DispatchBookingValidateService {
         }
     }
 
-    private WarehouseValidationState initWarehouseState(Long warehouseId, Collection<Long> itemIds) {
+    private WarehouseValidationState initWarehouseState(Long warehouseId, Long requestedDocumentId, Collection<Long> itemIds) {
         try {
-            final Long documentId = slotRepo.resolveDispatchDocumentIdForWarehouse(warehouseId);
+            final Long documentId;
+            if (requestedDocumentId != null) {
+                if (!slotRepo.existsForWarehouse(requestedDocumentId, warehouseId)) {
+                    return WarehouseValidationState.error(
+                            "Configured DOKUMENT_ID=" + requestedDocumentId
+                                    + " is not available for warehouseId=" + warehouseId
+                    );
+                }
+                documentId = requestedDocumentId;
+            } else {
+                documentId = slotRepo.resolveDispatchDocumentIdForWarehouse(warehouseId);
+            }
+
             if (documentId == null) {
                 return WarehouseValidationState.error("Cannot resolve DOKUMENT_ID for warehouseId=" + warehouseId);
             }
@@ -358,6 +371,16 @@ public class DispatchBookingValidateService {
             DispatchRequestValidationDTO request,
             Map<Long, BigDecimal> qtyByItemId
     ) {
+    }
+
+    private static ValidationStateKey stateKey(DispatchRequestValidationDTO req) {
+        if (req == null) {
+            return new ValidationStateKey(null, null);
+        }
+        return new ValidationStateKey(req.getWarehouseId(), req.getDocumentId());
+    }
+
+    private record ValidationStateKey(Long warehouseId, Long documentId) {
     }
 
     private record WarehouseValidationState(Long warehouseId, Long documentId, DocumentSlotTypeView slot,

@@ -209,9 +209,17 @@ function buildValidatePayloadFromEntry(args: {
   }
 
   const items = sumToItems(qty);
+  const documentIds = Array.from(
+    new Set(
+      (docPatches ?? [])
+        .map((patch: any) => Number(patch?.documentId))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )
+  );
 
   const payload: DispatchRequestValidationDTO = {
     warehouseId: Number(warehouseId),
+    documentId: documentIds.length === 1 ? documentIds[0] : undefined,
     documentDate: documentDate as any,
     draft: draftMode === "DRAFT",
     note,

@@ -309,6 +309,11 @@ export default function TemplatesFolderScreen() {
     !refreshing &&
     (((showFolders && foldersQ.isLoading) && (childFolders?.length ?? 0) === 0) ||
       (templatesQ.isLoading && (templates?.length ?? 0) === 0));
+  const showInlineLoading =
+    hasValidFolderId &&
+    !showInitialLoading &&
+    !refreshing &&
+    ((showFolders && foldersQ.loading) || templatesQ.loading);
 
   const showEmpty =
     !showInitialLoading &&
@@ -480,6 +485,13 @@ export default function TemplatesFolderScreen() {
             </Pressable>
           )}
         </View>
+
+        {showInlineLoading ? (
+          <View style={s.inlineLoading}>
+            <ActivityIndicator size="small" />
+            <Text style={s.inlineLoadingText}>Osvježavam mapu…</Text>
+          </View>
+        ) : null}
 
         {showInitialLoading ? (
           <View style={s.centerLoading}>

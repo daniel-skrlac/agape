@@ -25,7 +25,10 @@ public class DocumentTypeRepository {
         final String sql = """
                 SELECT
                     r.DOKUMENT_ID,
+                    r.SKLADISTE_ID,
                     z.SD_SIFREZ_ID,
+                    z.SKL_SIFREZ_ID,
+                    sk.OPIS AS STORAGE_GROUP_NAME,
                     z.DOKUMENTID,
                     z.NAZIVDOKUMENTA,
                     z.ULAZIZLAZ,
@@ -42,6 +45,7 @@ public class DocumentTypeRepository {
                     z.TIPBAZA
                   FROM SD_SIFREG r
                   JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                  LEFT JOIN SKL_SIFREZ sk ON sk.SKL_SIFREZ_ID = z.SKL_SIFREZ_ID
                  WHERE r.DOKUMENT_ID = ?
                 """;
 
@@ -52,6 +56,59 @@ public class DocumentTypeRepository {
         );
 
         return Optional.ofNullable(view);
+    }
+
+    public List<DocumentSlotTypeView> findDocumentSlots(Set<Long> documentIds) throws SQLException {
+        List<Long> ids = documentIds == null
+                ? List.of()
+                : documentIds.stream()
+                .filter(Objects::nonNull)
+                .filter(id -> id > 0)
+                .distinct()
+                .toList();
+
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+
+        final String sql = """
+                SELECT
+                    r.DOKUMENT_ID,
+                    r.SKLADISTE_ID,
+                    z.SD_SIFREZ_ID,
+                    z.SKL_SIFREZ_ID,
+                    sk.OPIS AS STORAGE_GROUP_NAME,
+                    z.DOKUMENTID,
+                    z.NAZIVDOKUMENTA,
+                    z.ULAZIZLAZ,
+                    z.MIJENJAZALIHU,
+                    z.REZERVACIJE,
+                    z.KNJIZITINASKLADISTE,
+                    z.KNJIZITIUKPOPISA,
+                    z.KNJIZITINORMATIVE,
+                    z.KNJIZITISASTAVNICU,
+                    z.TIPPRODAJNIHCIJENA,
+                    z.TIPNABAVNECIJENE,
+                    z.TIPKNJIGEPOPISA,
+                    z.TIPKARTICE,
+                    z.TIPBAZA
+                  FROM SD_SIFREG r
+                  JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                  LEFT JOIN SKL_SIFREZ sk ON sk.SKL_SIFREZ_ID = z.SKL_SIFREZ_ID
+                 WHERE r.DOKUMENT_ID IN (%s)
+                 ORDER BY r.DOKUMENT_ID ASC, r.SKLADISTE_ID ASC, z.SD_SIFREZ_ID ASC
+                """.formatted(placeholders);
+
+        return jdbc.query(
+                sql,
+                ps -> {
+                    int i = 1;
+                    for (Long id : ids) ps.setLong(i++, id);
+                },
+                DocumentTypeRepository::mapDocumentSlot
+        );
     }
 
     public long countDistinctDocumentIds() throws SQLException {
@@ -65,7 +122,10 @@ public class DocumentTypeRepository {
         final String sql = """
                 SELECT
                     r.DOKUMENT_ID,
+                    r.SKLADISTE_ID,
                     z.SD_SIFREZ_ID,
+                    z.SKL_SIFREZ_ID,
+                    sk.OPIS AS STORAGE_GROUP_NAME,
                     z.DOKUMENTID,
                     z.NAZIVDOKUMENTA,
                     z.ULAZIZLAZ,
@@ -83,6 +143,7 @@ public class DocumentTypeRepository {
                   FROM SD_SIFREG r
                   JOIN SD_SIFREZ z
                     ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                  LEFT JOIN SKL_SIFREZ sk ON sk.SKL_SIFREZ_ID = z.SKL_SIFREZ_ID
                  WHERE r.SKLADISTE_ID = ?
                    AND TRIM(UPPER(z.DOKUMENTID)) = TRIM(UPPER(?))
                  ORDER BY r.DOKUMENT_ID ASC, z.SD_SIFREZ_ID ASC
@@ -109,12 +170,16 @@ public class DocumentTypeRepository {
 
     public List<DocumentSlotTypeView> listDocumentSlots(
             Long warehouseId,
+            String documentCode,
             String q,
             List<String> excludeCodes,
             Set<Long> excludeDocumentIds
     ) throws SQLException {
 
         final boolean hasQ = q != null && !q.isBlank();
+        final String code = documentCode == null || documentCode.isBlank()
+                ? null
+                : documentCode.trim().toUpperCase();
 
         final List<String> exCodes = (excludeCodes == null) ? List.of()
                 : excludeCodes.stream()
@@ -143,11 +208,14 @@ public class DocumentTypeRepository {
                     SELECT DISTINCT r.DOKUMENT_ID AS DID
                     FROM SD_SIFREG r
                     JOIN SD_SIFREZ z ON z.SD_SIFREZ_ID = r.SD_SIFREZ_ID
+                    LEFT JOIN SKL_SIFREZ sk ON sk.SKL_SIFREZ_ID = z.SKL_SIFREZ_ID
                     WHERE ( ? IS NULL OR r.SKLADISTE_ID = ? )
+                      AND ( ? IS NULL OR TRIM(UPPER(z.DOKUMENTID)) = ? )
                       AND (
                            ? IS NULL OR ? = '' OR
                            LOWER(z.NAZIVDOKUMENTA) LIKE ? OR
                            LOWER(z.DOKUMENTID) LIKE ? OR
+                           LOWER(sk.OPIS) LIKE ? OR
                            TO_CHAR(r.DOKUMENT_ID) LIKE ?
                       )
                 """;
@@ -165,7 +233,10 @@ public class DocumentTypeRepository {
         sql += """
                 )
                 SELECT r2.DOKUMENT_ID,
+                       r2.SKLADISTE_ID,
                        z.SD_SIFREZ_ID,
+                       z.SKL_SIFREZ_ID,
+                       sk.OPIS AS STORAGE_GROUP_NAME,
                        z.DOKUMENTID,
                        z.NAZIVDOKUMENTA,
                        z.ULAZIZLAZ,
@@ -182,6 +253,7 @@ public class DocumentTypeRepository {
                   FROM dids x
                   JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
                   JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
+                  LEFT JOIN SKL_SIFREZ sk ON sk.SKL_SIFREZ_ID = z.SKL_SIFREZ_ID
                  WHERE ( ? IS NULL OR r2.SKLADISTE_ID = ? )
                    AND r2.SD_SIFREZ_ID = (
                         SELECT MIN(r3.SD_SIFREZ_ID)
@@ -204,9 +276,14 @@ public class DocumentTypeRepository {
                     ps.setObject(i++, warehouseId);
                     ps.setObject(i++, warehouseId);
 
+                    // dids WHERE: exact document code
+                    ps.setString(i++, code);
+                    ps.setString(i++, code);
+
                     // dids WHERE: q
                     ps.setString(i++, qq);
                     ps.setString(i++, qq);
+                    ps.setString(i++, like);
                     ps.setString(i++, like);
                     ps.setString(i++, like);
                     ps.setString(i++, like);
@@ -231,7 +308,10 @@ public class DocumentTypeRepository {
                 },
                 rs -> DocumentSlotTypeView.builder()
                         .documentId(rs.getInt("DOKUMENT_ID"))
+                        .warehouseId(rs.getInt("SKLADISTE_ID"))
                         .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
+                        .storageGroupId(rs.getInt("SKL_SIFREZ_ID"))
+                        .storageGroupName(rs.getString("STORAGE_GROUP_NAME"))
                         .documentCode(rs.getString("DOKUMENTID"))
                         .displayName(rs.getString("NAZIVDOKUMENTA"))
                         .inOutFlag(rs.getInt("ULAZIZLAZ"))
@@ -261,7 +341,10 @@ public class DocumentTypeRepository {
                         FROM dids d
                     )
                     SELECT r2.DOKUMENT_ID,
+                           r2.SKLADISTE_ID,
                            z.SD_SIFREZ_ID,
+                           z.SKL_SIFREZ_ID,
+                           sk.OPIS AS STORAGE_GROUP_NAME,
                            z.DOKUMENTID,
                            z.NAZIVDOKUMENTA,
                            z.ULAZIZLAZ,
@@ -278,6 +361,7 @@ public class DocumentTypeRepository {
                       FROM ranked x
                       JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
                       JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
+                      LEFT JOIN SKL_SIFREZ sk ON sk.SKL_SIFREZ_ID = z.SKL_SIFREZ_ID
                      WHERE x.rn BETWEEN ? AND ?
                        AND r2.SD_SIFREZ_ID = (
                             SELECT MIN(r3.SD_SIFREZ_ID)
@@ -298,7 +382,10 @@ public class DocumentTypeRepository {
                 },
                 rs -> DocumentSlotTypeView.builder()
                         .documentId(rs.getInt("DOKUMENT_ID"))
+                        .warehouseId(rs.getInt("SKLADISTE_ID"))
                         .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
+                        .storageGroupId(rs.getInt("SKL_SIFREZ_ID"))
+                        .storageGroupName(rs.getString("STORAGE_GROUP_NAME"))
                         .documentCode(rs.getString("DOKUMENTID"))
                         .displayName(rs.getString("NAZIVDOKUMENTA"))
                         .inOutFlag(rs.getInt("ULAZIZLAZ"))
@@ -359,7 +446,10 @@ public class DocumentTypeRepository {
                         FROM dids d
                     )
                     SELECT r2.DOKUMENT_ID,
+                           r2.SKLADISTE_ID,
                            z.SD_SIFREZ_ID,
+                           z.SKL_SIFREZ_ID,
+                           sk.OPIS AS STORAGE_GROUP_NAME,
                            z.DOKUMENTID,
                            z.NAZIVDOKUMENTA,
                            z.ULAZIZLAZ,
@@ -376,6 +466,7 @@ public class DocumentTypeRepository {
                       FROM ranked x
                       JOIN SD_SIFREG r2 ON r2.DOKUMENT_ID = x.DID
                       JOIN SD_SIFREZ  z  ON z.SD_SIFREZ_ID = r2.SD_SIFREZ_ID
+                      LEFT JOIN SKL_SIFREZ sk ON sk.SKL_SIFREZ_ID = z.SKL_SIFREZ_ID
                      WHERE x.rn BETWEEN ? AND ?
                        AND r2.SD_SIFREZ_ID = (
                             SELECT MIN(r3.SD_SIFREZ_ID)
@@ -400,7 +491,10 @@ public class DocumentTypeRepository {
                 },
                 rs -> DocumentSlotTypeView.builder()
                         .documentId(rs.getInt("DOKUMENT_ID"))
+                        .warehouseId(rs.getInt("SKLADISTE_ID"))
                         .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
+                        .storageGroupId(rs.getInt("SKL_SIFREZ_ID"))
+                        .storageGroupName(rs.getString("STORAGE_GROUP_NAME"))
                         .documentCode(rs.getString("DOKUMENTID"))
                         .displayName(rs.getString("NAZIVDOKUMENTA"))
                         .inOutFlag(rs.getInt("ULAZIZLAZ"))
@@ -421,7 +515,10 @@ public class DocumentTypeRepository {
     private static DocumentSlotTypeView mapDocumentSlot(java.sql.ResultSet rs) throws SQLException {
         return DocumentSlotTypeView.builder()
                 .documentId(rs.getInt("DOKUMENT_ID"))
+                .warehouseId(rs.getInt("SKLADISTE_ID"))
                 .sdSifrezId(rs.getInt("SD_SIFREZ_ID"))
+                .storageGroupId(rs.getInt("SKL_SIFREZ_ID"))
+                .storageGroupName(rs.getString("STORAGE_GROUP_NAME"))
                 .documentCode(rs.getString("DOKUMENTID"))
                 .displayName(rs.getString("NAZIVDOKUMENTA"))
                 .inOutFlag(rs.getInt("ULAZIZLAZ"))

@@ -66,6 +66,7 @@ public class AuthService {
             user.setUsername(req.getUsername());
             user.setOib(req.getOib());
             user.setPasswordHash(BcryptUtil.bcryptHash(req.getPassword()));
+            user.setDefaultWarehouseByStorageGroupJson("{}");
             user.setRoles(Set.of(defaultRole));
 
             userRepo.persist(user);

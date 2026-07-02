@@ -9,6 +9,12 @@ export function formatTimeHR(ms?: number) {
     return new Intl.DateTimeFormat("hr-HR", { hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
+export function formatTimeWithSecondsHR(ms?: number) {
+    if (!ms) return "—";
+    const d = new Date(ms);
+    return new Intl.DateTimeFormat("hr-HR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(d);
+}
+
 export function toFiniteNumber(v: unknown): number | null {
     if (v == null) return null;
     if (typeof v === "number") return Number.isFinite(v) ? v : null;

@@ -58,13 +58,13 @@ public class DispatchBookingSessionEntryEntity extends PanacheEntityBase {
     @Column(name = "extra_items", nullable = false, columnDefinition = "jsonb")
     private String extraItemsJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "extra_docs", nullable = false, columnDefinition = "jsonb")
+    private String extraDocsJson;
+
     @Column(name = "note", columnDefinition = "text")
     private String note;
 
     @Column(name = "document_date")
     private LocalDate documentDate;
-
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "scan_fingerprints", nullable = false, columnDefinition = "jsonb")
-    private String scanFingerprintsJson = "[]";
 }

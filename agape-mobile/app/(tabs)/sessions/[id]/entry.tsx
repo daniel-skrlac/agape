@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, router } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/src/constants/Colors";
@@ -14,9 +15,10 @@ import type {
   BookingSessionEntryResponseDTO,
   BookingSessionEntryUpsertRequestDTO,
   BookingSessionResponseDTO,
-  ItemDescriptorResponseDTO,
+  DocumentDescriptorResponseDTO,
   PartnerResponseDTO,
   TemplateBookDocPatchDTO,
+  TemplateBookExtraDocDTO,
   TemplateBookItemDTO,
   TemplateDocResponseDTO,
   TemplateItemResponseDTO,
@@ -26,8 +28,8 @@ import type {
 import { toUserMessage } from "../../../../src/api//apiClient";
 import { useBookingSession, useUpsertBookingSessionEntry } from "../../../../src/api//hooks/sessions/useBookingSessions";
 import { useTemplateDetail } from "../../../../src/api//hooks/templates/useDispatchTemplates";
-import { useItemDirectory } from "../../../../src/api//hooks/documents/useItemDirectory";
 import { useCurrentUser } from "../../../../src/api/hooks/common/useCurrentUser";
+import { documentDirectoryService } from "../../../../src/api/services/documentDirectoryService";
 import { partnerService } from "../../../../src/api/services/partnerService";
 
 import {
@@ -43,8 +45,6 @@ import {
 
 const MAX_W = 560;
 const PLACEHOLDER = "rgba(148,163,184,0.85)";
-const ITEM_META_HYDRATE_SIZE = 20;
-const MAX_ITEM_META_HYDRATE_IDS = 40;
 
 function cleanText(v: unknown) {
   const s = String(v ?? "").trim();
@@ -276,6 +276,103 @@ function extraItemsToState(items: unknown): { qty: QtyMap; metaById: StandaloneM
   return { qty, metaById };
 }
 
+function normalizeExtraDocs(raw: unknown): TemplateBookExtraDocDTO[] {
+  const arr = safeJsonArray(raw);
+  const byDoc = new Map<number, Map<number, any>>();
+
+  for (const doc of arr) {
+    const documentId = num((doc as any)?.documentId ?? (doc as any)?.document_id ?? 0);
+    if (!documentId) continue;
+
+    const itemMap = byDoc.get(documentId) ?? new Map<number, any>();
+    byDoc.set(documentId, itemMap);
+
+    const items = safeJsonArray((doc as any)?.items ?? (doc as any)?.lines ?? []);
+    for (const item of items) {
+      const itemId = normItemId(item);
+      const quantity = Number((item as any)?.quantity ?? (item as any)?.qty ?? 0);
+      if (!itemId || quantity <= 0) continue;
+
+      const existing = itemMap.get(itemId) ?? {};
+      const name = cleanText((item as any)?.name ?? (item as any)?.itemName ?? "");
+      const code = cleanText((item as any)?.code ?? (item as any)?.itemCode ?? "");
+      const unit = cleanText((item as any)?.unit ?? "");
+      const barcode = cleanText((item as any)?.barcode ?? "");
+
+      itemMap.set(itemId, {
+        ...existing,
+        itemId,
+        quantity: Number(existing.quantity ?? 0) + quantity,
+        name: cleanText(existing.name ?? "") || name,
+        itemName: cleanText(existing.itemName ?? "") || name,
+        code: cleanText(existing.code ?? "") || code,
+        itemCode: cleanText(existing.itemCode ?? "") || code,
+        unit: cleanText(existing.unit ?? "") || unit,
+        barcode: cleanText(existing.barcode ?? "") || barcode,
+      });
+    }
+  }
+
+  return Array.from(byDoc.entries())
+    .map(([documentId, itemMap]) => ({
+      documentId,
+      items: Array.from(itemMap.values())
+        .map((item) => ({
+          itemId: num(item.itemId),
+          quantity: Number(item.quantity ?? 0),
+          name: item.name,
+          itemName: item.itemName,
+          code: item.code,
+          itemCode: item.itemCode,
+          unit: item.unit,
+          barcode: item.barcode,
+        }))
+        .sort((a, b) => Number(a.itemId) - Number(b.itemId)),
+    } as any))
+    .filter((doc) => (doc.items ?? []).length > 0)
+    .sort((a, b) => Number(a.documentId) - Number(b.documentId));
+}
+
+function flattenExtraDocs(extraDocs: unknown): TemplateBookItemDTO[] {
+  const byItem = new Map<number, any>();
+
+  for (const doc of normalizeExtraDocs(extraDocs)) {
+    for (const item of (doc.items ?? []) as any[]) {
+      const itemId = normItemId(item);
+      const quantity = Number(item?.quantity ?? 0);
+      if (!itemId || quantity <= 0) continue;
+      const existing = byItem.get(itemId) ?? {};
+      byItem.set(itemId, {
+        ...existing,
+        ...item,
+        itemId,
+        quantity: Number(existing.quantity ?? 0) + quantity,
+      });
+    }
+  }
+
+  return Array.from(byItem.values())
+    .map((item) => ({ ...item, itemId: num(item.itemId), quantity: Number(item.quantity ?? 0) }))
+    .sort((a, b) => Number(a.itemId) - Number(b.itemId)) as any;
+}
+
+function mergeItemLists(...lists: TemplateBookItemDTO[][]): TemplateBookItemDTO[] {
+  const byItem = new Map<number, number>();
+
+  for (const list of lists) {
+    for (const item of list ?? []) {
+      const itemId = normItemId(item);
+      const quantity = Number((item as any)?.quantity ?? 0);
+      if (!itemId || quantity <= 0) continue;
+      byItem.set(itemId, (byItem.get(itemId) ?? 0) + quantity);
+    }
+  }
+
+  return Array.from(byItem.entries())
+    .map(([itemId, quantity]) => ({ itemId, quantity }))
+    .sort((a, b) => a.itemId - b.itemId);
+}
+
 function hasKeys(v: Record<string, any> | null | undefined) {
   return !!v && Object.keys(v).length > 0;
 }
@@ -303,16 +400,25 @@ function buildTemplateMetaMap(docs: TemplateDocResponseDTO[]) {
   return out;
 }
 
-function metaToStandaloneMeta(it: ItemDescriptorResponseDTO | any) {
-  const itemId = num(it?.itemId ?? it?.id ?? 0);
-  if (!itemId) return null;
+function buildExtraDocsMetaMap(extraDocs: unknown) {
+  const out: StandaloneMetaMap = {};
 
-  const name = cleanText(it?.name ?? it?.itemName ?? "");
-  const code = cleanText(it?.code ?? it?.itemCode ?? "");
-  const unit = cleanText(it?.unit ?? "");
-  const barcode = cleanText(it?.barcode ?? "");
+  for (const doc of normalizeExtraDocs(extraDocs)) {
+    for (const item of ((doc as any)?.items ?? []) as any[]) {
+      const itemId = normItemId(item);
+      if (!itemId || out[String(itemId)]) continue;
 
-  return { itemId, name, code, unit, barcode };
+      const name = cleanText(item?.name ?? item?.itemName ?? "");
+      const code = cleanText(item?.code ?? item?.itemCode ?? "");
+      const unit = cleanText(item?.unit ?? "");
+      const barcode = cleanText(item?.barcode ?? "");
+
+      if (!name && !code && !unit && !barcode) continue;
+      out[String(itemId)] = { itemId, name, code, unit, barcode };
+    }
+  }
+
+  return out;
 }
 
 function mergeStandaloneMetaMaps(...maps: Array<StandaloneMetaMap | null | undefined>) {
@@ -345,7 +451,57 @@ function displayFromMeta(itemId: number, mergedMeta: StandaloneMetaMap) {
     .filter(Boolean)
     .join(" • ");
 
-  return { name: name || (itemId ? `Artikl #${itemId}` : "Artikl"), meta };
+  return { name: name || "Učitavam artikl…", meta, loading: !name && !!itemId };
+}
+
+function documentGroupRank(doc: DocumentDescriptorResponseDTO | null | undefined): number {
+  const text = `${cleanText((doc as any)?.storageGroupName ?? "")} ${cleanText((doc as any)?.displayName ?? "")}`.toLowerCase();
+  if (text.includes("socijalna")) return 0;
+  if (text.includes("doniran")) return 1;
+  return 2;
+}
+
+type DocumentTone = "social" | "donation" | "neutral";
+
+function documentTone(doc: DocumentDescriptorResponseDTO | null | undefined): DocumentTone {
+  const text = `${cleanText((doc as any)?.storageGroupName ?? "")} ${cleanText((doc as any)?.displayName ?? "")}`.toLowerCase();
+  if (text.includes("socijalna")) return "social";
+  if (text.includes("doniran")) return "donation";
+  return "neutral";
+}
+
+function compareDocumentDescriptors(
+  a: DocumentDescriptorResponseDTO | null | undefined,
+  b: DocumentDescriptorResponseDTO | null | undefined
+) {
+  const rank = documentGroupRank(a) - documentGroupRank(b);
+  if (rank !== 0) return rank;
+
+  const name = cleanText((a as any)?.storageGroupName ?? (a as any)?.displayName ?? "")
+    .localeCompare(cleanText((b as any)?.storageGroupName ?? (b as any)?.displayName ?? ""), "hr", { sensitivity: "base" });
+  if (name !== 0) return name;
+
+  const aw = num((a as any)?.warehouseId ?? 0);
+  const bw = num((b as any)?.warehouseId ?? 0);
+  if (aw !== bw) return aw - bw;
+
+  return num((a as any)?.documentId ?? 0) - num((b as any)?.documentId ?? 0);
+}
+
+function documentContextTitle(doc: DocumentDescriptorResponseDTO | null | undefined, documentId: number) {
+  const group = cleanText((doc as any)?.storageGroupName ?? "");
+  const display = cleanText((doc as any)?.displayName ?? "");
+  if (group && display && group !== display) return `${group} • ${display}`;
+  return group || display || (documentId ? `Dokument #${documentId}` : "Grupa dokumenta");
+}
+
+function documentContextSubtitle(doc: DocumentDescriptorResponseDTO | null | undefined, documentId: number) {
+  const parts = [
+    documentId ? `Dokument #${documentId}` : null,
+    num((doc as any)?.warehouseId ?? 0) ? `Skladište #${num((doc as any)?.warehouseId ?? 0)}` : null,
+  ].filter(Boolean);
+
+  return parts.join(" • ");
 }
 
 export default function SessionEntryEditor() {
@@ -361,7 +517,6 @@ export default function SessionEntryEditor() {
 
   const hydratedKeyRef = useRef("");
   const builtKeyRef = useRef("");
-  const metaHydrateKeyRef = useRef("");
 
   useEffect(() => {
     setScreenError(null);
@@ -370,7 +525,6 @@ export default function SessionEntryEditor() {
     setHydratedPartner(null);
     hydratedKeyRef.current = "";
     builtKeyRef.current = "";
-    metaHydrateKeyRef.current = "";
   }, [sessionId, partnerId]);
 
   useEffect(() => {
@@ -381,13 +535,19 @@ export default function SessionEntryEditor() {
   const sQ = useBookingSession(sessionId);
   const session = sQ.data as BookingSessionResponseDTO | undefined;
   const currentUserQ = useCurrentUser();
+  const documentDescriptorsQ = useQuery({
+    queryKey: ["session-entry", "document-descriptors", "OTPREMNICA"],
+    queryFn: ({ signal }) =>
+      documentDirectoryService.listDocTypesByCode({ documentCode: "OTPREMNICA" }, signal),
+    staleTime: 16 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
 
   const upsertM = useUpsertBookingSessionEntry(sessionId);
   const draft = useEntryDraft(sessionId, partnerId);
 
   const isSessionDraft = String((session as any)?.status ?? "") === "DRAFT";
   const canEdit = !session || isSessionDraft;
-  const warehouseId = num((session as any)?.warehouseId ?? 0) || null;
 
   const existingEntry = useMemo(() => {
     const entries = (((session as any)?.entries ?? []) as any[]) ?? [];
@@ -454,105 +614,55 @@ export default function SessionEntryEditor() {
   );
 
   const templateMetaById = useMemo(() => buildTemplateMetaMap(templateDocs), [templateDocs]);
-
-  const { fetchItemsPage } = useItemDirectory({
-    warehouseId: warehouseId ? Number(warehouseId) : null,
-    enabled: !!warehouseId,
-  });
-
-  const [extraHydratedMetaById, setExtraHydratedMetaById] = useState<StandaloneMetaMap>({});
+  const extraDocBlocks = useMemo(
+    () => normalizeExtraDocs((draft as any)?.extraDocs ?? []),
+    [(draft as any)?.extraDocs]
+  );
+  const extraDocsMetaById = useMemo(
+    () => buildExtraDocsMetaMap(extraDocBlocks),
+    [extraDocBlocks]
+  );
+  const documentDescriptors = useMemo(
+    () => ((documentDescriptorsQ.data ?? []) as DocumentDescriptorResponseDTO[])
+      .filter((doc) => num((doc as any)?.documentId ?? 0) > 0)
+      .sort(compareDocumentDescriptors),
+    [documentDescriptorsQ.data]
+  );
+  const documentDescriptorById = useMemo(() => {
+    const map = new Map<number, DocumentDescriptorResponseDTO>();
+    for (const doc of documentDescriptors) {
+      const documentId = num((doc as any)?.documentId ?? 0);
+      if (documentId) map.set(documentId, doc);
+    }
+    return map;
+  }, [documentDescriptors]);
 
   const standaloneItems = useMemo(
+    () => mergeItemLists(
+      qtyToItems((draft as any)?.standaloneQty ?? {}),
+      flattenExtraDocs(extraDocBlocks)
+    ),
+    [draft?.standaloneQty, extraDocBlocks]
+  );
+  const standaloneOnlyItems = useMemo(
     () => qtyToItems((draft as any)?.standaloneQty ?? {}),
     [draft?.standaloneQty]
   );
+  const extraDocItemCount = useMemo(
+    () => extraDocBlocks.reduce((sum, doc: any) => sum + safeJsonArray(doc?.items).length, 0),
+    [extraDocBlocks]
+  );
+  const extraDisplayCount = standaloneOnlyItems.length + extraDocItemCount;
 
   const standaloneMetaById = ((draft as any)?.standaloneMetaById ?? {}) as StandaloneMetaMap;
 
-  const standaloneIdsKey = useMemo(() => {
-    return standaloneItems
-      .map((x) => num((x as any)?.itemId))
-      .filter((id) => id > 0)
-      .sort((a, b) => a - b)
-      .join(",");
-  }, [standaloneItems]);
-
-  useEffect(() => {
-    let alive = true;
-
-    if (!warehouseId) return;
-    if (!standaloneItems.length) return;
-
-    const mergedAlready = mergeStandaloneMetaMaps(
-      standaloneMetaById,
-      extraHydratedMetaById,
-      templateMetaById
-    );
-
-    const missingIds = standaloneItems
-      .map((x) => num((x as any)?.itemId))
-      .filter((id) => id > 0)
-      .filter((id) => !mergedAlready[String(id)]);
-
-    if (!missingIds.length) {
-      metaHydrateKeyRef.current = "";
-      return;
-    }
-
-    const runKey = `${warehouseId}|${missingIds.join(",")}`;
-    if (metaHydrateKeyRef.current === runKey) return;
-    metaHydrateKeyRef.current = runKey;
-
-    (async () => {
-      const ids = missingIds.slice(0, MAX_ITEM_META_HYDRATE_IDS);
-      const nextPatch: StandaloneMetaMap = {};
-
-      for (const id of ids) {
-        if (!alive) return;
-
-        try {
-          const res = await fetchItemsPage({
-            page: 0,
-            size: ITEM_META_HYDRATE_SIZE,
-            q: String(id),
-          });
-
-          const rows = (res?.items ?? []) as ItemDescriptorResponseDTO[];
-          const hit = rows.find((r: any) => num((r as any)?.itemId) === id);
-
-          const meta = metaToStandaloneMeta(hit);
-          if (meta) {
-            nextPatch[String(id)] = meta;
-          }
-        } catch {
-        }
-      }
-
-      if (!alive) return;
-
-      if (Object.keys(nextPatch).length) {
-        setExtraHydratedMetaById((prev) => ({ ...prev, ...nextPatch }));
-      } else {
-        metaHydrateKeyRef.current = "";
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [
-    warehouseId,
-    standaloneIdsKey,
-    fetchItemsPage,
-    templateMetaById,
-    standaloneMetaById,
-    standaloneItems,
-    extraHydratedMetaById,
-  ]);
-
   const mergedExtraMetaById = useMemo(
-    () => mergeStandaloneMetaMaps(standaloneMetaById, extraHydratedMetaById, templateMetaById),
-    [standaloneMetaById, extraHydratedMetaById, templateMetaById]
+    () => mergeStandaloneMetaMaps(
+      standaloneMetaById,
+      extraDocsMetaById,
+      templateMetaById
+    ),
+    [standaloneMetaById, extraDocsMetaById, templateMetaById]
   );
 
   const topError = useMemo(() => {
@@ -594,6 +704,7 @@ export default function SessionEntryEditor() {
       note: (existing as any)?.note ?? null,
       docPatches: (existing as any)?.docPatches ?? (existing as any)?.docPatchesJson ?? null,
       extraItems: (existing as any)?.extraItems ?? (existing as any)?.extraItemsJson ?? null,
+      extraDocs: (existing as any)?.extraDocs ?? (existing as any)?.extraDocsJson ?? null,
     });
     if (hydratedKeyRef.current === key) return;
 
@@ -615,6 +726,13 @@ export default function SessionEntryEditor() {
       (existing as any)?.extra_items ??
       (existing as any)?.extraItemsJson ??
       (existing as any)?.extra_items_json ??
+      null
+    );
+    const incomingExtraDocs = normalizeExtraDocs(
+      (existing as any)?.extraDocs ??
+      (existing as any)?.extra_docs ??
+      (existing as any)?.extraDocsJson ??
+      (existing as any)?.extra_docs_json ??
       null
     );
 
@@ -645,6 +763,11 @@ export default function SessionEntryEditor() {
         : hasKeys(incomingExtra.metaById)
           ? incomingExtra.metaById
           : (cur as any).standaloneMetaById ?? {},
+      extraDocs: touched.extraDocs
+        ? (cur as any).extraDocs ?? []
+        : incomingExtraDocs.length
+          ? incomingExtraDocs
+          : (cur as any).extraDocs ?? [],
       note: touched.note ? cur.note ?? null : incomingNote,
       documentDate: touched.documentDate
         ? ((cur as any)?.documentDate ?? null)
@@ -798,7 +921,8 @@ export default function SessionEntryEditor() {
 
     const curTplId = num((cur as any).templateId ?? 0);
     const extraItemsOut = qtyToItems((cur as any).standaloneQty ?? {});
-    if (!curTplId && extraItemsOut.length === 0) {
+    const extraDocsOut = normalizeExtraDocs((cur as any).extraDocs ?? []);
+    if (!curTplId && extraItemsOut.length === 0 && extraDocsOut.length === 0) {
       setScreenError("Odaberi predložak ili dodaj barem jednu stavku.");
       return;
     }
@@ -832,6 +956,7 @@ export default function SessionEntryEditor() {
         documentDate: ((cur as any).documentDate ?? null) as any,
         docPatches: (docPatchesOut ?? []) as any,
         extraItems: extraItemsOut as any,
+        extraDocs: extraDocsOut as any,
         note: (noteOut ? noteOut : null) as any,
       };
 
@@ -1107,9 +1232,12 @@ export default function SessionEntryEditor() {
                           return (
                             <View key={String(r.itemId)} style={st.simpleRow}>
                               <View style={{ flex: 1 }}>
-                                <Text style={st.itemNameStrong} numberOfLines={2}>
-                                  {r.name ? r.name : `Artikl #${r.itemId}`}
-                                </Text>
+                                <View style={st.loadingNameRow}>
+                                  {!r.name ? <ActivityIndicator size="small" color={Colors.sub} /> : null}
+                                  <Text style={st.itemNameStrong} numberOfLines={2}>
+                                    {r.name ? r.name : "Učitavam artikl…"}
+                                  </Text>
+                                </View>
                                 {!!rowMeta && (
                                   <Text style={st.itemMeta} numberOfLines={1}>
                                     {rowMeta}
@@ -1130,14 +1258,14 @@ export default function SessionEntryEditor() {
         ) : null}
 
         <View style={st.sectionHeader}>
-          <Text style={st.label}>Dodatne stavke (van dokumenta)</Text>
+          <Text style={st.label}>Dodatne stavke</Text>
           <Pressable
             style={[st.smallBtn, extraItemsDisabled && st.smallBtnDisabled]}
             onPress={openStandaloneItems}
             disabled={extraItemsDisabled}
           >
             <Text style={[st.smallBtnText, extraItemsDisabled && st.smallBtnTextDisabled]}>
-              {standaloneItems.length ? `Uredi (${standaloneItems.length})` : "+ Dodaj"}
+              {extraDisplayCount ? `Uredi (${extraDisplayCount})` : "+ Dodaj"}
             </Text>
           </Pressable>
         </View>
@@ -1145,25 +1273,27 @@ export default function SessionEntryEditor() {
         <View style={st.cardCol}>
           <Text style={st.title}>Dodatne stavke</Text>
           <Text style={st.sub}>
-            Stavki: {standaloneItems.length}
-            {!!warehouseId ? ` • skladište: ${warehouseId}` : ""}
+            Stavki: {extraDisplayCount}
           </Text>
 
-          {standaloneItems.length === 0 ? (
+          {extraDisplayCount === 0 ? (
             <Text style={st.muted}>Nema dodanih stavki.</Text>
           ) : (
             <View style={{ gap: 8, marginTop: 10 }}>
-              {standaloneItems.map((r) => {
+              {standaloneOnlyItems.map((r) => {
                 const itemId = num((r as any).itemId);
                 const quantity = Number((r as any).quantity ?? 0);
                 const display = displayFromMeta(itemId, mergedExtraMetaById);
 
                 return (
-                  <View key={String(itemId)} style={st.simpleRow}>
+                  <View key={`standalone-${itemId}`} style={st.simpleRow}>
                     <View style={{ flex: 1 }}>
-                      <Text style={st.itemNameStrong} numberOfLines={2}>
-                        {display.name}
-                      </Text>
+                      <View style={st.loadingNameRow}>
+                        {display.loading ? <ActivityIndicator size="small" color={Colors.sub} /> : null}
+                        <Text style={st.itemNameStrong} numberOfLines={2}>
+                          {display.name}
+                        </Text>
+                      </View>
                       {!!display.meta && (
                         <Text style={st.itemMeta} numberOfLines={1}>
                           {display.meta}
@@ -1174,11 +1304,73 @@ export default function SessionEntryEditor() {
                   </View>
                 );
               })}
+
+              {extraDocBlocks.map((doc: any) => {
+                const documentId = num(doc?.documentId ?? 0);
+                const descriptor = documentDescriptorById.get(documentId) ?? null;
+                const items = safeJsonArray(doc?.items);
+
+                return (
+                  <View
+                    key={`extra-doc-${documentId}`}
+                    style={[
+                      st.extraDocGroup,
+                      documentTone(descriptor) === "social" && st.extraDocGroupSocial,
+                      documentTone(descriptor) === "donation" && st.extraDocGroupDonation,
+                    ]}
+                  >
+                    <View style={st.extraDocHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={st.extraDocTitle} numberOfLines={2}>
+                          {documentContextTitle(descriptor, documentId)}
+                        </Text>
+                        <Text style={st.extraDocSub} numberOfLines={1}>
+                          {documentContextSubtitle(descriptor, documentId)}
+                        </Text>
+                      </View>
+                      <Text style={st.extraDocCount}>{items.length}</Text>
+                    </View>
+
+                    {items.map((r: any) => {
+                      const itemId = num(r?.itemId ?? 0);
+                      const quantity = Number(r?.quantity ?? 0);
+                      const display = displayFromMeta(itemId, mergedExtraMetaById);
+                      const tone = documentTone(descriptor);
+
+                      return (
+                        <View
+                          key={`extra-doc-${documentId}-${itemId}`}
+                          style={[
+                            st.simpleRow,
+                            tone === "social" && st.simpleRowSocial,
+                            tone === "donation" && st.simpleRowDonation,
+                          ]}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={st.loadingNameRow}>
+                              {display.loading ? <ActivityIndicator size="small" color={Colors.sub} /> : null}
+                              <Text style={st.itemNameStrong} numberOfLines={2}>
+                                {display.name}
+                              </Text>
+                            </View>
+                            {!!display.meta && (
+                              <Text style={st.itemMeta} numberOfLines={1}>
+                                {display.meta}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={st.simpleRight}>x{quantity}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              })}
             </View>
           )}
 
           <Text style={[st.helper, { marginTop: 8 }]}>
-            Ove stavke nisu vezane uz određeni dokument i mogu se spremiti bez predloška.
+            Stavke se dodaju u odabranu grupu dokumenta i mogu se spremiti bez predloška.
           </Text>
         </View>
 
@@ -1483,10 +1675,60 @@ const st = StyleSheet.create({
     backgroundColor: "rgba(148,163,184,0.10)",
     alignItems: "center",
   },
+  simpleRowSocial: {
+    borderColor: "rgba(14,165,233,0.42)",
+    backgroundColor: "rgba(224,242,254,0.92)",
+  },
+  simpleRowDonation: {
+    borderColor: "rgba(34,197,94,0.42)",
+    backgroundColor: "rgba(220,252,231,0.92)",
+  },
   simpleRight: { fontWeight: "900", color: Colors.sub },
 
+  loadingNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   itemNameStrong: { fontWeight: "900", color: Colors.text, fontSize: 15 },
   itemMeta: { color: Colors.sub, fontWeight: "800" },
+
+  extraDocGroup: {
+    gap: 8,
+    padding: 10,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(148,163,184,0.28)",
+    backgroundColor: "rgba(148,163,184,0.08)",
+  },
+  extraDocGroupSocial: {
+    borderColor: "rgba(14,165,233,0.42)",
+    backgroundColor: "rgba(224,242,254,0.70)",
+  },
+  extraDocGroupDonation: {
+    borderColor: "rgba(34,197,94,0.42)",
+    backgroundColor: "rgba(220,252,231,0.74)",
+  },
+  extraDocHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  extraDocTitle: { color: Colors.text, fontWeight: "900", fontSize: 14 },
+  extraDocSub: { color: Colors.sub, fontWeight: "800", fontSize: 12 },
+  extraDocCount: {
+    minWidth: 30,
+    textAlign: "center",
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "#fff",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.border,
+    color: Colors.text,
+    fontWeight: "900",
+  },
 
   disabled: { opacity: 0.5 },
 });

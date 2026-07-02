@@ -119,20 +119,11 @@ public class DocumentDirectoryService {
             List<String> excludes = splitCsvUpper(excludeCodes);
             Set<Long> excludeIds = splitCsvLongSet(excludeDocumentIds);
 
-            if (code != null && !code.isBlank()) {
-                String codeU = code.trim().toUpperCase();
-
-                if (excludes.contains(codeU)) {
-                    return ServiceResponseDirector.successOk(List.of(), "OK");
-                }
-
-                return docTypeRepo.findDocumentSlotByCodeAndWarehouse(warehouseId, codeU)
-                        .filter(v -> !excludeIds.contains((long) v.getDocumentId())) // ✅ exclude by docId
-                        .map(v -> ServiceResponseDirector.successOk(List.of(mapper.toResponseDto(v)), "OK"))
-                        .orElseGet(() -> ServiceResponseDirector.successOk(List.of(), "OK"));
+            if (code != null && !code.isBlank() && excludes.contains(code.trim().toUpperCase())) {
+                return ServiceResponseDirector.successOk(List.of(), "OK");
             }
 
-            List<DocumentSlotTypeView> slotViews = docTypeRepo.listDocumentSlots(warehouseId, qq, excludes, excludeIds);
+            List<DocumentSlotTypeView> slotViews = docTypeRepo.listDocumentSlots(warehouseId, code, qq, excludes, excludeIds);
 
             List<DocumentDescriptorResponseDTO> dtoList = slotViews.stream()
                     .map(mapper::toResponseDto)

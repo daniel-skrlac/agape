@@ -24,7 +24,8 @@ type Props = {
   onApplyIso: (fromIso: string | null, toIso: string | null) => void;
 };
 
-type QuickKey = "TODAY" | "LAST7" | "MONTH" | "NONE";
+type QuickKey = "TODAY" | "LAST7" | "LAST30" | "MONTH" | "YEAR" | "NONE";
+type ActiveQuickKey = QuickKey | "CUSTOM";
 
 export function DateRangeSheet(props: Props) {
   const { visible, onClose, valueFromIso = null, valueToIso = null, onApplyIso } = props;
@@ -51,7 +52,7 @@ export function DateRangeSheet(props: Props) {
   const isNone = !fromIso && !toIso;
 
   const title = useMemo(() => {
-    if (isNone) return "Bez datuma (sve)";
+    if (isNone) return "Svi datumi";
     return `${fmtHrFromIso(fromIso) || "…"} → ${fmtHrFromIso(toIso) || "…"}`;
   }, [fromIso, toIso, isNone]);
 
@@ -125,23 +126,36 @@ export function DateRangeSheet(props: Props) {
 
   const todayIso = useMemo(() => dateToIsoLocal(todayLocalNoon()), []);
   const last7FromIso = useMemo(() => isoAddDaysFromToday(-7), []);
+  const last30FromIso = useMemo(() => isoAddDaysFromToday(-30), []);
   const monthFromIso = useMemo(() => monthStartIsoFromToday(), []);
+  const yearFromIso = useMemo(() => {
+    const d = todayLocalNoon();
+    return `${d.getFullYear()}-01-01`;
+  }, []);
+  const yearToIso = useMemo(() => {
+    const d = todayLocalNoon();
+    return `${d.getFullYear()}-12-31`;
+  }, []);
 
-  const quickKey = useMemo<QuickKey>(() => {
+  const quickKey = useMemo<ActiveQuickKey>(() => {
     if (isNone) return "NONE";
     if (fromIso === todayIso && toIso === todayIso) return "TODAY";
     if (fromIso === last7FromIso && toIso === todayIso) return "LAST7";
+    if (fromIso === last30FromIso && toIso === todayIso) return "LAST30";
     if (fromIso === monthFromIso && toIso === todayIso) return "MONTH";
-    return "NONE";
-  }, [fromIso, toIso, isNone, todayIso, last7FromIso, monthFromIso]);
+    if (fromIso === yearFromIso && toIso === yearToIso) return "YEAR";
+    return "CUSTOM";
+  }, [fromIso, toIso, isNone, todayIso, last7FromIso, last30FromIso, monthFromIso, yearFromIso, yearToIso]);
 
   const quickItems = useMemo(
     () =>
       [
         { key: "TODAY" as const, label: "Danas", icon: "sun-o" as const, meta: "" },
         { key: "LAST7" as const, label: "Zadnjih 7d", icon: "history" as const, meta: "7" },
+        { key: "LAST30" as const, label: "Zadnjih 30d", icon: "calendar-o" as const, meta: "30" },
         { key: "MONTH" as const, label: "Ovaj mjesec", icon: "calendar" as const, meta: "M" },
-        { key: "NONE" as const, label: "Bez datuma", icon: "calendar-times-o" as const, meta: "" },
+        { key: "YEAR" as const, label: "Ova godina", icon: "calendar-check-o" as const, meta: "G" },
+        { key: "NONE" as const, label: "Svi datumi", icon: "calendar-times-o" as const, meta: "" },
       ] as const,
     []
   );
@@ -149,7 +163,9 @@ export function DateRangeSheet(props: Props) {
   const quickPress = (k: QuickKey) => {
     if (k === "TODAY") setQuick(todayIso, todayIso);
     else if (k === "LAST7") setQuick(last7FromIso, todayIso);
+    else if (k === "LAST30") setQuick(last30FromIso, todayIso);
     else if (k === "MONTH") setQuick(monthFromIso, todayIso);
+    else if (k === "YEAR") setQuick(yearFromIso, yearToIso);
     else clearLocal();
   };
 
@@ -258,9 +274,13 @@ export function DateRangeSheet(props: Props) {
                           ? "Danas"
                           : it.key === "LAST7"
                             ? "Raspon 7 dana"
-                            : it.key === "MONTH"
-                              ? "Od 1. u mjesecu"
-                              : "Prikaži sve"}
+                            : it.key === "LAST30"
+                              ? "Raspon 30 dana"
+                              : it.key === "MONTH"
+                                ? "Od 1. u mjesecu"
+                                : it.key === "YEAR"
+                                  ? "Cijela godina"
+                                  : "Prikaži sve"}
                       </Text>
                     </View>
 

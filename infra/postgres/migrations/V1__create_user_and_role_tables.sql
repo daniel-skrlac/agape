@@ -8,7 +8,7 @@ CREATE TABLE app_user
     username             VARCHAR(50)  NOT NULL UNIQUE,
     oib                  VARCHAR(11)  NOT NULL,
     password_hash        VARCHAR(255) NOT NULL,
-    default_warehouse_id BIGINT,
+    default_warehouse_by_storage_group JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at           TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -144,7 +144,7 @@ CREATE TABLE dispatch_booking_session
     title         VARCHAR(200) NOT NULL,
     note          TEXT,
 
-    warehouse_id  BIGINT       NOT NULL,
+    warehouse_id  BIGINT,
 
     status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT', -- DRAFT / FINALIZED / CANCELLED
 
@@ -173,9 +173,9 @@ CREATE TABLE dispatch_booking_session_entry
 
     doc_patches   JSONB NOT NULL,
     extra_items   JSONB NOT NULL,
+    extra_docs    JSONB NOT NULL DEFAULT '[]'::jsonb,
     note          TEXT,
     document_date DATE,
-    scan_fingerprints JSONB NOT NULL DEFAULT '[]'::jsonb,
 
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),

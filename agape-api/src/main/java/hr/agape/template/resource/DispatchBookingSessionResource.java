@@ -79,6 +79,7 @@ public class DispatchBookingSessionResource {
             @RestForm("file") FileUpload file,
             @RestForm("partnerId") Long partnerId,
             @RestForm("templateId") Long templateId,
+            @RestForm("documentId") Long documentId,
             @RestForm("documentDate") String documentDate,
             @RestForm("note") String note
     ) {
@@ -87,6 +88,7 @@ public class DispatchBookingSessionResource {
                 file,
                 partnerId,
                 templateId,
+                documentId,
                 documentDate,
                 note
         ));

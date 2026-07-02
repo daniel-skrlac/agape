@@ -118,6 +118,31 @@ function statusLabel(k: DispatchBookingStatusFilter) {
   return "Storno";
 }
 
+function documentGroupRank(doc: DocumentDescriptorResponseDTO | null | undefined): number {
+  const text = `${(doc as any)?.storageGroupName ?? ""} ${(doc as any)?.displayName ?? ""}`.toLowerCase();
+  if (text.includes("socijalna")) return 0;
+  if (text.includes("doniran")) return 1;
+  return 2;
+}
+
+function compareDocuments(a: DocumentDescriptorResponseDTO, b: DocumentDescriptorResponseDTO): number {
+  const rank = documentGroupRank(a) - documentGroupRank(b);
+  if (rank !== 0) return rank;
+
+  const name = String((a as any)?.storageGroupName ?? a.displayName ?? "").localeCompare(
+    String((b as any)?.storageGroupName ?? b.displayName ?? ""),
+    "hr",
+    { sensitivity: "base" }
+  );
+  if (name !== 0) return name;
+
+  const aw = Number((a as any)?.warehouseId ?? 0);
+  const bw = Number((b as any)?.warehouseId ?? 0);
+  if (aw !== bw) return aw - bw;
+
+  return Number((a as any)?.documentId ?? 0) - Number((b as any)?.documentId ?? 0);
+}
+
 function buildRowSubLines(item: any): string[] {
   const code = String(item?.documentCode ?? "").trim();
   const br = String(item?.documentBr ?? "").trim();
@@ -155,9 +180,7 @@ export default function DispatchBookingsIndex() {
   const routeResultHeaderId = parseIntParam(routeParams.resultHeaderId);
   const routeResultMessage = parseTextParam(routeParams.resultMessage);
 
-  const { session, ready } = useCurrentUser();
-  const defaultWhId =
-    session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
+  const { ready } = useCurrentUser();
 
   const whQ = useWarehouses() as any;
   const warehouses: number[] = (whQ?.data ?? []) as any;
@@ -400,10 +423,10 @@ export default function DispatchBookingsIndex() {
       [
         "dispatch-bookings",
         "document-picker",
-        warehouseId ?? defaultWhId ?? "NO_WAREHOUSE",
+        warehouseId ?? "ALL_WAREHOUSES",
         documentCode,
       ] as const,
-    [warehouseId, defaultWhId, documentCode]
+    [warehouseId, documentCode]
   );
 
   const queryWarehousesPage = useCallback(
@@ -450,19 +473,9 @@ export default function DispatchBookingsIndex() {
       q?: string;
       signal?: AbortSignal;
     }) => {
-      const whForDocs = warehouseId ?? defaultWhId;
-      if (!whForDocs) {
-        return {
-          items: [] as DocumentDescriptorResponseDTO[],
-          page,
-          size,
-          total: 0,
-        };
-      }
-
       const all = await documentDirectoryService.listDocTypesByCode(
         {
-          warehouseId: Number(whForDocs),
+          warehouseId: warehouseId == null ? null : Number(warehouseId),
           documentCode: "OTPREMNICA",
           q: q ?? undefined,
         },
@@ -477,14 +490,11 @@ export default function DispatchBookingsIndex() {
           const a = (d.displayName ?? "").toLowerCase();
           const b = (d.documentCode ?? "").toLowerCase();
           const c = String(d.documentId ?? "");
-          return a.includes(needle) || b.includes(needle) || c.includes(needle);
+          const group = String((d as any).storageGroupName ?? "").toLowerCase();
+          return a.includes(needle) || b.includes(needle) || c.includes(needle) || group.includes(needle);
         });
 
-      filtered.sort((a, b) =>
-        (a.displayName ?? "").localeCompare(b.displayName ?? "", "hr", {
-          sensitivity: "base",
-        })
-      );
+      filtered.sort(compareDocuments);
 
       const start = page * size;
       const end = start + size;
@@ -496,7 +506,7 @@ export default function DispatchBookingsIndex() {
         total: filtered.length,
       };
     },
-    [warehouseId, defaultWhId]
+    [warehouseId]
   );
 
   if (!ready) {
@@ -543,7 +553,7 @@ export default function DispatchBookingsIndex() {
           <Pressable style={s.filterPill} onPress={() => setDocPickerOpen(true)}>
             <FontAwesome name="file-text-o" size={14} color={Colors.text} />
             <Text style={s.filterText} numberOfLines={1}>
-              {pickedDoc?.displayName ?? "Odaberi dokument"}
+              {String((pickedDoc as any)?.storageGroupName ?? "").trim() || pickedDoc?.displayName || "Odaberi dokument"}
             </Text>
             <FontAwesome name="chevron-down" size={12} color={Colors.sub} />
           </Pressable>
@@ -721,9 +731,11 @@ export default function DispatchBookingsIndex() {
               close();
             }}
           >
-            <Text style={s.pickTitle}>{d.displayName}</Text>
+            <Text style={s.pickTitle}>
+              {String((d as any).storageGroupName ?? "").trim() || d.displayName}
+            </Text>
             <Text style={s.pickSub}>
-              Šifra: {d.documentCode} • ID: {d.documentId}
+              Šifra: {d.documentCode} • Dokument #{d.documentId}
             </Text>
           </Pressable>
         )}
@@ -750,11 +762,11 @@ export default function DispatchBookingsIndex() {
             ? "Možeš otvoriti dokument i provjeriti status."
             : undefined
         }
-        linkText={
-          resultPopup.linkHeaderId
-            ? `Otvori Dispatch #${resultPopup.linkHeaderId}`
-            : undefined
-        }
+          linkText={
+            resultPopup.linkHeaderId
+              ? `Otvori otpremnicu #${resultPopup.linkHeaderId}`
+              : undefined
+          }
         onLinkPress={resultPopup.linkHeaderId ? openResultDetails : undefined}
         buttonText="U redu"
         onClose={closeResultPopup}

@@ -12,6 +12,13 @@ export type StandaloneItemMeta = {
 
 export type StandaloneMetaMap = Record<string, StandaloneItemMeta>;
 
+export type ExtraDocDraft = {
+  documentId: number;
+  draft?: boolean | null;
+  note?: string | null;
+  items: Array<{ itemId: number; quantity: number }>;
+};
+
 type TouchedMap = Partial<Record<keyof EntryDraft, true>>;
 
 export type EntryDraft = {
@@ -22,6 +29,7 @@ export type EntryDraft = {
   docPatches: any[];
   standaloneQty: QtyMap;
   standaloneMetaById: StandaloneMetaMap;
+  extraDocs: ExtraDocDraft[];
   note?: string | null;
   documentDate?: any;
   _touched?: TouchedMap;
@@ -101,6 +109,7 @@ export function ensureDraft(sessionId: number, partnerId: number): EntryDraft {
     docPatches: [],
     standaloneQty: {},
     standaloneMetaById: {},
+    extraDocs: [],
     note: null,
     documentDate: null,
     _touched: {},

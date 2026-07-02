@@ -61,7 +61,6 @@ export default function RegisterScreen() {
                     actionText="Zatvori"
                     onAction={form.clearError}
                     titleLines={1}
-                    messageLines={2}
                   />
                 )}
 

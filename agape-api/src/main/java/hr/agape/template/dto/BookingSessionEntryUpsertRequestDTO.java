@@ -26,5 +26,7 @@ public class BookingSessionEntryUpsertRequestDTO {
 
     private List<TemplateBookItemDTO> extraItems;
 
+    private List<TemplateBookExtraDocDTO> extraDocs;
+
     private String note;
 }

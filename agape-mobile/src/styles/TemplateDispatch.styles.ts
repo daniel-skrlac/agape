@@ -46,6 +46,14 @@ export const s = StyleSheet.create({
         padding: 14,
         gap: 10,
     },
+    cardColSocial: {
+        borderColor: "rgba(14,165,233,0.28)",
+        backgroundColor: "rgba(239,246,255,0.55)",
+    },
+    cardColDonation: {
+        borderColor: "rgba(34,197,94,0.28)",
+        backgroundColor: "rgba(240,253,244,0.60)",
+    },
 
     cardHeaderInline: {
         flexDirection: "row",
@@ -62,6 +70,23 @@ export const s = StyleSheet.create({
     patchWrap: {
         gap: 8,
         marginTop: 10,
+        padding: 10,
+        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: Colors.border,
+        backgroundColor: "rgba(148,163,184,0.06)",
+        borderLeftWidth: 3,
+        borderLeftColor: "transparent",
+    },
+    patchWrapSocial: {
+        borderColor: "rgba(14,165,233,0.42)",
+        borderLeftColor: "rgba(14,165,233,0.70)",
+        backgroundColor: "rgba(224,242,254,0.70)",
+    },
+    patchWrapDonation: {
+        borderColor: "rgba(34,197,94,0.42)",
+        borderLeftColor: "rgba(34,197,94,0.70)",
+        backgroundColor: "rgba(220,252,231,0.74)",
     },
 
     title: { fontWeight: "900", color: Colors.text, fontSize: 15 },
@@ -81,6 +106,14 @@ export const s = StyleSheet.create({
         borderColor: Colors.border,
         backgroundColor: "rgba(148,163,184,0.10)",
         alignItems: "center",
+    },
+    simpleRowSocial: {
+        borderColor: "rgba(14,165,233,0.42)",
+        backgroundColor: "rgba(224,242,254,0.92)",
+    },
+    simpleRowDonation: {
+        borderColor: "rgba(34,197,94,0.42)",
+        backgroundColor: "rgba(220,252,231,0.92)",
     },
     simpleRight: { fontWeight: "900", color: Colors.sub },
 
@@ -158,14 +191,25 @@ export const s = StyleSheet.create({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: Colors.border,
         backgroundColor: Colors.bg,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
         gap: 10,
+        overflow: "hidden",
+    },
+    pickRowSocial: {
+        borderColor: "rgba(14,165,233,0.30)",
+        backgroundColor: "rgba(239,246,255,0.78)",
+    },
+    pickRowDonation: {
+        borderColor: "rgba(34,197,94,0.30)",
+        backgroundColor: "rgba(240,253,244,0.82)",
     },
     pickRowSelected: {
         borderColor: Colors.orange,
         backgroundColor: "rgba(249,115,22,0.10)",
+    },
+
+    pickTextBlock: {
+        flex: 1,
+        minWidth: 0,
     },
 
     pickLeft: {
@@ -426,22 +470,117 @@ export const s = StyleSheet.create({
         maxWidth: MAX_W,
         flexDirection: "row",
         gap: 10,
+        alignItems: "stretch",
     },
     tabBtn: {
         flex: 1,
+        minWidth: 0,
+        minHeight: 48,
         paddingVertical: 10,
+        paddingHorizontal: 8,
         borderRadius: 14,
         backgroundColor: "rgba(148,163,184,0.18)",
         alignItems: "center",
         justifyContent: "center",
+    },
+    tabBtnSocial: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(14,165,233,0.34)",
+        backgroundColor: "rgba(14,165,233,0.08)",
+    },
+    tabBtnDonation: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(34,197,94,0.34)",
+        backgroundColor: "rgba(34,197,94,0.08)",
     },
     tabBtnActive: {
         backgroundColor: "rgba(249,115,22,0.18)",
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: "rgba(249,115,22,0.35)",
     },
-    tabText: { fontWeight: "900", color: Colors.sub },
+    tabBtnActiveSocial: {
+        borderColor: "rgba(14,165,233,0.58)",
+        backgroundColor: "rgba(14,165,233,0.18)",
+    },
+    tabBtnActiveDonation: {
+        borderColor: "rgba(34,197,94,0.58)",
+        backgroundColor: "rgba(34,197,94,0.18)",
+    },
+    tabText: { fontWeight: "900", color: Colors.sub, textAlign: "center" },
     tabTextActive: { color: Colors.text },
+
+    docContext: {
+        width: "100%",
+        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(249,115,22,0.28)",
+        backgroundColor: "rgba(255,247,237,0.95)",
+        padding: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+    },
+    docContextSocial: {
+        borderColor: "rgba(14,165,233,0.36)",
+        backgroundColor: "rgba(239,246,255,0.96)",
+    },
+    docContextDonation: {
+        borderColor: "rgba(34,197,94,0.36)",
+        backgroundColor: "rgba(240,253,244,0.96)",
+    },
+    docContextPicker: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+    },
+    docIcon: {
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        backgroundColor: "rgba(249,115,22,0.14)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    docIconSocial: {
+        backgroundColor: "rgba(14,165,233,0.14)",
+    },
+    docIconDonation: {
+        backgroundColor: "rgba(34,197,94,0.14)",
+    },
+    docTextBlock: {
+        flex: 1,
+        minWidth: 0,
+    },
+    docLabel: {
+        color: Colors.text,
+        fontWeight: "900",
+        fontSize: 15,
+    },
+    docSub: {
+        color: Colors.sub,
+        fontWeight: "800",
+        fontSize: 12,
+        marginTop: 2,
+    },
+    docAddBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        paddingHorizontal: 11,
+        paddingVertical: 9,
+        borderRadius: 13,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(148,163,184,0.28)",
+        backgroundColor: "rgba(255,255,255,0.76)",
+    },
+    docAddText: {
+        color: Colors.text,
+        fontWeight: "900",
+        fontSize: 12,
+    },
 
     resultText: {
         fontWeight: "900",

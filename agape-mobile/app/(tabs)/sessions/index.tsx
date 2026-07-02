@@ -21,7 +21,6 @@ import { DateRangeSheet } from "@/components/DateRangeSheet";
 
 import { toUserMessage } from "../../../src/api/apiClient";
 import { toLocalDateString, fmtHrFromIso } from "@/src/utils/dateIso";
-import { useCurrentUser } from "../../../src/api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "../../../src/api/hooks/common/usePullToRefresh";
 import type { BookingSessionCreateRequestDTO, BookingSessionResponseDTO } from "@/src/models/generated";
 import {
@@ -76,7 +75,7 @@ function initials(title: string) {
 function statusLabel(status: unknown) {
   if (status === "DRAFT") return "DRAFT";
   if (status === "FINALIZED") return "FINAL";
-  if (status === "CANCELLED") return "CANCELED";
+  if (status === "CANCELLED") return "STORNO";
   return String(status ?? "");
 }
 
@@ -117,9 +116,6 @@ function formatDateTimeHr(v: unknown): string | null {
 }
 
 export default function SessionsIndex() {
-  const { session } = useCurrentUser();
-  const warehouseId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
-
   const [filter, setFilter] = useState<SessionFilter>("ALL");
 
   const [q, setQ] = useState("");
@@ -211,20 +207,10 @@ export default function SessionsIndex() {
   };
 
   const canCreate = useMemo(() => {
-    return !!warehouseId && title.trim().length > 0 && !createM.isPending;
-  }, [warehouseId, title, createM.isPending]);
+    return title.trim().length > 0 && !createM.isPending;
+  }, [title, createM.isPending]);
 
   const handleCreate = async () => {
-    if (!warehouseId) {
-      setResultPopup({
-        visible: true,
-        kind: "error",
-        title: "Nedostaje skladište",
-        message: "U postavkama odaberi glavno skladište prije kreiranja evidencije.",
-      });
-      return;
-    }
-
     try {
       setSuppressTopError(false);
       setScreenError(null);
@@ -233,7 +219,6 @@ export default function SessionsIndex() {
       const payload: BookingSessionCreateRequestDTO = {
         title: title.trim(),
         note: note.trim() || null,
-        warehouseId,
         documentDate: toLocalDateString(new Date()) as any,
       } as any;
 
@@ -290,7 +275,7 @@ export default function SessionsIndex() {
         visible: true,
         kind: "success",
         title: "Evidencija otkazana",
-        message: `Evidencija "${canceledTitle}" je označena kao canceled.`,
+        message: `Evidencija "${canceledTitle}" je označena kao storno.`,
       });
 
       await Promise.resolve(listQ.refresh?.());
@@ -463,7 +448,7 @@ export default function SessionsIndex() {
               { value: "ALL", label: "Sve" },
               { value: "DRAFT", label: "Draft" },
               { value: "FINALIZED", label: "Final" },
-              { value: "CANCELLED", label: "Canceled" },
+              { value: "CANCELLED", label: "Storno" },
             ]}
             onChange={(next) => {
               setSuppressTopError(false);
@@ -529,7 +514,7 @@ export default function SessionsIndex() {
                           {t || "—"}
                         </Text>
                         <Text style={s.sub} numberOfLines={1}>
-                          ID #{id} • Skladište #{(item as any)?.warehouseId}
+                          ID #{id}
                         </Text>
                       </View>
                     </View>
@@ -640,17 +625,6 @@ export default function SessionsIndex() {
         }}
       >
         <View style={{ gap: 10 }}>
-          {!warehouseId && (
-            <ErrorCard
-              title="Nedostaje glavno skladište"
-              message="U postavkama odaberi glavno skladište prije kreiranja evidencije."
-              actionText="Zatvori"
-              onAction={() => setCreateOpen(false)}
-              titleLines={2}
-              messageLines={3}
-            />
-          )}
-
           <Text style={s.label}>Naziv</Text>
           <TextInput
             value={title}

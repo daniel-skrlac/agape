@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { router, useLocalSearchParams } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import NavigationHeader from "../../../../../components/NavigationHeader";
@@ -19,6 +20,7 @@ import { ErrorCard } from "@/components/ErrorCard";
 import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { Segmented } from "@/components/Segmented";
 import { CenterSheet } from "@/components/CenterSheet";
+import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 import ValidateImpactModal from "@/components/ValidateImpactModal";
 import ValidateManyModal, { toValidateRow, type ValidateRow } from "@/components/ValidateManyModal";
 import { TemplateDocItemsEditorModal } from "@/components/TemplateDocItemsEditorModal";
@@ -28,9 +30,11 @@ import type {
   DraftMode,
   DispatchBulkValidationRequestDTO,
   DispatchRequestValidationDTO,
+  DocumentDescriptorResponseDTO,
   ItemDescriptorResponseDTO,
   PartnerResponseDTO,
   TemplateBookDocPatchDTO,
+  TemplateBookExtraDocDTO,
   TemplateBookItemDTO,
   TemplateDocResponseDTO,
   TemplateItemResponseDTO,
@@ -42,12 +46,28 @@ import { useCurrentUser } from "../../../../../src/api/hooks/common/useCurrentUs
 import { useDispatchValidateBulk } from "../../../../../src/api/hooks/sessions/useDispatchValidate";
 import { toLocalDateString } from "@/src/utils/dateIso";
 import { useBookTemplateOne, useTemplateDetail } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
-import { useItemDirectory } from "../../../../../src/api/hooks/documents/useItemDirectory";
+import { documentDirectoryService } from "../../../../../src/api/services/documentDirectoryService";
+import { itemDirectoryService } from "../../../../../src/api/services/itemDirectoryService";
 
 import { MAX_W, s } from "../../../../../src/styles/TemplateDispatch.styles";
 import { toUserMessage } from "@/src/api/apiClient";
 
 type PartnerNoteMap = Record<string, string>;
+
+type ExtraDocDraft = {
+  documentId: number;
+  items: TemplateBookItemDTO[];
+};
+
+type TemplateDispatchDraft = {
+  selectedPartners: PartnerResponseDTO[];
+  partnerNoteById: PartnerNoteMap;
+  draftMode: DraftMode;
+  extraDocs: ExtraDocDraft[];
+  extraItemsDocumentId: number | null;
+};
+
+const templateDispatchDrafts = new Map<number, TemplateDispatchDraft>();
 
 type ResultPopupState = {
   visible: boolean;
@@ -118,7 +138,7 @@ function formatItemDisplay(
       .join(" • ");
 
     return {
-      name: rowName || `Artikl #${itemId}`,
+      name: rowName || "Učitavam artikl…",
       meta: subtitle,
     };
   }
@@ -138,7 +158,7 @@ function formatItemDisplay(
     .join(" • ");
 
   return {
-    name: name || `Artikl #${itemId}`,
+    name: name || "Učitavam artikl…",
     meta: subtitle,
   };
 }
@@ -149,10 +169,10 @@ function buildValidatePayload(args: {
   draftMode: DraftMode;
   templateDocs: TemplateDocResponseDTO[];
   docPatches: TemplateBookDocPatchDTO[];
-  extraItems: TemplateBookItemDTO[];
+  extraDocs: ExtraDocDraft[];
   note?: string | null;
 }): DispatchRequestValidationDTO {
-  const { warehouseId, partnerId, draftMode, templateDocs, docPatches, extraItems, note } = args;
+  const { warehouseId, partnerId, draftMode, templateDocs, docPatches, extraDocs, note } = args;
 
   const totalByItemId: Record<string, number> = {};
 
@@ -177,8 +197,10 @@ function buildValidatePayload(args: {
     }
   }
 
-  for (const row of extraItems ?? []) {
-    add((row as any)?.itemId, (row as any)?.quantity);
+  for (const doc of extraDocs ?? []) {
+    for (const row of doc.items ?? []) {
+      add((row as any)?.itemId, (row as any)?.quantity);
+    }
   }
 
   const items = Object.entries(totalByItemId)
@@ -186,8 +208,18 @@ function buildValidatePayload(args: {
     .filter((x) => x.itemId && x.quantity > 0)
     .sort((a, b) => a.itemId - b.itemId);
 
+  const documentIds = Array.from(
+    new Set(
+      (templateDocs ?? [])
+        .map((doc) => Number((doc as any)?.documentId))
+        .concat((extraDocs ?? []).map((doc) => Number(doc.documentId)))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )
+  );
+
   return {
     warehouseId: Number(warehouseId),
+    documentId: documentIds.length === 1 ? documentIds[0] : undefined,
     partnerId: Number(partnerId),
     documentDate: undefined as any,
     draft: draftMode === "DRAFT",
@@ -204,13 +236,166 @@ function partnerDisplayName(partner: PartnerResponseDTO) {
   return number ? `Partner #${number}` : "Partner";
 }
 
+function normDocumentId(x: any): number {
+  const n = Number(x?.documentId ?? x?.document_id ?? x?.id ?? 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function documentGroupTitle(doc: DocumentDescriptorResponseDTO | null | undefined, documentId?: number | null) {
+  const group = String((doc as any)?.storageGroupName ?? "").trim();
+  const display = String((doc as any)?.displayName ?? "").trim();
+  const code = String((doc as any)?.documentCode ?? "").trim();
+  return group || display || code || (documentId ? `Dokument #${documentId}` : "Grupa dokumenta");
+}
+
+function documentGroupSubtitle(doc: DocumentDescriptorResponseDTO | null | undefined) {
+  if (!doc) return "Artikli se učitavaju prema odabranoj grupi.";
+  return [
+    String((doc as any)?.displayName ?? "").trim(),
+    String((doc as any)?.documentCode ?? "").trim(),
+    doc.documentId ? `Dokument #${doc.documentId}` : null,
+    doc.warehouseId ? `Skladište #${doc.warehouseId}` : null,
+  ].filter(Boolean).join(" • ");
+}
+
+function documentGroupRank(doc: DocumentDescriptorResponseDTO | null | undefined): number {
+  const text = `${(doc as any)?.storageGroupName ?? ""} ${(doc as any)?.displayName ?? ""}`.toLowerCase();
+  if (text.includes("socijalna")) return 0;
+  if (text.includes("doniran")) return 1;
+  return 2;
+}
+
+type DocumentTone = "social" | "donation" | "neutral";
+
+function documentToneFromText(text: string): DocumentTone {
+  const normalized = text.toLowerCase();
+  if (normalized.includes("socijalna")) return "social";
+  if (normalized.includes("doniran")) return "donation";
+  return "neutral";
+}
+
+function documentTone(doc: DocumentDescriptorResponseDTO | null | undefined): DocumentTone {
+  return documentToneFromText(
+    `${String((doc as any)?.storageGroupName ?? "").trim()} ${String((doc as any)?.displayName ?? "").trim()}`
+  );
+}
+
+function compareDocumentDescriptors(
+  a: DocumentDescriptorResponseDTO | null | undefined,
+  b: DocumentDescriptorResponseDTO | null | undefined
+): number {
+  const rank = documentGroupRank(a) - documentGroupRank(b);
+  if (rank !== 0) return rank;
+
+  const name = documentGroupTitle(a, normDocumentId(a)).localeCompare(
+    documentGroupTitle(b, normDocumentId(b)),
+    "hr",
+    { sensitivity: "base" }
+  );
+  if (name !== 0) return name;
+
+  const aw = Number((a as any)?.warehouseId ?? 0);
+  const bw = Number((b as any)?.warehouseId ?? 0);
+  if (aw !== bw) return aw - bw;
+
+  return normDocumentId(a) - normDocumentId(b);
+}
+
+function filterDocumentDescriptors(
+  docs: DocumentDescriptorResponseDTO[],
+  q?: string | null
+) {
+  const query = String(q ?? "").trim().toLowerCase();
+  if (!query) return docs;
+
+  return docs.filter((doc) => {
+    const haystack = [
+      documentGroupTitle(doc, normDocumentId(doc)),
+      documentGroupSubtitle(doc),
+      String((doc as any)?.documentId ?? ""),
+      String((doc as any)?.warehouseId ?? ""),
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(query);
+  });
+}
+
+function sortExtraDocs(
+  extraDocs: ExtraDocDraft[],
+  descriptors: Map<number, DocumentDescriptorResponseDTO>
+): ExtraDocDraft[] {
+  return extraDocs.slice().sort((a, b) => {
+    const ad = descriptors.get(a.documentId) ?? null;
+    const bd = descriptors.get(b.documentId) ?? null;
+    const byDoc = compareDocumentDescriptors(ad, bd);
+    if (byDoc !== 0) return byDoc;
+    return a.documentId - b.documentId;
+  });
+}
+
+function itemsForDocument(extraDocs: ExtraDocDraft[], documentId: number | null): TemplateBookItemDTO[] {
+  if (!documentId) return [];
+  return extraDocs.find((doc) => doc.documentId === documentId)?.items ?? [];
+}
+
+function toExtraDocsPayload(extraDocs: ExtraDocDraft[], draft: boolean): TemplateBookExtraDocDTO[] {
+  return extraDocs
+    .map((doc) => ({
+      documentId: Number(doc.documentId),
+      draft,
+      note: "",
+      items: (doc.items ?? [])
+        .map((row) => ({
+          itemId: Number((row as any)?.itemId),
+          quantity: Number((row as any)?.quantity ?? 0),
+        }))
+        .filter((row) => row.itemId > 0 && Number.isFinite(row.quantity) && row.quantity > 0),
+    }))
+    .filter((doc) => doc.documentId > 0 && doc.items.length > 0) as any;
+}
+
+function upsertExtraDocItems(
+  prev: ExtraDocDraft[],
+  documentId: number,
+  items: TemplateBookItemDTO[]
+): ExtraDocDraft[] {
+  const cleaned = (items ?? [])
+    .map((row) => ({
+      itemId: Number((row as any)?.itemId),
+      quantity: Number((row as any)?.quantity ?? 0),
+      name: String((row as any)?.name ?? (row as any)?.itemName ?? "").trim(),
+      itemName: String((row as any)?.itemName ?? (row as any)?.name ?? "").trim(),
+      code: String((row as any)?.code ?? (row as any)?.itemCode ?? "").trim(),
+      itemCode: String((row as any)?.itemCode ?? (row as any)?.code ?? "").trim(),
+      unit: String((row as any)?.unit ?? "").trim(),
+      barcode: String((row as any)?.barcode ?? "").trim(),
+    }))
+    .filter((row) => row.itemId > 0 && Number.isFinite(row.quantity) && row.quantity > 0) as TemplateBookItemDTO[];
+
+  const without = prev.filter((doc) => doc.documentId !== documentId);
+  if (!cleaned.length) return without;
+  return [...without, { documentId, items: cleaned }];
+}
+
+function preferredDocumentForGroup(
+  group: { id: string; docs: DocumentDescriptorResponseDTO[] },
+  defaults: Record<string, number> | null | undefined
+): DocumentDescriptorResponseDTO | null {
+  const preferredWarehouseId = Number(defaults?.[group.id] ?? 0);
+  if (preferredWarehouseId > 0) {
+    const preferred = group.docs.find((doc) => Number((doc as any)?.warehouseId ?? 0) === preferredWarehouseId);
+    if (preferred) return preferred;
+  }
+  return group.docs[0] ?? null;
+}
+
 function buildBulkValidatePayload(args: {
   warehouseId: number;
   selectedPartners: PartnerResponseDTO[];
   draftMode: DraftMode;
   templateDocs: TemplateDocResponseDTO[];
   docPatches: TemplateBookDocPatchDTO[];
-  extraItems: TemplateBookItemDTO[];
+  extraDocs: ExtraDocDraft[];
   partnerNoteById: PartnerNoteMap;
 }) {
   const {
@@ -219,7 +404,7 @@ function buildBulkValidatePayload(args: {
     draftMode,
     templateDocs,
     docPatches,
-    extraItems,
+    extraDocs,
     partnerNoteById,
   } = args;
 
@@ -240,7 +425,7 @@ function buildBulkValidatePayload(args: {
           draftMode,
           templateDocs,
           docPatches,
-          extraItems,
+          extraDocs,
           note: partnerNoteById[String(partnerId)] ?? null,
         }),
       };
@@ -308,8 +493,7 @@ export default function TemplateDispatchScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const templateId = Number(params.id);
 
-  const { session, ready } = useCurrentUser();
-  const warehouseId = session?.defaultWarehouseId != null ? Number(session.defaultWarehouseId) : null;
+  const { session } = useCurrentUser();
 
   const templateQuery = useTemplateDetail(templateId, { includeItemMeta: true });
   const template = templateQuery.data;
@@ -318,9 +502,12 @@ export default function TemplateDispatchScreen() {
   const bookOneMutation = useBookTemplateOne();
   const validateBulkMutation = useDispatchValidateBulk();
 
-  const { fetchItemsPage: fetchItemsPageBase } = useItemDirectory({
-    warehouseId: warehouseId ? Number(warehouseId) : null,
-    enabled: true,
+  const documentDescriptorsQ = useQuery({
+    queryKey: ["template-dispatch", "document-groups", "OTPREMNICA"],
+    queryFn: ({ signal }) =>
+      documentDirectoryService.listDocTypesByCode({ documentCode: "OTPREMNICA" }, signal),
+    staleTime: 16 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
   });
 
   const [screenError, setScreenError] = useState<string | null>(null);
@@ -339,9 +526,14 @@ export default function TemplateDispatchScreen() {
     bookOneMutation.reset();
   };
 
-  const refreshing = templateQuery.isFetching;
+  const refreshing = templateQuery.isFetching || documentDescriptorsQ.isFetching;
   const onRefresh = () => {
-    void templateQuery.refetch();
+    setScreenError(null);
+    setDismissedTopError(null);
+    void Promise.allSettled([
+      Promise.resolve(templateQuery.refetch()),
+      Promise.resolve(documentDescriptorsQ.refetch()),
+    ]);
   };
 
   const bookingBusy = bookOneMutation.isPending;
@@ -412,9 +604,13 @@ export default function TemplateDispatchScreen() {
 
   const docPatches: TemplateBookDocPatchDTO[] = [];
 
-  const [extraItems, setExtraItems] = useState<TemplateBookItemDTO[]>([]);
+  const [extraDocs, setExtraDocs] = useState<ExtraDocDraft[]>([]);
+  const [extraItemsDocumentId, setExtraItemsDocumentId] = useState<number | null>(null);
+  const [extraDocPickerOpen, setExtraDocPickerOpen] = useState(false);
   const [isExtraItemsEditorOpen, setIsExtraItemsEditorOpen] = useState(false);
+  const [extraItemsEditorDocumentId, setExtraItemsEditorDocumentId] = useState<number | null>(null);
   const [extraItemsEditorSeed, setExtraItemsEditorSeed] = useState<TemplateItemResponseDTO[]>([]);
+  const [resetDraftOpen, setResetDraftOpen] = useState(false);
 
   const [resultPopup, setResultPopup] = useState<ResultPopupState>({
     visible: false,
@@ -427,6 +623,56 @@ export default function TemplateDispatchScreen() {
   const closeResultPopup = useCallback(() => {
     setResultPopup((prev) => ({ ...prev, visible: false }));
   }, []);
+
+  const draftLoadedForTemplateRef = useRef<number | null>(null);
+  const skipNextDraftSaveRef = useRef(false);
+
+  useEffect(() => {
+    const id = Number(templateId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    if (draftLoadedForTemplateRef.current === id) return;
+
+    draftLoadedForTemplateRef.current = id;
+    const saved = templateDispatchDrafts.get(id);
+    if (!saved) return;
+
+    skipNextDraftSaveRef.current = true;
+    setSelectedPartners(saved.selectedPartners ?? []);
+    setPartnerNoteById(saved.partnerNoteById ?? {});
+    setDraftMode(saved.draftMode ?? "FINAL");
+    setExtraDocs(saved.extraDocs ?? []);
+    setExtraItemsDocumentId(saved.extraItemsDocumentId ?? null);
+  }, [templateId]);
+
+  useEffect(() => {
+    const id = Number(templateId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    if (draftLoadedForTemplateRef.current !== id) return;
+    if (skipNextDraftSaveRef.current) {
+      skipNextDraftSaveRef.current = false;
+      return;
+    }
+
+    templateDispatchDrafts.set(id, {
+      selectedPartners,
+      partnerNoteById,
+      draftMode,
+      extraDocs,
+      extraItemsDocumentId,
+    });
+  }, [templateId, selectedPartners, partnerNoteById, draftMode, extraDocs, extraItemsDocumentId]);
+
+  const clearLocalDraft = useCallback(() => {
+    const id = Number(templateId);
+    if (Number.isFinite(id) && id > 0) templateDispatchDrafts.delete(id);
+    setSelectedPartners([]);
+    setPartnerNoteById({});
+    setDraftMode("FINAL");
+    setExtraDocs([]);
+    setExtraItemsDocumentId(null);
+    setExtraItemsEditorSeed([]);
+    setResetDraftOpen(false);
+  }, [templateId]);
 
   const openResultDetails = useCallback(() => {
     const id = resultPopup.linkHeaderId;
@@ -451,6 +697,145 @@ export default function TemplateDispatchScreen() {
 
   const [itemMetaById, setItemMetaById] = useState<Map<number, ItemDescriptorResponseDTO>>(new Map());
 
+  const documentDescriptorById = useMemo(() => {
+    const map = new Map<number, DocumentDescriptorResponseDTO>();
+    for (const doc of (documentDescriptorsQ.data ?? []) as DocumentDescriptorResponseDTO[]) {
+      const id = normDocumentId(doc);
+      if (id) map.set(id, doc);
+    }
+    return map;
+  }, [documentDescriptorsQ.data]);
+
+  const templateDocumentIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const doc of templateDocs ?? []) {
+      const id = normDocumentId(doc);
+      if (id) ids.add(id);
+    }
+    return ids;
+  }, [templateDocs]);
+
+  const templateDocumentDescriptors = useMemo(() => {
+    const docs: DocumentDescriptorResponseDTO[] = [];
+
+    for (const id of templateDocumentIds) {
+      const descriptor = documentDescriptorById.get(id);
+      docs.push(descriptor ?? ({
+        documentId: id,
+        warehouseId: 0,
+        storageGroupId: 0,
+        storageGroupName: "",
+        documentCode: "",
+        displayName: "",
+        inOutFlag: 0,
+        changesStock: 0,
+      } as DocumentDescriptorResponseDTO));
+    }
+
+    return docs.sort(compareDocumentDescriptors);
+  }, [documentDescriptorById, templateDocumentIds]);
+
+  const primaryWarehouseId = useMemo(() => {
+    for (const doc of templateDocs ?? []) {
+      const documentId = normDocumentId(doc);
+      const warehouseId = Number((documentDescriptorById.get(documentId) as any)?.warehouseId ?? 0);
+      if (warehouseId > 0) return warehouseId;
+    }
+    return null;
+  }, [documentDescriptorById, templateDocs]);
+
+  const documentGroups = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; docs: DocumentDescriptorResponseDTO[] }>();
+    for (const doc of templateDocumentDescriptors) {
+      const raw = Number((doc as any)?.storageGroupId);
+      const id = Number.isFinite(raw) && raw > 0 ? String(raw) : `doc-${doc.documentId}`;
+      const current = map.get(id) ?? {
+        id,
+        name: documentGroupTitle(doc, normDocumentId(doc)),
+        docs: [],
+      };
+      current.docs.push(doc);
+      map.set(id, current);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const ad = a.docs[0] ?? null;
+      const bd = b.docs[0] ?? null;
+      return compareDocumentDescriptors(ad, bd);
+    });
+  }, [templateDocumentDescriptors]);
+
+  useEffect(() => {
+    if (extraItemsDocumentId && templateDocumentIds.has(extraItemsDocumentId)) return;
+    const defaults = ((session as any)?.defaultWarehouseByStorageGroup ?? {}) as Record<string, number>;
+    for (const group of documentGroups) {
+      const preferredDoc = preferredDocumentForGroup(group, defaults);
+      if (preferredDoc) {
+        setExtraItemsDocumentId(normDocumentId(preferredDoc));
+        return;
+      }
+    }
+
+    const firstDoc = templateDocs?.[0] as any;
+    const firstDocId = normDocumentId(firstDoc);
+    if (firstDocId) setExtraItemsDocumentId(firstDocId);
+  }, [extraItemsDocumentId, templateDocs, documentGroups, session, templateDocumentIds]);
+
+  const extraItemsDescriptor = useMemo(
+    () => extraItemsDocumentId ? documentDescriptorById.get(extraItemsDocumentId) ?? null : null,
+    [documentDescriptorById, extraItemsDocumentId]
+  );
+
+  const extraItemsEditorDescriptor = useMemo(() => {
+    const documentId = Number(extraItemsEditorDocumentId ?? extraItemsDocumentId ?? 0);
+    return documentId ? documentDescriptorById.get(documentId) ?? null : null;
+  }, [documentDescriptorById, extraItemsDocumentId, extraItemsEditorDocumentId]);
+
+  const selectedExtraItems = useMemo(
+    () => itemsForDocument(extraDocs, extraItemsDocumentId),
+    [extraDocs, extraItemsDocumentId]
+  );
+
+  const sortedExtraDocs = useMemo(
+    () => sortExtraDocs(extraDocs, documentDescriptorById),
+    [extraDocs, documentDescriptorById]
+  );
+
+  const extraDocsPayload = useMemo(
+    () => toExtraDocsPayload(sortedExtraDocs, draftMode === "DRAFT"),
+    [draftMode, sortedExtraDocs]
+  );
+
+  const extraWarehouseId = useMemo(() => {
+    for (const doc of extraDocsPayload ?? []) {
+      const warehouseId = Number((documentDescriptorById.get(Number(doc.documentId)) as any)?.warehouseId ?? 0);
+      if (warehouseId > 0) return warehouseId;
+    }
+    return null;
+  }, [documentDescriptorById, extraDocsPayload]);
+
+  const bookingWarehouseId = primaryWarehouseId ?? extraWarehouseId;
+
+  const extraItemsTotalCount = useMemo(
+    () => extraDocsPayload.reduce((sum, doc) => sum + Number(doc.items?.length ?? 0), 0),
+    [extraDocsPayload]
+  );
+
+  const selectedExtraItemsGroupId = useMemo(() => {
+    const raw = Number((extraItemsDescriptor as any)?.storageGroupId);
+    if (Number.isFinite(raw) && raw > 0) return String(raw);
+    return extraItemsDescriptor?.documentId ? `doc-${extraItemsDescriptor.documentId}` : null;
+  }, [extraItemsDescriptor]);
+
+  const selectedExtraItemsGroup = useMemo(
+    () => documentGroups.find((group) => group.id === selectedExtraItemsGroupId) ?? documentGroups[0] ?? null,
+    [documentGroups, selectedExtraItemsGroupId]
+  );
+
+  const extraDocumentPickerDocs = useMemo(
+    () => selectedExtraItemsGroup?.docs ?? templateDocumentDescriptors,
+    [selectedExtraItemsGroup, templateDocumentDescriptors]
+  );
+
   useEffect(() => {
     const fromTemplate = collectItemMetaFromTemplate(templateDocs);
     if (fromTemplate.length) {
@@ -458,8 +843,12 @@ export default function TemplateDispatchScreen() {
     }
   }, [templateDocs]);
 
-  const openExtraItemsEditor = useCallback(() => {
-    const seed: TemplateItemResponseDTO[] = (extraItems ?? []).map((x, index) => {
+  const openExtraItemsEditor = useCallback((documentId?: number | null) => {
+    const targetDocumentId = Number(documentId ?? extraItemsDocumentId ?? 0);
+    if (!targetDocumentId) return;
+
+    const targetItems = itemsForDocument(extraDocs, targetDocumentId);
+    const seed: TemplateItemResponseDTO[] = (targetItems ?? []).map((x, index) => {
       const itemId = Number((x as any)?.itemId);
       const meta = itemMetaById.get(itemId);
 
@@ -467,20 +856,37 @@ export default function TemplateDispatchScreen() {
         itemId,
         quantity: Number((x as any)?.quantity ?? 0),
         sortOrder: index + 1,
-        itemName: (meta as any)?.name,
-        itemCode: (meta as any)?.code,
-        unit: (meta as any)?.unit,
-        barcode: (meta as any)?.barcode,
+        itemName: String((x as any)?.itemName ?? (x as any)?.name ?? (meta as any)?.name ?? "").trim(),
+        itemCode: String((x as any)?.itemCode ?? (x as any)?.code ?? (meta as any)?.code ?? "").trim(),
+        unit: String((x as any)?.unit ?? (meta as any)?.unit ?? "").trim(),
+        barcode: String((x as any)?.barcode ?? (meta as any)?.barcode ?? "").trim(),
       } as any;
     });
 
+    setExtraItemsDocumentId(targetDocumentId);
+    setExtraItemsEditorDocumentId(targetDocumentId);
     setExtraItemsEditorSeed(seed);
     setIsExtraItemsEditorOpen(true);
-  }, [extraItems, itemMetaById]);
+  }, [extraDocs, extraItemsDocumentId, itemMetaById]);
 
   const fetchExtraItemsPage = useCallback(
     async ({ page, size, q }: { page: number; size: number; q?: string }) => {
-      const res = await fetchItemsPageBase({ page, size, q });
+      const targetWarehouseId = Number((extraItemsEditorDescriptor as any)?.warehouseId ?? 0);
+      if (!targetWarehouseId) {
+        return {
+          items: [] as ItemDescriptorResponseDTO[],
+          page,
+          size,
+          total: 0,
+        };
+      }
+
+      const res = await itemDirectoryService.pageItems({
+        warehouseId: targetWarehouseId,
+        page,
+        size,
+        q,
+      });
 
       const items = (res.items ?? []) as ItemDescriptorResponseDTO[];
       if (items.length) {
@@ -494,25 +900,42 @@ export default function TemplateDispatchScreen() {
         total: Number(res.total ?? 0),
       };
     },
-    [fetchItemsPageBase]
+    [extraItemsEditorDescriptor]
   );
 
   const saveExtraItemsFromEditor = useCallback(
     async (items: TemplateItemUpsertRequestDTO[]) => {
-      setExtraItems(
-        (items ?? []).map((x) => ({
+      const documentId = Number(extraItemsEditorDocumentId ?? extraItemsDocumentId ?? 0);
+      if (!documentId) return;
+
+      const nextItems = (items ?? []).map((x) => ({
           itemId: Number((x as any)?.itemId),
           quantity: Number((x as any)?.quantity ?? 0),
-        })) as any
-      );
+          itemName: String((x as any)?.itemName ?? (x as any)?.name ?? "").trim(),
+          name: String((x as any)?.name ?? (x as any)?.itemName ?? "").trim(),
+          itemCode: String((x as any)?.itemCode ?? (x as any)?.code ?? "").trim(),
+          code: String((x as any)?.code ?? (x as any)?.itemCode ?? "").trim(),
+          unit: String((x as any)?.unit ?? "").trim(),
+          barcode: String((x as any)?.barcode ?? "").trim(),
+      })) as any;
+
+      setExtraDocs((prev) => upsertExtraDocItems(prev, documentId, nextItems));
 
       setIsExtraItemsEditorOpen(false);
+      setExtraItemsEditorDocumentId(null);
     },
-    []
+    [extraItemsDocumentId, extraItemsEditorDocumentId]
   );
 
   const templateRowsByDocument = useMemo(() => {
     return (templateDocs ?? [])
+      .slice()
+      .sort((a, b) =>
+        compareDocumentDescriptors(
+          documentDescriptorById.get(normDocumentId(a)),
+          documentDescriptorById.get(normDocumentId(b))
+        )
+      )
       .map((doc) => {
         const documentId = Number((doc as any)?.documentId);
 
@@ -523,7 +946,7 @@ export default function TemplateDispatchScreen() {
         return { documentId, rows, count: rows.length };
       })
       .filter((x) => x.documentId);
-  }, [templateDocs]);
+  }, [documentDescriptorById, templateDocs]);
 
   const [isValidateModalOpen, setIsValidateModalOpen] = useState(false);
   const [isValidateSummaryOpen, setIsValidateSummaryOpen] = useState(false);
@@ -544,12 +967,12 @@ export default function TemplateDispatchScreen() {
   const openValidateModal = async () => {
     setScreenError(null);
 
-    if (!warehouseId) {
+    if (!bookingWarehouseId) {
       setResultPopup({
         visible: true,
         kind: "error",
-        title: "Nedostaje skladište",
-        message: "Nema skladišta.",
+        title: "Nedostaje grupa dokumenta",
+        message: "Predložak nema povezanu grupu otpremnice za validaciju.",
         linkHeaderId: null,
       });
       return;
@@ -566,24 +989,24 @@ export default function TemplateDispatchScreen() {
       return;
     }
 
-    if (!templateDocs || templateDocs.length === 0) {
+    if ((!templateDocs || templateDocs.length === 0) && extraDocsPayload.length === 0) {
       setResultPopup({
         visible: true,
         kind: "error",
         title: "Predložak je prazan",
-        message: "Predložak nema dokumenata.",
+        message: "Predložak nema dokumenata ni dodatnih stavki.",
         linkHeaderId: null,
       });
       return;
     }
 
     const bulk = buildBulkValidatePayload({
-      warehouseId,
+      warehouseId: bookingWarehouseId,
       selectedPartners,
       draftMode,
       templateDocs,
       docPatches,
-      extraItems,
+      extraDocs: sortedExtraDocs,
       partnerNoteById,
     });
 
@@ -660,14 +1083,14 @@ export default function TemplateDispatchScreen() {
   };
 
   const submitBooking = async () => {
-    if (!warehouseId || selectedPartners.length === 0) return;
+    if (selectedPartners.length === 0) return;
 
-    if (!templateDocs || templateDocs.length === 0) {
+    if ((!templateDocs || templateDocs.length === 0) && extraDocsPayload.length === 0) {
       setResultPopup({
         visible: true,
         kind: "error",
         title: "Predložak je prazan",
-        message: "Predložak nema dokumenata.",
+        message: "Predložak nema dokumenata ni dodatnih stavki.",
         linkHeaderId: null,
       });
       return;
@@ -683,13 +1106,13 @@ export default function TemplateDispatchScreen() {
       try {
         const response = await bookOneMutation.mutateAsync({
           templateId,
-          warehouseId,
+          warehouseId: bookingWarehouseId ?? undefined,
           partnerId: (partner as any).id,
           documentDate: documentDate as any,
           draftMode: draftMode as any,
           docPatches: docPatches as any,
-          extraItems: extraItems as any,
-          extraDocuments: [] as any,
+          extraItems: [] as any,
+          extraDocs: extraDocsPayload as any,
           note: note as any,
         } as any);
 
@@ -698,6 +1121,8 @@ export default function TemplateDispatchScreen() {
         const failed = Number((response as any)?.failed ?? (succeeded > 0 ? 0 : 1));
 
         const createdHeaderId = extractFirstCreatedHeaderId(response);
+
+        if (succeeded > 0 && failed === 0) clearLocalDraft();
 
         setResultPopup({
           visible: true,
@@ -735,13 +1160,13 @@ export default function TemplateDispatchScreen() {
       try {
         const response = await bookOneMutation.mutateAsync({
           templateId,
-          warehouseId,
+          warehouseId: bookingWarehouseId ?? undefined,
           partnerId: (partner as any).id,
           documentDate: documentDate as any,
           draftMode: draftMode as any,
           docPatches: docPatches as any,
-          extraItems: extraItems as any,
-          extraDocuments: [] as any,
+          extraItems: [] as any,
+          extraDocs: extraDocsPayload as any,
           note: note as any,
         } as any);
 
@@ -764,6 +1189,8 @@ export default function TemplateDispatchScreen() {
       message: `Uspjeh: ${successCount}/${total} • Neuspjeh: ${failCount}`,
       linkHeaderId: null,
     });
+
+    if (successCount > 0 && failCount === 0) clearLocalDraft();
   };
 
   const confirmValidateAndSubmit = async () => {
@@ -781,39 +1208,25 @@ export default function TemplateDispatchScreen() {
     setIsValidateModalOpen(true);
   }, []);
 
-  if (ready && !warehouseId) {
-    return (
-      <Screen>
-        <NavigationHeader
-          title="Otpremi"
-          subtitle={templateId ? `Predložak #${templateId}` : "Predložak"}
-          fallbackHref="/(tabs)/templates"
-        />
-
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={s.container}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          <ErrorCard
-            title="Nedostaje glavno skladište"
-            message="U Postavkama prvo odaberi glavno skladište da bi mogao koristiti otpremu iz predloška."
-            actionText="Zatvori"
-            onAction={() => { }}
-            titleLines={2}
-            messageLines={3}
-          />
-        </ScrollView>
-      </Screen>
-    );
-  }
-
   return (
     <Screen>
       <NavigationHeader
         title="Otpremi"
         subtitle={templateId ? `Predložak #${templateId}` : "Predložak"}
-        fallbackHref="/(tabs)/templates"
+        fallbackHref={{
+          pathname: "/(tabs)/templates/template/[id]",
+          params: { id: String(templateId) },
+        } as any}
+        right={
+          <Pressable
+            style={s.iconBtn}
+            onPress={() => setResetDraftOpen(true)}
+            hitSlop={10}
+            accessibilityLabel="Resetiraj lokalni nacrt"
+          >
+            <FontAwesome name="refresh" size={18} color={Colors.dangerText} />
+          </Pressable>
+        }
       />
 
       <ScrollView
@@ -864,14 +1277,31 @@ export default function TemplateDispatchScreen() {
           <Text style={s.helper}>Nema dokumenata / stavki u predlošku.</Text>
         ) : (
           <View style={{ gap: 10 }}>
-            {templateRowsByDocument.map((group) => (
-              <View key={String(group.documentId)} style={s.cardCol}>
-                <View style={s.cardHeaderInline}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.title}>Dokument #{group.documentId}</Text>
-                    <Text style={s.sub}>Default stavki: {group.count}</Text>
+            {templateRowsByDocument.map((group) => {
+              const descriptor = documentDescriptorById.get(group.documentId) ?? null;
+              const tone = documentTone(descriptor);
+
+              return (
+              <View
+                key={String(group.documentId)}
+                style={[
+                  s.cardCol,
+                  tone === "social" && s.cardColSocial,
+                  tone === "donation" && s.cardColDonation,
+                ]}
+              >
+                  <View style={s.cardHeaderInline}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.title}>
+                        {documentGroupTitle(descriptor, group.documentId)}
+                      </Text>
+                      <Text style={s.sub} numberOfLines={2}>
+                        {documentGroupSubtitle(descriptor)}
+                      </Text>
+                      <Text style={s.sub}>Default stavki: {group.count}</Text>
+                    </View>
+
                   </View>
-                </View>
 
                 {group.count === 0 ? (
                   <Text style={s.muted}>Nema stavki.</Text>
@@ -883,7 +1313,14 @@ export default function TemplateDispatchScreen() {
                       const display = formatItemDisplay(itemId, itemMetaById, row);
 
                       return (
-                        <View key={String(itemId)} style={s.simpleRow}>
+                        <View
+                          key={String(itemId)}
+                          style={[
+                            s.simpleRow,
+                            tone === "social" && s.simpleRowSocial,
+                            tone === "donation" && s.simpleRowDonation,
+                          ]}
+                        >
                           <View style={{ flex: 1 }}>
                             <Text style={s.itemNameStrong} numberOfLines={2}>
                               {display.name}
@@ -902,69 +1339,179 @@ export default function TemplateDispatchScreen() {
                   </View>
                 )}
               </View>
-            ))}
+            );
+            })}
           </View>
         )}
 
-        <View style={s.sectionHeader}>
-          <Text style={s.label}>Dodane stavke van dokumenta</Text>
-
-          <Pressable
-            style={[s.secondaryBtn, (bookingBusy || !warehouseId) && s.disabled]}
-            disabled={bookingBusy || !warehouseId}
-            onPress={openExtraItemsEditor}
-          >
-            <Text style={s.secondaryText}>
-              {extraItems.length ? `Uredi (${extraItems.length})` : "+ Dodaj"}
-            </Text>
-          </Pressable>
-        </View>
+        <Text style={s.label}>Dodane stavke van dokumenta</Text>
 
         <View style={s.cardCol}>
           <Text style={s.title}>Dodano van dokumenta</Text>
-          <Text style={s.sub}>Stavki: {extraItems.length}</Text>
+          <Text style={s.sub}>Ukupno stavki: {extraItemsTotalCount}</Text>
 
-          {extraItems.length === 0 ? (
+          {documentGroups.length > 1 ? (
+            <View style={s.tabs}>
+              {documentGroups.map((group) => {
+                const active = selectedExtraItemsGroupId === group.id;
+                const tone = documentToneFromText(group.name);
+                return (
+                  <Pressable
+                    key={group.id}
+                    style={[
+                      s.tabBtn,
+                      tone === "social" && s.tabBtnSocial,
+                      tone === "donation" && s.tabBtnDonation,
+                      active && s.tabBtnActive,
+                      active && tone === "social" && s.tabBtnActiveSocial,
+                      active && tone === "donation" && s.tabBtnActiveDonation,
+                    ]}
+                    onPress={() => {
+                      const defaults = ((session as any)?.defaultWarehouseByStorageGroup ?? {}) as Record<string, number>;
+                      const preferredDoc = preferredDocumentForGroup(group, defaults);
+                      const docId = normDocumentId(preferredDoc);
+                      if (!docId || docId === extraItemsDocumentId) return;
+                      setExtraItemsEditorSeed([]);
+                      setExtraItemsDocumentId(docId);
+                    }}
+                  >
+                    <Text style={[s.tabText, active && s.tabTextActive]} numberOfLines={2}>
+                      {group.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+          <View
+            style={[
+              s.docContext,
+              documentTone(extraItemsDescriptor) === "social" && s.docContextSocial,
+              documentTone(extraItemsDescriptor) === "donation" && s.docContextDonation,
+              bookingBusy && s.disabled,
+            ]}
+          >
+            <Pressable
+              style={s.docContextPicker}
+              onPress={() => setExtraDocPickerOpen(true)}
+              disabled={bookingBusy}
+            >
+              <View
+                style={[
+                  s.docIcon,
+                  documentTone(extraItemsDescriptor) === "social" && s.docIconSocial,
+                  documentTone(extraItemsDescriptor) === "donation" && s.docIconDonation,
+                ]}
+              >
+                <FontAwesome name="file-text-o" size={18} color={Colors.text} />
+              </View>
+              <View style={s.docTextBlock}>
+                <Text style={s.docLabel} numberOfLines={2}>
+                  {documentGroupTitle(extraItemsDescriptor, extraItemsDocumentId)}
+                </Text>
+                <Text style={s.docSub} numberOfLines={2}>
+                  {documentGroupSubtitle(extraItemsDescriptor)}
+                </Text>
+              </View>
+              <FontAwesome name="chevron-right" size={18} color={Colors.sub} />
+            </Pressable>
+
+            <Pressable
+              style={[s.docAddBtn, (bookingBusy || !extraItemsDocumentId) && s.disabled]}
+              disabled={bookingBusy || !extraItemsDocumentId}
+              onPress={() => openExtraItemsEditor()}
+            >
+              <FontAwesome name={selectedExtraItems.length ? "pencil" : "plus"} size={13} color={Colors.text} />
+              <Text style={s.docAddText}>
+                {selectedExtraItems.length ? `Uredi (${selectedExtraItems.length})` : "Dodaj"}
+              </Text>
+            </Pressable>
+          </View>
+
+          {sortedExtraDocs.length === 0 ? (
             <Text style={s.muted}>Nema dodanih stavki.</Text>
           ) : (
             <View style={s.rowsWrap}>
-              {extraItems
-                .slice()
-                .sort((a, b) => Number((a as any)?.itemId) - Number((b as any)?.itemId))
-                .map((row) => {
-                  const itemId = Number((row as any)?.itemId);
-                  const quantity = Number((row as any)?.quantity ?? 0);
-                  const display = formatItemDisplay(itemId, itemMetaById);
-
-                  return (
-                    <View key={String(itemId)} style={s.simpleRow}>
+              {sortedExtraDocs.map((doc) => {
+                const descriptor = documentDescriptorById.get(Number(doc.documentId)) ?? null;
+                return (
+                  <View
+                    key={String(doc.documentId)}
+                    style={[
+                      s.patchWrap,
+                      documentTone(descriptor) === "social" && s.patchWrapSocial,
+                      documentTone(descriptor) === "donation" && s.patchWrapDonation,
+                    ]}
+                  >
+                    <View style={s.cardHeaderInline}>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.itemNameStrong} numberOfLines={2}>
-                          {display.name}
+                        <Text style={s.blockTitle} numberOfLines={2}>
+                          {documentGroupTitle(descriptor, doc.documentId)}
                         </Text>
-                        {!!display.meta && (
-                          <Text style={s.itemMeta} numberOfLines={1}>
-                            {display.meta}
-                          </Text>
-                        )}
+                        <Text style={s.muted} numberOfLines={2}>
+                          {documentGroupSubtitle(descriptor)}
+                        </Text>
                       </View>
 
-                      <Text style={s.simpleRight}>x{quantity}</Text>
+                      <Pressable
+                        style={s.secondaryBtn}
+                        disabled={bookingBusy}
+                        onPress={() => openExtraItemsEditor(Number(doc.documentId))}
+                      >
+                        <Text style={s.secondaryText}>Uredi</Text>
+                      </Pressable>
                     </View>
-                  );
-                })}
+
+                    {(doc.items ?? [])
+                      .slice()
+                      .sort((a, b) => Number((a as any)?.itemId) - Number((b as any)?.itemId))
+                      .map((row) => {
+                        const itemId = Number((row as any)?.itemId);
+                        const quantity = Number((row as any)?.quantity ?? 0);
+                        const display = formatItemDisplay(itemId, itemMetaById, row as any);
+                        const tone = documentTone(descriptor);
+
+                        return (
+                          <View
+                            key={`${doc.documentId}-${itemId}`}
+                            style={[
+                              s.simpleRow,
+                              tone === "social" && s.simpleRowSocial,
+                              tone === "donation" && s.simpleRowDonation,
+                            ]}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={s.itemNameStrong} numberOfLines={2}>
+                                {display.name}
+                              </Text>
+                              {!!display.meta && (
+                                <Text style={s.itemMeta} numberOfLines={1}>
+                                  {display.meta}
+                                </Text>
+                              )}
+                            </View>
+
+                            <Text style={s.simpleRight}>x{quantity}</Text>
+                          </View>
+                        );
+                      })}
+                  </View>
+                );
+              })}
             </View>
           )}
 
-          <Text style={[s.helper, { marginTop: 8 }]}>Ove stavke nisu vezane uz određeni dokument.</Text>
+          <Text style={[s.helper, { marginTop: 8 }]}>
+            Dodatne stavke se knjiže kroz odabrani dokument i njegovo skladište.
+          </Text>
         </View>
 
         <Pressable
           style={[
             s.primary,
-            (selectedPartners.length === 0 || !warehouseId || bookingBusy || validateLoading) && s.disabled,
+            (selectedPartners.length === 0 || bookingBusy || validateLoading) && s.disabled,
           ]}
-          disabled={selectedPartners.length === 0 || !warehouseId || bookingBusy || validateLoading}
+          disabled={selectedPartners.length === 0 || bookingBusy || validateLoading}
           onPress={openValidateModal}
         >
           <Text style={s.primaryText}>{bookingBusy || validateLoading ? "Radim…" : "Validiraj i kreiraj"}</Text>
@@ -998,7 +1545,7 @@ export default function TemplateDispatchScreen() {
                   <View style={s.partnerActionsRow}>
                     <Pressable style={s.noteBtn} onPress={() => openPartnerNote(item)}>
                       <FontAwesome name="sticky-note" size={14} color={Colors.text} />
-                      <Text style={s.noteBtnText}>{hasNote ? "Uredi note" : "Dodaj note"}</Text>
+                      <Text style={s.noteBtnText}>{hasNote ? "Uredi bilješku" : "Dodaj bilješku"}</Text>
                     </Pressable>
 
                     {hasNote && (
@@ -1073,7 +1620,7 @@ export default function TemplateDispatchScreen() {
 
         <CenterSheet
           visible={isNoteSheetOpen}
-          title="Note za partnera"
+          title="Bilješka za partnera"
           onClose={() => {
             if (bookingBusy) return;
             setIsNoteSheetOpen(false);
@@ -1092,7 +1639,7 @@ export default function TemplateDispatchScreen() {
           <TextInput
             value={noteDraft}
             onChangeText={setNoteDraft}
-            placeholder="Upiši note (npr. 'Dostaviti do 12h', 'Nazvati prije dostave'...)"
+            placeholder="Upiši bilješku (npr. 'Dostaviti do 12h', 'Nazvati prije dostave'...)"
             placeholderTextColor={"rgba(148,163,184,0.85)"}
             style={s.noteInput}
             multiline
@@ -1102,7 +1649,7 @@ export default function TemplateDispatchScreen() {
 
           <View style={{ gap: 12 }}>
             <Pressable style={s.primary} onPress={savePartnerNote} disabled={bookingBusy}>
-              <Text style={s.primaryText}>Spremi note</Text>
+              <Text style={s.primaryText}>Spremi bilješku</Text>
             </Pressable>
 
             <Pressable
@@ -1127,15 +1674,72 @@ export default function TemplateDispatchScreen() {
       <TemplateDocItemsEditorModal
         visible={isExtraItemsEditorOpen}
         title="Dodaj stavke van dokumenta"
-        documentId={null}
+        documentId={extraItemsEditorDocumentId ?? extraItemsDocumentId}
+        documentLabel={documentGroupTitle(extraItemsEditorDescriptor, extraItemsEditorDocumentId ?? extraItemsDocumentId)}
+        documentSubtitle={documentGroupSubtitle(extraItemsEditorDescriptor)}
         initialItems={extraItemsEditorSeed}
         loading={bookingBusy}
         onClose={() => {
           if (bookingBusy) return;
           setIsExtraItemsEditorOpen(false);
+          setExtraItemsEditorDocumentId(null);
         }}
         onSave={saveExtraItemsFromEditor}
         fetchItemsPage={fetchExtraItemsPage}
+      />
+
+      <SearchPickerSheet<DocumentDescriptorResponseDTO>
+        visible={extraDocPickerOpen}
+        title="Odaberi dokument za dodatne stavke"
+        onClose={() => setExtraDocPickerOpen(false)}
+        keyOf={(doc) => String(doc.documentId)}
+        queryKeyBase={["template-dispatch", "extra-doc-picker", templateId, selectedExtraItemsGroupId ?? "none"] as const}
+        queryPage={async ({ page, size, q }) => {
+          const all = filterDocumentDescriptors(extraDocumentPickerDocs, q)
+            .slice()
+            .sort(compareDocumentDescriptors);
+          const start = page * size;
+          return {
+            items: all.slice(start, start + size),
+            page,
+            size,
+            total: all.length,
+          };
+        }}
+        renderRow={(doc, close) => (
+          <Pressable
+            style={[
+              s.pickRow,
+              documentTone(doc) === "social" && s.pickRowSocial,
+              documentTone(doc) === "donation" && s.pickRowDonation,
+            ]}
+            onPress={() => {
+              const docId = normDocumentId(doc);
+              if (!docId) return;
+              if (docId !== extraItemsDocumentId) setExtraItemsEditorSeed([]);
+              setExtraItemsDocumentId(docId);
+              close();
+              requestAnimationFrame(() => openExtraItemsEditor(docId));
+            }}
+          >
+            <View style={s.pickTextBlock}>
+              <Text style={s.pickTitle} numberOfLines={2}>{documentGroupTitle(doc, normDocumentId(doc))}</Text>
+              <Text style={s.pickSub} numberOfLines={2}>{documentGroupSubtitle(doc)}</Text>
+            </View>
+          </Pressable>
+        )}
+      />
+
+      <CenterConfirmSheet
+        visible={resetDraftOpen}
+        title="Resetirati lokalni nacrt?"
+        description="Ovo će obrisati odabrane partnere, bilješke i dodatne stavke unesene na ovom ekranu."
+        confirmText="Resetiraj"
+        cancelText="Odustani"
+        danger
+        loading={false}
+        onClose={() => setResetDraftOpen(false)}
+        onConfirm={clearLocalDraft}
       />
 
       <ValidateImpactModal
@@ -1185,10 +1789,10 @@ export default function TemplateDispatchScreen() {
         message={resultPopup.message}
         subtitle={
           resultPopup.linkHeaderId && resultPopup.kind === "success"
-            ? "Možeš otvoriti dispatch i provjeriti status."
+            ? "Možeš otvoriti otpremnicu i provjeriti status."
             : undefined
         }
-        linkText={resultPopup.linkHeaderId ? `Otvori Dispatch #${resultPopup.linkHeaderId}` : undefined}
+        linkText={resultPopup.linkHeaderId ? `Otvori otpremnicu #${resultPopup.linkHeaderId}` : undefined}
         onLinkPress={resultPopup.linkHeaderId ? openResultDetails : undefined}
         buttonText="U redu"
         onClose={closeResultPopup}

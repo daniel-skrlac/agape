@@ -20,11 +20,14 @@ type Props = {
 
     selectedId: number | null;
     selectedLabel: string;
+    selectedHelperText?: string | null;
 
     onSelect: (id: number) => void;
     itemLabel: (id: number) => string;
+    itemDescription?: (id: number) => string | null | undefined;
 
     inlineLoading?: boolean;
+    dropdownTopContent?: React.ReactNode;
 
     style?: any;
 };
@@ -51,11 +54,14 @@ export default function WarehousePickerCard(props: Props) {
 
         selectedId,
         selectedLabel,
+        selectedHelperText,
 
         onSelect,
         itemLabel,
+        itemDescription,
 
         inlineLoading,
+        dropdownTopContent,
         style,
     } = props;
 
@@ -84,6 +90,12 @@ export default function WarehousePickerCard(props: Props) {
                         {loading ? loadingText : selectedLabel}
                     </Text>
 
+                    {!loading && !!selectedHelperText ? (
+                        <Text style={S.helperText} numberOfLines={4}>
+                            {selectedHelperText}
+                        </Text>
+                    ) : null}
+
                     {!!inlineLoading ? (
                         <View style={S.inlineLoadingRow}>
                             <ActivityIndicator size="small" />
@@ -105,6 +117,8 @@ export default function WarehousePickerCard(props: Props) {
             {/* Dropdown */}
             {open ? (
                 <View style={S.dropdown}>
+                    {dropdownTopContent ? <View style={S.dropdownTopContent}>{dropdownTopContent}</View> : null}
+
                     {loading ? (
                         <View style={S.dropdownRow}>
                             <ActivityIndicator size="small" />
@@ -142,7 +156,16 @@ export default function WarehousePickerCard(props: Props) {
                                             ]}
                                             hitSlop={8}
                                         >
-                                            <Text style={[S.itemText, active && S.itemTextActive]}>{itemLabel(id)}</Text>
+                                            <View style={S.itemTextWrap}>
+                                                <Text style={[S.itemText, active && S.itemTextActive]} numberOfLines={2}>
+                                                    {itemLabel(id)}
+                                                </Text>
+                                                {!!itemDescription?.(id) ? (
+                                                    <Text style={S.itemDescription} numberOfLines={3}>
+                                                        {itemDescription(id)}
+                                                    </Text>
+                                                ) : null}
+                                            </View>
 
                                             {active ? (
                                                 <View style={S.checkPill}>
@@ -238,6 +261,14 @@ const S = StyleSheet.create({
         lineHeight: 18,
     },
 
+    helperText: {
+        marginTop: 4,
+        fontSize: 12,
+        lineHeight: 16,
+        fontWeight: "700",
+        color: "rgba(37,99,235,0.88)",
+    },
+
     right: {
         alignItems: "flex-end",
         justifyContent: "center",
@@ -258,6 +289,12 @@ const S = StyleSheet.create({
     dropdown: {
         paddingTop: 6,
         paddingBottom: 10,
+    },
+
+    dropdownTopContent: {
+        paddingHorizontal: 10,
+        paddingTop: 4,
+        paddingBottom: 8,
     },
 
     dropdownRow: {
@@ -304,8 +341,9 @@ const S = StyleSheet.create({
         paddingVertical: 14,
         minHeight: 50,
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "space-between",
+        gap: 10,
     },
 
     itemIdle: {},
@@ -322,6 +360,19 @@ const S = StyleSheet.create({
         fontSize: 15,
         fontWeight: "800",
         color: Theme.text,
+    },
+
+    itemTextWrap: {
+        flex: 1,
+        paddingRight: 8,
+    },
+
+    itemDescription: {
+        marginTop: 4,
+        fontSize: 12,
+        lineHeight: 16,
+        fontWeight: "700",
+        color: "rgba(15,23,42,0.58)",
     },
 
     itemTextActive: {

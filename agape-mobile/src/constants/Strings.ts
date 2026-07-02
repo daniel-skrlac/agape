@@ -5,7 +5,7 @@ const Strings = {
     title: "Postavke",
     mainWarehouse: {
       title: "Glavno skladište",
-      subtitle: "Odabrano skladište koristi se automatski u aplikaciji.",
+      subtitle: "Odabir određuje katalog artikala i knjiženje za nove evidencije.",
       label: "Odabir skladišta",
       save: "Spremi",
       saved: "Glavno skladište je spremljeno.",
@@ -72,7 +72,6 @@ const Strings = {
       totalItems: "Artikli",
       missing: "Nedostaje",
       needsFill: "Za dopunu",
-      reserved: "Rezervirano",
     },
     sections: {
       missingTitle: "Nedostaje",

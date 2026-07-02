@@ -222,7 +222,7 @@ Responsibilities:
 - show items without stock,
 - refresh stock data.
 
-All data must be scoped to the warehouse selected by the user.
+All data must be scoped to the warehouse/year selected by the user. In the legacy Oracle system, `SKLADISTE_ID` is not only a physical warehouse: it is also used as a working year/article catalog partition. The same paper item code can therefore resolve to a different internal `ARTIKL_ID` in a different warehouse/year.
 
 ### 4.3. Settings
 
@@ -235,6 +235,8 @@ Responsibilities:
 - update default warehouse,
 - show user settings,
 - logout.
+
+The default warehouse/year is used when creating new booking sessions. Changing the setting does not change already-created sessions because each session stores its own `warehouseId`.
 
 ### 4.4. Templates
 
@@ -297,11 +299,7 @@ It can contain:
 - document date,
 - draft/final mode.
 
-If several different paper dispatch forms are scanned for the same partner within the same session, quantities can be added together. The same scan payload must not be saved twice, because that would duplicate an accidentally repeated scan. Example with different forms:
-
-- first scan: Flour = 2,
-- second scan: Flour = 2,
-- partner entry should show Flour = 4.
+There is one active entry per partner within the same session. If a scanned paper dispatch form is saved again for the same partner, the newly confirmed version replaces the previous scanned data for that partner. This avoids accidental duplication when the same paper is scanned twice.
 
 ### 4.7. Paper Dispatch Scanning
 
@@ -378,7 +376,7 @@ Scan saving uses:
 
 `PUT /api/v1/dispatch-booking-sessions/{id}/entries/scan`
 
-The backend validates data again before saving. If an entry already exists for the same partner, scanned quantities are merged only when the scan payload was not already saved for that entry.
+Before saving, the backend checks the user, session, and basic template accessibility. If an entry already exists for the same partner, the confirmed scan replaces the existing scanned data for that partner.
 
 ## 6. Validation
 

@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, LayoutAnimation, Pressable, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { useQuery } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
@@ -10,10 +11,11 @@ import Strings from "@/src/constants/Strings";
 
 import { useCurrentUser } from "../../src/api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "../../src/api/hooks/common/usePullToRefresh";
-import { useWarehouses } from "../../src/api/hooks/dashboard/useWarehouses";
 import { useMainWarehouseSettingsForm } from "../../src/api/hooks/settings/useSettingsForm";
 
 import WarehousePickerCard from "@/components/WarehousePickerCard";
+import { documentDirectoryService } from "@/src/api/services/documentDirectoryService";
+import type { DocumentDescriptorResponseDTO } from "@/src/models/generated";
 
 import { styles as S } from "../../src/styles/SettingsScreen.styles";
 import { toUserMessage } from "../../src/api/apiClient";
@@ -22,127 +24,85 @@ export default function SettingsScreen() {
   const { session, ready } = useCurrentUser();
   const userId = (session?.userId ?? null) as number | null;
 
-  const warehousesQ = useWarehouses() as any;
-  const warehouses: number[] = (warehousesQ?.data ?? []) as number[];
-  const whLoading: boolean = !!warehousesQ?.isLoading;
-  const whError = warehousesQ?.error;
-  const refetchWarehouses = warehousesQ?.refetch;
-
-  const savedDefault = (session?.defaultWarehouseId ?? null) as number | null;
+  const savedByStorageGroup = (session?.defaultWarehouseByStorageGroup ?? {}) as Record<string, number>;
 
   const form = useMainWarehouseSettingsForm({
     userId,
-    savedWarehouseId: savedDefault,
+    savedWarehouseByStorageGroup: savedByStorageGroup,
   });
 
-  const [open, setOpen] = useState(false);
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
 
-  const [retryingWarehouses, setRetryingWarehouses] = useState(false);
+  const [retryingDocuments, setRetryingDocuments] = useState(false);
   const [hideTopError, setHideTopError] = useState(false);
 
-  const savedDefaultRef = useRef<number | null>(savedDefault);
-  useEffect(() => {
-    savedDefaultRef.current = savedDefault;
-  }, [savedDefault]);
+  const allDocumentTypesQ = useQuery({
+    queryKey: ["settings", "dispatch-doc-types", "ALL_GROUPS"],
+    queryFn: ({ signal }) =>
+      documentDirectoryService.listDocTypesByCode(
+        {
+          documentCode: "OTPREMNICA",
+        },
+        signal
+      ),
+    staleTime: 16 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
 
-  const resetToSavedRef = useRef(form.resetToSaved);
-  useEffect(() => {
-    resetToSavedRef.current = form.resetToSaved;
-  }, [form.resetToSaved]);
-
-  const refetchWarehousesRef = useRef(refetchWarehouses);
-  useEffect(() => {
-    refetchWarehousesRef.current = refetchWarehouses;
-  }, [refetchWarehouses]);
-
-  const whLoadingRef = useRef(whLoading);
-  useEffect(() => {
-    whLoadingRef.current = whLoading;
-  }, [whLoading]);
-
-  const whErrorRef = useRef<any>(whError);
-  useEffect(() => {
-    whErrorRef.current = whError;
-  }, [whError]);
-
-  const warehousesCountRef = useRef<number>(warehouses.length);
-  useEffect(() => {
-    warehousesCountRef.current = warehouses.length;
-  }, [warehouses.length]);
-
-  const toggleOpen = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpen((prev) => !prev);
-  }, []);
-
-  const retryWarehouses = useCallback(async () => {
+  const retryDocuments = useCallback(async () => {
     setHideTopError(true);
-    setRetryingWarehouses(true);
-
-    setOpen(false);
+    setRetryingDocuments(true);
+    setOpenGroupId(null);
     form.clearStatus();
 
     try {
-      await Promise.resolve(refetchWarehousesRef.current?.());
+      await Promise.resolve(allDocumentTypesQ.refetch());
     } catch {
     } finally {
-      setRetryingWarehouses(false);
+      setRetryingDocuments(false);
       setHideTopError(false);
     }
-  }, [form]);
+  }, [allDocumentTypesQ, form]);
 
   useFocusEffect(
     useCallback(() => {
-      if (
-        ready &&
-        !whLoadingRef.current &&
-        !whErrorRef.current &&
-        warehousesCountRef.current === 0
-      ) {
-        void Promise.resolve(refetchWarehousesRef.current?.()).catch(() => { });
-      }
-
       return () => {
-        setOpen(false);
         setHideTopError(false);
-        setRetryingWarehouses(false);
-        resetToSavedRef.current(savedDefaultRef.current);
+        setRetryingDocuments(false);
+        form.resetToSaved(savedByStorageGroup);
       };
-    }, [ready])
+    }, [form.resetToSaved, savedByStorageGroup])
   );
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
-      await retryWarehouses();
-      resetToSavedRef.current(savedDefaultRef.current);
+      await retryDocuments();
+      form.resetToSaved(savedByStorageGroup);
     },
   ]);
 
-  const warehousesEmpty = useMemo(
-    () => !whLoading && !whError && warehouses.length === 0,
-    [whLoading, whError, warehouses.length]
+  const documentGroups = useMemo(
+    () => buildDocumentGroups((allDocumentTypesQ.data ?? []) as DocumentDescriptorResponseDTO[]),
+    [allDocumentTypesQ.data]
   );
 
-  const whErrorMessage = useMemo(() => (whError ? toUserMessage(whError) : null), [whError]);
+  const documentErrorMessage = useMemo(
+    () => (allDocumentTypesQ.error ? toUserMessage(allDocumentTypesQ.error) : null),
+    [allDocumentTypesQ.error]
+  );
 
-  const topError = useMemo(() => form.errors.formError || whErrorMessage, [form.errors.formError, whErrorMessage]);
+  const topError = useMemo(() => form.errors.formError || documentErrorMessage, [form.errors.formError, documentErrorMessage]);
   const visibleTopError = useMemo(() => (hideTopError ? null : topError), [hideTopError, topError]);
 
-  const topErrorActionText = useMemo(() => (whErrorMessage ? "Pokušaj ponovno" : "Zatvori"), [whErrorMessage]);
+  const topErrorActionText = useMemo(() => (documentErrorMessage ? "Pokušaj ponovno" : "Zatvori"), [documentErrorMessage]);
 
   const onTopErrorAction = useCallback(() => {
-    if (whErrorMessage) {
-      void retryWarehouses();
+    if (documentErrorMessage) {
+      void retryDocuments();
       return;
     }
     form.clearStatus();
-  }, [whErrorMessage, retryWarehouses, form]);
-
-  const selectedLabel = useMemo(() => {
-    if (warehousesEmpty) return Strings.settings.mainWarehouse.empty;
-    if (form.values.warehouseId == null) return Strings.settings.mainWarehouse.none;
-    return Strings.home.warehouse.item(form.values.warehouseId);
-  }, [warehousesEmpty, form.values.warehouseId]);
+  }, [documentErrorMessage, retryDocuments, form]);
 
   if (!ready) {
     return (
@@ -158,8 +118,10 @@ export default function SettingsScreen() {
     <Screen edges={["bottom", "left", "right"]} style={S.screen}>
       <TabScroll withScreen={false} refreshing={refreshing} onRefresh={onRefresh} contentContainerStyle={S.container}>
         <View style={S.card}>
-          <Text style={S.title}>{Strings.settings.mainWarehouse.title}</Text>
-          <Text style={S.sub}>{Strings.settings.mainWarehouse.subtitle}</Text>
+          <Text style={S.title}>Postavke otpremnica</Text>
+          <Text style={S.sub}>
+            Odaberi zadano skladište za svaku grupu otpremnice. Ti odabiri se koriste kao početna vrijednost u predlošcima, evidencijama, skeniranju i dodatnim stavkama.
+          </Text>
 
           {!!form.successMessage ? (
             <View style={S.okPill}>
@@ -174,36 +136,72 @@ export default function SettingsScreen() {
                 message={visibleTopError}
                 actionText={topErrorActionText}
                 onAction={onTopErrorAction}
-                disabled={retryingWarehouses || refreshing}
+                disabled={retryingDocuments || refreshing}
                 titleLines={1}
                 messageLines={2}
               />
             </View>
           ) : null}
 
-          <WarehousePickerCard
-            style={{ marginTop: 10 }}
-            labelText={Strings.settings.mainWarehouse.label}
-            changeHintText={Strings.home.warehouse.changeHint}
-            loadingText={Strings.settings.mainWarehouse.loading}
-            emptyText={Strings.settings.mainWarehouse.empty}
-            open={open}
-            onToggle={toggleOpen}
-            warehouses={warehouses}
-            loading={whLoading || retryingWarehouses}
-            error={null}
-            onRetry={() => {
-              void retryWarehouses();
-            }}
-            selectedId={form.values.warehouseId}
-            selectedLabel={whLoading ? Strings.settings.mainWarehouse.loading : selectedLabel}
-            onSelect={(id) => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              form.setWarehouseId(id);
-              setOpen(false);
-            }}
-            itemLabel={(id) => Strings.home.warehouse.item(id)}
-          />
+          {documentGroups.length > 0 ? (
+            <View style={S.groupDefaultsBlock}>
+              <Text style={S.groupDefaultsTitle}>Zadana skladišta</Text>
+              <Text style={S.groupDefaultsText}>
+                Svaka grupa otpremnice ima vlastito skladište i vlastite artikle.
+              </Text>
+
+              {documentGroups.map((group) => {
+                const key = String(group.storageGroupId);
+                const selected = form.values.warehouseByStorageGroup[key] ?? null;
+                const selectedDoc = selected
+                  ? group.documents.find((doc) => Number(doc.warehouseId) === selected) ?? null
+                  : null;
+                const openGroup = openGroupId === key;
+
+                return (
+                  <WarehousePickerCard
+                    key={key}
+                    style={{ marginTop: 10 }}
+                    labelText={group.name}
+                    changeHintText={Strings.home.warehouse.changeHint}
+                    loadingText={Strings.settings.mainWarehouse.loading}
+                    emptyText="Nema skladišta za ovu grupu."
+                    open={openGroup}
+                    onToggle={() => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setOpenGroupId((prev) => (prev === key ? null : key));
+                    }}
+                    warehouses={group.warehouseIds}
+                    loading={!!allDocumentTypesQ.isLoading || retryingDocuments}
+                    error={allDocumentTypesQ.error}
+                    onRetry={() => {
+                      void retryDocuments();
+                    }}
+                    selectedId={selected}
+                    selectedLabel={selected ? Strings.home.warehouse.item(selected) : "Nije odabrano"}
+                    selectedHelperText={
+                      selectedDoc
+                        ? `${formatDocumentTitle(selectedDoc)}\n${formatDocumentDetails(selectedDoc)}`
+                        : "Odaberi zadano skladište za ovu grupu."
+                    }
+                    onSelect={(id) => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      form.setWarehouseForStorageGroup(key, id);
+                      setOpenGroupId(null);
+                    }}
+                    itemLabel={(id) => {
+                      const doc = group.documents.find((d) => Number(d.warehouseId) === id);
+                      return doc ? `${Strings.home.warehouse.item(id)} • ${formatDocumentTitle(doc)}` : Strings.home.warehouse.item(id);
+                    }}
+                    itemDescription={(id) => {
+                      const doc = group.documents.find((d) => Number(d.warehouseId) === id);
+                      return doc ? formatDocumentDetails(doc) : null;
+                    }}
+                  />
+                );
+              })}
+            </View>
+          ) : null}
 
           {!!form.errors.warehouseError ? <Text style={S.fieldErr}>{form.errors.warehouseError}</Text> : null}
 
@@ -226,4 +224,78 @@ export default function SettingsScreen() {
       </TabScroll>
     </Screen>
   );
+}
+
+function formatDocumentTitle(doc: DocumentDescriptorResponseDTO): string {
+  const category = String(doc.storageGroupName ?? "").trim();
+  const display = String(doc.displayName ?? "").trim();
+  if (category && display && category !== display) return `${category} • ${display}`;
+  return category || display || "Otprema";
+}
+
+function formatDocumentDetails(doc: DocumentDescriptorResponseDTO): string {
+  const parts = [
+    `Dokument #${formatOptionalNumber(doc.documentId)}`,
+  ].filter(Boolean);
+
+  return parts.join(" • ");
+}
+
+function formatDocumentGroupName(doc: DocumentDescriptorResponseDTO): string {
+  const category = String(doc.storageGroupName ?? "").trim();
+  if (category) return category;
+  const display = String(doc.displayName ?? "").trim();
+  return display || "Grupa dokumenta";
+}
+
+function buildDocumentGroups(docs: DocumentDescriptorResponseDTO[]) {
+  const byGroup = new Map<string, {
+    storageGroupId: string;
+    name: string;
+    documents: DocumentDescriptorResponseDTO[];
+    warehouseIds: number[];
+  }>();
+
+  for (const doc of docs ?? []) {
+    const rawGroupId = Number(doc.storageGroupId);
+    const storageGroupId = Number.isFinite(rawGroupId) && rawGroupId > 0
+      ? String(rawGroupId)
+      : `doc-${doc.documentId}`;
+    const warehouseId = Number(doc.warehouseId);
+    if (!Number.isFinite(warehouseId) || warehouseId <= 0) continue;
+
+    const current = byGroup.get(storageGroupId) ?? {
+      storageGroupId,
+      name: formatDocumentGroupName(doc),
+      documents: [],
+      warehouseIds: [],
+    };
+
+    current.documents.push(doc);
+    if (!current.warehouseIds.includes(warehouseId)) {
+      current.warehouseIds.push(warehouseId);
+    }
+    byGroup.set(storageGroupId, current);
+  }
+
+  return Array.from(byGroup.values())
+    .map((group) => ({
+      ...group,
+      documents: group.documents.sort((a, b) => Number(a.warehouseId) - Number(b.warehouseId)),
+      warehouseIds: group.warehouseIds.sort((a, b) => a - b),
+    }))
+    .sort((a, b) => groupPriority(a.name) - groupPriority(b.name)
+      || a.name.localeCompare(b.name, "hr", { sensitivity: "base" }));
+}
+
+function formatOptionalNumber(value: unknown): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : "-";
+}
+
+function groupPriority(name: string): number {
+  const normalized = name.toLocaleLowerCase("hr");
+  if (normalized.includes("socijalna")) return 1;
+  if (normalized.includes("donirana")) return 2;
+  return 10;
 }

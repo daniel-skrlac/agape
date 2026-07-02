@@ -289,6 +289,10 @@ export default function TemplatesRoot() {
 
   const isInitialLoading =
     (((showFolders && foldersQ.isLoading) || templatesQ.isLoading) && !refreshing);
+  const showInlineLoading =
+    !isInitialLoading &&
+    !refreshing &&
+    ((showFolders && foldersQ.loading) || templatesQ.loading);
 
   const anyLoadingMore = templatesQ.loadingMore;
   const nextLoadMoreError = templatesQ.loadMoreError || null;
@@ -390,6 +394,13 @@ export default function TemplatesRoot() {
             )}
           </View>
         </View>
+
+        {showInlineLoading ? (
+          <View style={s.inlineLoading}>
+            <ActivityIndicator size="small" />
+            <Text style={s.inlineLoadingText}>Osvježavam predloške…</Text>
+          </View>
+        ) : null}
 
         <FlatList
           style={s.list}

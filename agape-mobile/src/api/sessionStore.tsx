@@ -8,7 +8,7 @@ export type AuthSession = {
     userId: number;
     username: string;
     name: string;
-    defaultWarehouseId?: number | null;
+    defaultWarehouseByStorageGroup: Record<string, number>;
 };
 
 function safeParse<T>(raw: string | null): T | null {
@@ -27,30 +27,53 @@ function emit(session: AuthSession | null) {
     listeners.forEach((fn) => fn(session));
 }
 
+function normalizeWarehouseDefaults(raw: unknown): Record<string, number> {
+    const out: Record<string, number> = {};
+    if (!raw || typeof raw !== "object") return out;
+
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        const storageGroupId = String(key).trim();
+        const warehouseId = Number(value);
+        if (!storageGroupId || !Number.isFinite(warehouseId) || warehouseId <= 0) continue;
+        out[storageGroupId] = warehouseId;
+    }
+
+    return out;
+}
+
+function normalizeSession(raw: AuthSession | null): AuthSession | null {
+    if (!raw) return null;
+    return {
+        ...raw,
+        defaultWarehouseByStorageGroup: normalizeWarehouseDefaults(raw.defaultWarehouseByStorageGroup),
+    };
+}
+
 export function subscribeSession(fn: Listener) {
     listeners.add(fn);
     return () => listeners.delete(fn);
 }
 
 export async function saveSession(session: AuthSession) {
-    const raw = JSON.stringify(session);
+    const normalized = normalizeSession(session) ?? session;
+    const raw = JSON.stringify(normalized);
 
     if (Platform.OS === "web") {
         localStorage.setItem(SESSION_KEY, raw);
-        emit(session);
+        emit(normalized);
         return;
     }
 
     await SecureStore.setItemAsync(SESSION_KEY, raw);
-    emit(session);
+    emit(normalized);
 }
 
 export async function getSession(): Promise<AuthSession | null> {
     if (Platform.OS === "web") {
-        return safeParse<AuthSession>(localStorage.getItem(SESSION_KEY));
+        return normalizeSession(safeParse<AuthSession>(localStorage.getItem(SESSION_KEY)));
     }
     const raw = await SecureStore.getItemAsync(SESSION_KEY);
-    return safeParse<AuthSession>(raw);
+    return normalizeSession(safeParse<AuthSession>(raw));
 }
 
 export async function clearSession() {

@@ -16,6 +16,7 @@ export type ParseDispatchSlipArgs = {
     mimeType?: string | null;
     partnerId?: number | null;
     templateId?: number | null;
+    documentId?: number | null;
     documentDate?: string | null;
     note?: string | null;
 };
@@ -36,6 +37,10 @@ export const dispatchSlipScanService = {
 
         if (args.templateId != null) {
             form.append("templateId", String(args.templateId));
+        }
+
+        if (args.documentId != null) {
+            form.append("documentId", String(args.documentId));
         }
 
         if (args.documentDate && args.documentDate.trim()) {

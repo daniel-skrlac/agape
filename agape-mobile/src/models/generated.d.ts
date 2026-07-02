@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-06-02 19:45:09.
+// Generated using typescript-generator version 3.2.1263 on 2026-07-02 21:00:11.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -130,6 +130,7 @@ export interface DispatchRequestDTO {
 
 export interface DispatchRequestValidationDTO {
     warehouseId: number;
+    documentId: number;
     documentDate: Date;
     items: DispatchItemValidationRequest[];
     draft: boolean;
@@ -182,6 +183,7 @@ export interface DispatchUpdateRequestDTO {
 export interface BookingSessionScanEntryUpsertRequestDTO {
     partnerId: number;
     templateId: number;
+    documentId: number;
     draftMode: DraftMode;
     documentDate: Date;
     note: string;
@@ -235,6 +237,7 @@ export interface BookingSessionScanLineValidationDTO {
 export interface BookingSessionScanValidateRequestDTO {
     partnerId: number;
     templateId: number;
+    documentId: number;
     documentDate: Date;
     note: string;
     lines: BookingSessionScanLineCandidateDTO[];
@@ -245,6 +248,7 @@ export interface BookingSessionScanValidateResponseDTO {
     partnerId: number;
     partnerName: string;
     templateId: number;
+    documentId: number;
     documentDate: Date;
     partnerResolved: boolean;
     requiresManualPartner: boolean;
@@ -316,6 +320,7 @@ export interface DispatchSlipParsedDTO {
     partnerId: number;
     partnerName: string;
     templateId: number;
+    documentId: number;
     warehouseId: number;
     documentDate: Date;
     documentDateConfidence: number;
@@ -353,10 +358,14 @@ export interface DispatchSlipParsedLineDTO {
 
 export interface DocumentDescriptorResponseDTO {
     documentId: number;
+    warehouseId: number;
+    storageGroupId: number;
+    storageGroupName: string;
     documentCode: string;
     displayName: string;
     inOutFlag: number;
     changesStock: number;
+    scanSupported: boolean;
 }
 
 export interface DocumentItemLineDTO {
@@ -422,6 +431,11 @@ export interface StockItemSummaryDTO {
 
 export interface StockStatisticsResponseDTO {
     totals: StockStatisticsTotalsDTO;
+    selectedYear: number;
+    selectedWarehouseId: number;
+    selectedStorageGroupId: number;
+    documentCode: string;
+    availableYears: number[];
     missing: StockItemSummaryDTO[];
     needsFill: StockItemSummaryDTO[];
     mostInStock: StockItemSummaryDTO[];
@@ -477,6 +491,7 @@ export interface BookingSessionEntryResponseDTO {
     draftMode: DraftMode;
     docPatches: any;
     extraItems: any;
+    extraDocs: any;
     note: string;
     documentDate: Date;
 }
@@ -488,6 +503,7 @@ export interface BookingSessionEntryUpsertRequestDTO {
     documentDate: Date;
     docPatches: TemplateBookDocPatchDTO[];
     extraItems: TemplateBookItemDTO[];
+    extraDocs: TemplateBookExtraDocDTO[];
     note: string;
 }
 
@@ -568,6 +584,7 @@ export interface TemplateBookManyRequestDTO {
     draftMode: DraftMode;
     docPatches: TemplateBookDocPatchDTO[];
     extraItems: TemplateBookItemDTO[];
+    extraDocs: TemplateBookExtraDocDTO[];
 }
 
 export interface TemplateBookOneRequestDTO {
@@ -580,6 +597,7 @@ export interface TemplateBookOneRequestDTO {
     draftMode: DraftMode;
     docPatches: TemplateBookDocPatchDTO[];
     extraItems: TemplateBookItemDTO[];
+    extraDocs: TemplateBookExtraDocDTO[];
 }
 
 export interface TemplateCopyRequestDTO {
@@ -677,7 +695,7 @@ export interface AuthResponseDTO {
     userId: number;
     username: string;
     name: string;
-    defaultWarehouseId: number;
+    defaultWarehouseByStorageGroup: { [index: string]: number };
     token: string;
 }
 
@@ -699,15 +717,11 @@ export interface RegisterResponseDTO {
     name: string;
 }
 
-export interface UpdateDefaultWarehouseRequestDTO {
-    warehouseId: number;
-}
-
 export interface UpdateUserRequestDTO {
     username: string;
     name: string;
     password: string;
-    defaultWarehouseId: number;
+    defaultWarehouseByStorageGroup: { [index: string]: number };
 }
 
 export interface UserDirectoryResponseDTO {
@@ -720,7 +734,7 @@ export interface UserResponseDTO {
     id: number;
     username: string;
     name: string;
-    defaultWarehouseId: number;
+    defaultWarehouseByStorageGroup: { [index: string]: number };
 }
 
 export interface BaseSearchFilter {

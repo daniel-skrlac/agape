@@ -221,7 +221,7 @@ Odgovornosti:
 - prikaz artikala bez zalihe,
 - osvježavanje podataka.
 
-Podaci moraju biti vezani uz skladište koje je korisnik odabrao u postavkama ili na samom ekranu.
+Podaci moraju biti vezani uz skladište/godinu koje je korisnik odabrao u postavkama ili na samom ekranu. U legacy Oracle sustavu `SKLADISTE_ID` nije samo fizičko skladište: koristi se i kao radna godina/katalog artikala. Zato isti papirnati kod artikla može biti vezan uz drugi interni `ARTIKL_ID` u drugom skladištu/godini.
 
 ### 4.3. Postavke
 
@@ -234,6 +234,8 @@ Odgovornosti:
 - promjena defaultnog skladišta,
 - prikaz korisničkih postavki,
 - odjava.
+
+Defaultno skladište/godina koristi se pri kreiranju novih evidencija. Promjena postavke ne mijenja već kreirane evidencije, jer svaka evidencija čuva svoj `warehouseId`.
 
 ### 4.4. Predlošci
 
@@ -296,13 +298,7 @@ Može sadržavati:
 - datum,
 - status draft/final.
 
-Ako se za istog partnera skenira više različitih papirnatih otpremnica u istoj evidenciji, količine se mogu zbrajati. Isti scan payload ne smije se spremiti dvaput, jer bi to značilo slučajno dupliranje istog papira. Primjer različitih otpremnica:
-
-- prvi sken: Brašno = 2,
-- drugi sken: Brašno = 2,
-- partner entry treba prikazati Brašno = 4.
-
-Ako je drugi sken isti papir s istim partnerom, datumom i istim stavkama, backend ga tretira kao duplikat i ne povećava količine.
+Za istog partnera u istoj evidenciji postoji jedan aktivni unos. Ako se za istog partnera ponovno spremi skenirana otpremnica, nova potvrđena verzija zamjenjuje prethodne scan podatke za tog partnera. Time se izbjegava slučajno dupliranje kada korisnik isti papir skenira dvaput.
 
 ### 4.7. Skeniranje papirnate otpremnice
 
@@ -379,7 +375,7 @@ Spremanje skena ide na:
 
 `PUT /api/v1/dispatch-booking-sessions/{id}/entries/scan`
 
-Backend prije spremanja ponovno validira podatke. Ako isti partner već ima entry, scan stavke se dodaju samo ako se ne radi o već spremljenom istom scan payloadu.
+Backend prije spremanja provjerava korisnika, session i osnovnu dostupnost predloška. Ako isti partner već ima entry, potvrđeni scan zamjenjuje postojeće scan podatke za tog partnera.
 
 ## 6. Validacija
 

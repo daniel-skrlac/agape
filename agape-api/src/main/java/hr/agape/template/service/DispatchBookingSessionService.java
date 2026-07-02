@@ -5,6 +5,8 @@ import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.common.util.JsonUtil;
+import hr.agape.document.lookup.view.DocumentSlotTypeView;
+import hr.agape.document.repository.DocumentTypeRepository;
 import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.dispatch.scan.dto.BookingSessionScanEntryUpsertRequestDTO;
@@ -23,6 +25,7 @@ import hr.agape.template.dto.BookingSessionEntryUpsertRequestDTO;
 import hr.agape.template.dto.BookingSessionResponseDTO;
 import hr.agape.template.dto.BookingSessionsQueryDTO;
 import hr.agape.template.dto.TemplateBookDocPatchDTO;
+import hr.agape.template.dto.TemplateBookExtraDocDTO;
 import hr.agape.template.dto.TemplateBookItemDTO;
 import hr.agape.template.enumeration.BookingSessionStatus;
 import hr.agape.template.integration.TemplateBookingRequestBuilder;
@@ -33,16 +36,13 @@ import hr.agape.template.repository.DispatchTemplateRepository;
 import hr.agape.user.domain.UserEntity;
 import hr.agape.user.repository.UserRepository;
 import hr.agape.user.util.AuthUtil;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
-import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -73,6 +73,7 @@ public class DispatchBookingSessionService {
 
     private final PartnerService partnerService;
     private final ItemDirectoryService itemDirectoryService;
+    private final DocumentTypeRepository documentTypeRepository;
 
     @Inject
     public DispatchBookingSessionService(
@@ -83,7 +84,8 @@ public class DispatchBookingSessionService {
             DispatchTemplateRepository templateRepo, TemplateBookingRequestBuilder bookingRequestBuilder,
             DispatchBookingService oracleBooking,
             BookingSessionMapper mapper, PartnerService partnerService,
-            ItemDirectoryService itemDirectoryService
+            ItemDirectoryService itemDirectoryService,
+            DocumentTypeRepository documentTypeRepository
     ) {
         this.authUtil = authUtil;
         this.jsonUtil = jsonUtil;
@@ -96,6 +98,7 @@ public class DispatchBookingSessionService {
         this.mapper = mapper;
         this.partnerService = partnerService;
         this.itemDirectoryService = itemDirectoryService;
+        this.documentTypeRepository = documentTypeRepository;
     }
 
     public ServiceResponseDTO<PagedResultDTO<BookingSessionResponseDTO>> listSessions(BookingSessionsQueryDTO q) {
@@ -258,7 +261,7 @@ public class DispatchBookingSessionService {
                 if (t == null) return ServiceResponseDirector.errorBadRequest("Template not accessible.");
             }
 
-            if (req.getTemplateId() == null && isBlankItems(req.getExtraItems())) {
+            if (req.getTemplateId() == null && isBlankItems(req.getExtraItems()) && isBlankExtraDocs(req.getExtraDocs())) {
                 return ServiceResponseDirector.errorBadRequest("Template or standalone items are required.");
             }
 
@@ -276,6 +279,7 @@ public class DispatchBookingSessionService {
 
             e.setDocPatchesJson(jsonUtil.write(req.getDocPatches() == null ? List.of() : req.getDocPatches()));
             e.setExtraItemsJson(jsonUtil.write(req.getExtraItems() == null ? List.of() : req.getExtraItems()));
+            e.setExtraDocsJson(jsonUtil.write(req.getExtraDocs() == null ? List.of() : req.getExtraDocs()));
 
             e.persist();
 
@@ -285,67 +289,69 @@ public class DispatchBookingSessionService {
         }
     }
 
-    @Transactional
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public ServiceResponseDTO<BookingSessionEntryResponseDTO> upsertScanEntry(
             Long sessionId,
             BookingSessionScanEntryUpsertRequestDTO req
     ) {
         try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
-            if (s == null) return ServiceResponseDirector.errorNotFound("Session not found.");
-            if (s.getStatus() != BookingSessionStatus.DRAFT) {
-                return ServiceResponseDirector.errorBadRequest("Session is not editable.");
+            Long entryId = QuarkusTransaction.requiringNew().call(() -> saveScanEntry(sessionId, req));
+            DispatchBookingSessionEntryEntity saved = entryRepo.findById(entryId);
+            if (saved == null) {
+                return ServiceResponseDirector.errorInternal("Scan entry was saved but could not be loaded.");
             }
 
-            BookingSessionEntryUpsertRequestDTO entryReq = BookingSessionScanEntryUtil.toEntryRequest(
-                    req,
-                    resolveScanNote(req.getNote())
-            );
-
-            if (entryReq.getTemplateId() != null) {
-                DispatchTemplateEntity t = templateRepo.findFullAccessible(entryReq.getTemplateId(), userId);
-                if (t == null) return ServiceResponseDirector.errorBadRequest("Template not accessible.");
-            }
-
-            if (entryReq.getTemplateId() == null && isBlankItems(entryReq.getExtraItems())) {
-                return ServiceResponseDirector.errorBadRequest("Sken nije pronašao stavke za spremanje.");
-            }
-
-            String scanFingerprint = buildScanFingerprint(entryReq);
-            DispatchBookingSessionEntryEntity e = entryRepo.findBySessionAndPartner(sessionId, entryReq.getPartnerId());
-            if (e == null) {
-                e = new DispatchBookingSessionEntryEntity();
-                e.setBookingSession(s);
-                e.setPartnerId(entryReq.getPartnerId());
-                e.setTemplateId(entryReq.getTemplateId());
-                e.setDraftMode(entryReq.getDraftMode());
-                e.setNote(entryReq.getNote());
-                e.setDocumentDate(entryReq.getDocumentDate());
-                e.setDocPatchesJson(jsonUtil.write(entryReq.getDocPatches() == null ? List.of() : entryReq.getDocPatches()));
-                e.setExtraItemsJson(jsonUtil.write(entryReq.getExtraItems() == null ? List.of() : entryReq.getExtraItems()));
-                e.setScanFingerprintsJson(jsonUtil.write(scanFingerprint == null ? List.of() : List.of(scanFingerprint)));
-                e.persist();
-
-                return ServiceResponseDirector.successOk(enrichedEntryDto(e), "Entry saved.");
-            }
-
-            if (scanFingerprint != null
-                    && (hasScanFingerprint(e, scanFingerprint) || scanFingerprint.equals(buildExistingScanFingerprint(e)))) {
-                return ServiceResponseDirector.successOk(enrichedEntryDto(e), "Entry saved.");
-            }
-
-            mergeScanIntoExistingEntry(e, entryReq);
-            appendScanFingerprint(e, scanFingerprint);
-            e.persist();
-
-            return ServiceResponseDirector.successOk(enrichedEntryDto(e), "Entry saved.");
+            return ServiceResponseDirector.successOk(enrichedEntryDto(saved), "Entry saved.");
         } catch (IllegalArgumentException e) {
             return ServiceResponseDirector.errorBadRequest(e.getMessage());
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to save scan entry: " + e.getMessage());
         }
+    }
+
+    private Long saveScanEntry(Long sessionId, BookingSessionScanEntryUpsertRequestDTO req) {
+        Long userId = authUtil.requireUserId();
+
+        DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
+        if (s == null) throw new IllegalArgumentException("Session not found.");
+        if (s.getStatus() != BookingSessionStatus.DRAFT) {
+            throw new IllegalArgumentException("Session is not editable.");
+        }
+
+        BookingSessionEntryUpsertRequestDTO entryReq = BookingSessionScanEntryUtil.toEntryRequest(
+                req,
+                resolveScanNote(req.getNote())
+        );
+
+        if (entryReq.getTemplateId() != null) {
+            DispatchTemplateEntity t = templateRepo.findFullAccessible(entryReq.getTemplateId(), userId);
+            if (t == null) throw new IllegalArgumentException("Template not accessible.");
+        }
+
+        if (entryReq.getTemplateId() == null
+                && isBlankItems(entryReq.getExtraItems())
+                && isBlankExtraDocs(entryReq.getExtraDocs())) {
+            throw new IllegalArgumentException("Sken nije pronašao stavke za spremanje.");
+        }
+
+        DispatchBookingSessionEntryEntity e = entryRepo.findBySessionAndPartner(sessionId, entryReq.getPartnerId());
+        if (e == null) {
+            e = new DispatchBookingSessionEntryEntity();
+            e.setBookingSession(s);
+            e.setPartnerId(entryReq.getPartnerId());
+        }
+
+        e.setTemplateId(entryReq.getTemplateId());
+        e.setDraftMode(entryReq.getDraftMode());
+        e.setNote(entryReq.getNote());
+        e.setDocumentDate(entryReq.getDocumentDate());
+        e.setDocPatchesJson(jsonUtil.write(entryReq.getDocPatches() == null ? List.of() : entryReq.getDocPatches()));
+        e.setExtraItemsJson(jsonUtil.write(entryReq.getExtraItems() == null ? List.of() : entryReq.getExtraItems()));
+        e.setExtraDocsJson(jsonUtil.write(entryReq.getExtraDocs() == null ? List.of() : entryReq.getExtraDocs()));
+        e.persist();
+        entryRepo.flush();
+
+        return e.getId();
     }
 
     private String resolveScanNote(String note) {
@@ -358,217 +364,6 @@ public class DispatchBookingSessionService {
 
     private BookingSessionEntryResponseDTO enrichedEntryDto(DispatchBookingSessionEntryEntity entry) {
         return toEntryDtosWithPartnerMeta(List.of(entry)).getFirst();
-    }
-
-    private boolean hasScanFingerprint(DispatchBookingSessionEntryEntity entry, String scanFingerprint) {
-        if (scanFingerprint == null || scanFingerprint.isBlank()) return false;
-
-        List<String> existing = jsonUtil.readList(entry.getScanFingerprintsJson(), new TypeReference<>() {});
-        return existing.stream().anyMatch(scanFingerprint::equals);
-    }
-
-    private void appendScanFingerprint(DispatchBookingSessionEntryEntity entry, String scanFingerprint) {
-        if (scanFingerprint == null || scanFingerprint.isBlank()) return;
-
-        List<String> existing = new ArrayList<>(jsonUtil.readList(entry.getScanFingerprintsJson(), new TypeReference<>() {}));
-        if (!existing.contains(scanFingerprint)) {
-            existing.add(scanFingerprint);
-        }
-        entry.setScanFingerprintsJson(jsonUtil.write(existing));
-    }
-
-    private String buildScanFingerprint(BookingSessionEntryUpsertRequestDTO req) {
-        if (req == null) return null;
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("partner=").append(req.getPartnerId()).append('|');
-        sb.append("template=").append(req.getTemplateId()).append('|');
-        sb.append("date=").append(req.getDocumentDate()).append('|');
-
-        List<String> lines = new ArrayList<>();
-        for (TemplateBookDocPatchDTO patch : req.getDocPatches() == null ? List.<TemplateBookDocPatchDTO>of() : req.getDocPatches()) {
-            if (patch == null || patch.getDocumentId() == null) continue;
-            collectFingerprintItems(lines, "D:" + patch.getDocumentId(), patch.getSetItems());
-            collectFingerprintItems(lines, "D:" + patch.getDocumentId(), patch.getAddItems());
-        }
-        collectFingerprintItems(lines, "E", req.getExtraItems());
-
-        if (lines.isEmpty()) return null;
-
-        lines.sort(Comparator.naturalOrder());
-        for (String line : lines) {
-            sb.append(line).append('|');
-        }
-
-        return sha256Hex(sb.toString());
-    }
-
-    private String buildExistingScanFingerprint(DispatchBookingSessionEntryEntity entry) {
-        if (entry == null) return null;
-
-        BookingSessionEntryUpsertRequestDTO req = new BookingSessionEntryUpsertRequestDTO();
-        req.setPartnerId(entry.getPartnerId());
-        req.setTemplateId(entry.getTemplateId());
-        req.setDocumentDate(entry.getDocumentDate());
-        req.setDocPatches(jsonUtil.readList(entry.getDocPatchesJson(), new TypeReference<>() {}));
-        req.setExtraItems(jsonUtil.readList(entry.getExtraItemsJson(), new TypeReference<>() {}));
-
-        return buildScanFingerprint(req);
-    }
-
-    private void collectFingerprintItems(List<String> out, String scope, List<TemplateBookItemDTO> items) {
-        for (TemplateBookItemDTO item : items == null ? List.<TemplateBookItemDTO>of() : items) {
-            if (item == null
-                    || item.getItemId() == null
-                    || item.getQuantity() == null
-                    || item.getQuantity().signum() <= 0) {
-                continue;
-            }
-            out.add(scope + ':' + item.getItemId() + ':' + normalizeQuantity(item.getQuantity()));
-        }
-    }
-
-    private String normalizeQuantity(BigDecimal quantity) {
-        return quantity.stripTrailingZeros().toPlainString();
-    }
-
-    private String sha256Hex(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (Exception e) {
-            return Integer.toHexString(input.hashCode());
-        }
-    }
-
-    private void mergeScanIntoExistingEntry(
-            DispatchBookingSessionEntryEntity existing,
-            BookingSessionEntryUpsertRequestDTO incoming
-    ) {
-        Long existingTemplateId = existing.getTemplateId();
-        Long incomingTemplateId = incoming.getTemplateId();
-
-        if (existingTemplateId != null
-                && incomingTemplateId != null
-                && !existingTemplateId.equals(incomingTemplateId)) {
-            throw new IllegalArgumentException(
-                    "Partner već ima unos s drugim predloškom. Otvori unos partnera i uredi ga ručno."
-            );
-        }
-
-        existing.setTemplateId(existingTemplateId != null ? existingTemplateId : incomingTemplateId);
-
-        if (incoming.getDraftMode() != null) {
-            existing.setDraftMode(incoming.getDraftMode());
-        }
-
-        if (existing.getDocumentDate() == null && incoming.getDocumentDate() != null) {
-            existing.setDocumentDate(incoming.getDocumentDate());
-        }
-
-        existing.setNote(mergeNotes(existing.getNote(), incoming.getNote()));
-
-        List<TemplateBookDocPatchDTO> mergedPatches = mergeDocPatches(
-                jsonUtil.readList(existing.getDocPatchesJson(), new TypeReference<>() {}),
-                incoming.getDocPatches()
-        );
-        List<TemplateBookItemDTO> mergedExtraItems = mergeExtraItems(
-                jsonUtil.readList(existing.getExtraItemsJson(), new TypeReference<>() {}),
-                incoming.getExtraItems()
-        );
-
-        existing.setDocPatchesJson(jsonUtil.write(mergedPatches));
-        existing.setExtraItemsJson(jsonUtil.write(mergedExtraItems));
-    }
-
-    private String mergeNotes(String existing, String incoming) {
-        String a = existing == null ? "" : existing.trim();
-        String b = incoming == null ? "" : incoming.trim();
-
-        if (b.isBlank()) return a.isBlank() ? null : a;
-        if (a.isBlank()) return b;
-        if (a.equals(b) || a.contains(b)) return a;
-
-        return a + "\n" + b;
-    }
-
-    private List<TemplateBookDocPatchDTO> mergeDocPatches(
-            List<TemplateBookDocPatchDTO> existing,
-            List<TemplateBookDocPatchDTO> incoming
-    ) {
-        Map<Long, Map<Long, TemplateBookItemDTO>> byDocumentAndItem = new LinkedHashMap<>();
-
-        addDocPatches(byDocumentAndItem, existing);
-        addDocPatches(byDocumentAndItem, incoming);
-
-        List<TemplateBookDocPatchDTO> out = new ArrayList<>();
-        for (Map.Entry<Long, Map<Long, TemplateBookItemDTO>> entry : byDocumentAndItem.entrySet()) {
-            TemplateBookDocPatchDTO patch = new TemplateBookDocPatchDTO();
-            patch.setDocumentId(entry.getKey());
-            patch.setAddItems(new ArrayList<>(entry.getValue().values()));
-            out.add(patch);
-        }
-
-        return out;
-    }
-
-    private void addDocPatches(
-            Map<Long, Map<Long, TemplateBookItemDTO>> byDocumentAndItem,
-            List<TemplateBookDocPatchDTO> patches
-    ) {
-        for (TemplateBookDocPatchDTO patch : patches == null ? List.<TemplateBookDocPatchDTO>of() : patches) {
-            if (patch == null || patch.getDocumentId() == null) continue;
-
-            Map<Long, TemplateBookItemDTO> byItem = byDocumentAndItem.computeIfAbsent(
-                    patch.getDocumentId(),
-                    key -> new LinkedHashMap<>()
-            );
-
-            for (TemplateBookItemDTO item : patch.getSetItems() == null ? List.<TemplateBookItemDTO>of() : patch.getSetItems()) {
-                addItemQuantity(byItem, item);
-            }
-
-            for (TemplateBookItemDTO item : patch.getAddItems() == null ? List.<TemplateBookItemDTO>of() : patch.getAddItems()) {
-                addItemQuantity(byItem, item);
-            }
-        }
-    }
-
-    private List<TemplateBookItemDTO> mergeExtraItems(
-            List<TemplateBookItemDTO> existing,
-            List<TemplateBookItemDTO> incoming
-    ) {
-        Map<Long, TemplateBookItemDTO> byItem = new LinkedHashMap<>();
-        for (TemplateBookItemDTO item : existing == null ? List.<TemplateBookItemDTO>of() : existing) {
-            addItemQuantity(byItem, item);
-        }
-        for (TemplateBookItemDTO item : incoming == null ? List.<TemplateBookItemDTO>of() : incoming) {
-            addItemQuantity(byItem, item);
-        }
-        return new ArrayList<>(byItem.values());
-    }
-
-    private void addItemQuantity(Map<Long, TemplateBookItemDTO> byItem, TemplateBookItemDTO source) {
-        if (source == null
-                || source.getItemId() == null
-                || source.getQuantity() == null
-                || source.getQuantity().signum() <= 0) {
-            return;
-        }
-
-        TemplateBookItemDTO item = byItem.computeIfAbsent(source.getItemId(), itemId -> {
-            TemplateBookItemDTO next = new TemplateBookItemDTO();
-            next.setItemId(itemId);
-            next.setQuantity(BigDecimal.ZERO);
-            return next;
-        });
-
-        item.setQuantity(item.getQuantity().add(source.getQuantity()));
     }
 
     @Transactional
@@ -629,12 +424,30 @@ public class DispatchBookingSessionService {
                         e.getExtraItemsJson(),
                         new TypeReference<>() {}
                 );
+                List<TemplateBookExtraDocDTO> extraDocs = jsonUtil.readList(
+                        e.getExtraDocsJson(),
+                        new TypeReference<>() {}
+                );
 
                 if (e.getTemplateId() == null) {
-                    if (isBlankItems(extraItems)) {
+                    if (isBlankItems(extraItems) && isBlankExtraDocs(extraDocs)) {
                         return ServiceResponseDirector.errorBadRequest("Entry has no template and no standalone items: partner " + e.getPartnerId());
                     }
-                    allRequests.add(buildStandaloneRequest(s.getWarehouseId(), e, extraItems));
+                    if (!isBlankExtraDocs(extraDocs)) {
+                        allRequests.addAll(
+                                bookingRequestBuilder.buildExtraDocRequests(
+                                        s.getWarehouseId(),
+                                        e.getPartnerId(),
+                                        e.getDraftMode().asDraftFlag(),
+                                        e.getDocumentDate(),
+                                        e.getNote(),
+                                        extraDocs
+                                )
+                        );
+                    }
+                    if (!isBlankItems(extraItems)) {
+                        allRequests.add(buildStandaloneRequest(s.getWarehouseId(), e, extraItems));
+                    }
                     continue;
                 }
 
@@ -661,6 +474,7 @@ public class DispatchBookingSessionService {
                                 e.getNote(),
                                 patches,
                                 extraItems,
+                                extraDocs,
                                 t
                         )
                 );
@@ -690,13 +504,25 @@ public class DispatchBookingSessionService {
         );
     }
 
+    private boolean isBlankExtraDocs(List<TemplateBookExtraDocDTO> extraDocs) {
+        if (extraDocs == null || extraDocs.isEmpty()) return true;
+        return extraDocs.stream().noneMatch(doc ->
+                doc != null
+                        && doc.getDocumentId() != null
+                        && !isBlankItems(doc.getItems())
+        );
+    }
+
     private DispatchRequestDTO buildStandaloneRequest(
             Long warehouseId,
             DispatchBookingSessionEntryEntity entry,
             List<TemplateBookItemDTO> extraItems
     ) {
+        DocumentSlotTypeView slot = resolveSingleDispatchDocumentSlot(warehouseId);
+
         DispatchRequestDTO request = new DispatchRequestDTO();
-        request.setWarehouseId(warehouseId);
+        request.setWarehouseId(slot.getWarehouseId().longValue());
+        request.setDocumentId(slot.getDocumentId().longValue());
         request.setPartnerId(entry.getPartnerId());
         request.setDraft(entry.getDraftMode().asDraftFlag());
         request.setDocumentDate(entry.getDocumentDate());
@@ -716,6 +542,23 @@ public class DispatchBookingSessionService {
                 .toList();
         request.setItems(items);
         return request;
+    }
+
+    private DocumentSlotTypeView resolveSingleDispatchDocumentSlot(Long warehouseId) {
+        try {
+            return documentTypeRepository
+                    .findDocumentSlotByCodeAndWarehouse(warehouseId, "OTPREMNICA")
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "No OTPREMNICA document mapping found for warehouse " + warehouseId + "."
+                    ));
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                    "Ambiguous or invalid OTPREMNICA document mapping for warehouse " + warehouseId
+                            + ". Select a document group before saving standalone items."
+            );
+        }
     }
 
     @Transactional(Transactional.TxType.REQUIRES_NEW)
@@ -767,6 +610,10 @@ public class DispatchBookingSessionService {
         Map<Long, ItemDescriptorResponseDTO> itemById = itemDirectoryService.findItemsByIds(
                 collectEntryItemIds(entries).stream().toList()
         );
+        Map<Long, Long> warehouseByDocumentId = resolveWarehousesByDocumentId(collectEntryDocumentIds(entries));
+        Map<String, ItemDescriptorResponseDTO> warehouseItemByKey = itemDirectoryService.findItemsByWarehouseAndIds(
+                collectWarehouseItemIds(entries, warehouseByDocumentId)
+        );
 
         return entries.stream()
                 .map(entry -> {
@@ -779,12 +626,136 @@ public class DispatchBookingSessionService {
                         }
                     }
 
-                    dto.setDocPatches(enrichItemMetadata(dto.getDocPatches(), itemById));
+                    dto.setDocPatches(enrichItemMetadataByDocument(dto.getDocPatches(), warehouseByDocumentId, warehouseItemByKey, itemById, null));
                     dto.setExtraItems(enrichItemMetadata(dto.getExtraItems(), itemById));
+                    dto.setExtraDocs(enrichItemMetadataByDocument(dto.getExtraDocs(), warehouseByDocumentId, warehouseItemByKey, itemById, null));
 
                     return dto;
                 })
                 .toList();
+    }
+
+    private Map<Long, Long> resolveWarehousesByDocumentId(Set<Long> documentIds) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return Map.of();
+        }
+
+        try {
+            return documentTypeRepository.findDocumentSlots(documentIds).stream()
+                    .filter(slot -> slot.getDocumentId() != null && slot.getWarehouseId() != null)
+                    .collect(Collectors.toMap(
+                            slot -> slot.getDocumentId().longValue(),
+                            slot -> slot.getWarehouseId().longValue(),
+                            (first, second) -> first,
+                            LinkedHashMap::new
+                    ));
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private Set<Long> collectEntryDocumentIds(List<DispatchBookingSessionEntryEntity> entries) {
+        Set<Long> ids = new LinkedHashSet<>();
+
+        for (DispatchBookingSessionEntryEntity entry : entries) {
+            collectDocumentIds(jsonUtil.readObjectOrNull(entry.getDocPatchesJson()), ids);
+            collectDocumentIds(jsonUtil.readObjectOrNull(entry.getExtraDocsJson()), ids);
+        }
+
+        return ids;
+    }
+
+    private void collectDocumentIds(Object value, Set<Long> ids) {
+        if (value == null) return;
+
+        if (value instanceof List<?> list) {
+            for (Object item : list) collectDocumentIds(item, ids);
+            return;
+        }
+
+        if (!(value instanceof Map<?, ?> map)) return;
+
+        Long documentId = toLong(firstPresent(
+                map.get("documentId"),
+                map.get("document_id"),
+                map.get("docId"),
+                map.get("doc_id")
+        ));
+
+        if (documentId != null && documentId > 0) {
+            ids.add(documentId);
+        }
+
+        for (Object child : map.values()) {
+            collectDocumentIds(child, ids);
+        }
+    }
+
+    private Map<Long, Set<Long>> collectWarehouseItemIds(
+            List<DispatchBookingSessionEntryEntity> entries,
+            Map<Long, Long> warehouseByDocumentId
+    ) {
+        if (warehouseByDocumentId == null || warehouseByDocumentId.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, Set<Long>> out = new LinkedHashMap<>();
+
+        for (DispatchBookingSessionEntryEntity entry : entries) {
+            collectWarehouseItemIds(jsonUtil.readObjectOrNull(entry.getDocPatchesJson()), warehouseByDocumentId, out, null);
+            collectWarehouseItemIds(jsonUtil.readObjectOrNull(entry.getExtraDocsJson()), warehouseByDocumentId, out, null);
+        }
+
+        return out;
+    }
+
+    private void collectWarehouseItemIds(
+            Object value,
+            Map<Long, Long> warehouseByDocumentId,
+            Map<Long, Set<Long>> out,
+            Long currentWarehouseId
+    ) {
+        if (value == null) return;
+
+        if (value instanceof List<?> list) {
+            for (Object item : list) collectWarehouseItemIds(item, warehouseByDocumentId, out, currentWarehouseId);
+            return;
+        }
+
+        if (!(value instanceof Map<?, ?> map)) return;
+
+        Long documentId = toLong(firstPresent(
+                map.get("documentId"),
+                map.get("document_id"),
+                map.get("docId"),
+                map.get("doc_id")
+        ));
+
+        Long nextWarehouseId = currentWarehouseId;
+        if (documentId != null && warehouseByDocumentId.containsKey(documentId)) {
+            nextWarehouseId = warehouseByDocumentId.get(documentId);
+        }
+
+        Long itemId = toLong(firstPresent(
+                map.get("itemId"),
+                map.get("item_id"),
+                map.get("id")
+        ));
+
+        if (nextWarehouseId != null && nextWarehouseId > 0 && itemId != null && itemId > 0) {
+            out.computeIfAbsent(nextWarehouseId, x -> new LinkedHashSet<>()).add(itemId);
+        }
+
+        Object addItems = firstPresent(
+                map.get("addItems"),
+                map.get("add_items"),
+                map.get("setItems"),
+                map.get("set_items"),
+                map.get("items"),
+                map.get("lines")
+        );
+
+        collectWarehouseItemIds(addItems, warehouseByDocumentId, out, nextWarehouseId);
     }
 
     private Set<Long> collectEntryItemIds(List<DispatchBookingSessionEntryEntity> entries) {
@@ -793,6 +764,7 @@ public class DispatchBookingSessionService {
         for (DispatchBookingSessionEntryEntity entry : entries) {
             collectItemIds(jsonUtil.readObjectOrNull(entry.getDocPatchesJson()), ids);
             collectItemIds(jsonUtil.readObjectOrNull(entry.getExtraItemsJson()), ids);
+            collectItemIds(jsonUtil.readObjectOrNull(entry.getExtraDocsJson()), ids);
         }
 
         return ids;
@@ -884,6 +856,91 @@ public class DispatchBookingSessionService {
         }
 
         return out;
+    }
+
+    private Object enrichItemMetadataByDocument(
+            Object value,
+            Map<Long, Long> warehouseByDocumentId,
+            Map<String, ItemDescriptorResponseDTO> warehouseItemByKey,
+            Map<Long, ItemDescriptorResponseDTO> fallbackItemById,
+            Long currentWarehouseId
+    ) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(item -> enrichItemMetadataByDocument(
+                            item,
+                            warehouseByDocumentId,
+                            warehouseItemByKey,
+                            fallbackItemById,
+                            currentWarehouseId
+                    ))
+                    .toList();
+        }
+
+        if (!(value instanceof Map<?, ?> map)) {
+            return value;
+        }
+
+        Long documentId = toLong(firstPresent(
+                map.get("documentId"),
+                map.get("document_id"),
+                map.get("docId"),
+                map.get("doc_id")
+        ));
+
+        Long nextWarehouseId = currentWarehouseId;
+        if (documentId != null && warehouseByDocumentId != null && warehouseByDocumentId.containsKey(documentId)) {
+            nextWarehouseId = warehouseByDocumentId.get(documentId);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        Long contextWarehouseId = nextWarehouseId;
+        map.forEach((key, itemValue) -> out.put(
+                String.valueOf(key),
+                enrichItemMetadataByDocument(
+                        itemValue,
+                        warehouseByDocumentId,
+                        warehouseItemByKey,
+                        fallbackItemById,
+                        contextWarehouseId
+                )
+        ));
+
+        Long itemId = toLong(firstPresent(
+                map.get("itemId"),
+                map.get("item_id"),
+                map.get("id")
+        ));
+
+        if (itemId != null && itemId > 0) {
+            ItemDescriptorResponseDTO item = null;
+            if (nextWarehouseId != null && nextWarehouseId > 0 && warehouseItemByKey != null) {
+                item = warehouseItemByKey.get(warehouseItemKey(nextWarehouseId, itemId));
+            }
+            if (item == null && fallbackItemById != null) {
+                item = fallbackItemById.get(itemId);
+            }
+
+            if (item != null) {
+                out.putIfAbsent("itemId", item.getItemId());
+                putIfPresent(out, "itemName", item.getName());
+                putIfPresent(out, "name", item.getName());
+                putIfPresent(out, "itemCode", item.getCode());
+                putIfPresent(out, "code", item.getCode());
+                putIfPresent(out, "unit", item.getUnit());
+                putIfPresent(out, "barcode", item.getBarcode());
+            }
+        }
+
+        return out;
+    }
+
+    private String warehouseItemKey(Long warehouseId, Long itemId) {
+        return String.valueOf(warehouseId) + ":" + String.valueOf(itemId);
     }
 
     private Object firstPresent(Object... values) {

@@ -9,12 +9,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.Set;
 
@@ -40,8 +41,9 @@ public class UserEntity extends PanacheEntityBase {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
-    @Column(name = "default_warehouse_id")
-    private Long defaultWarehouseId;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "default_warehouse_by_storage_group", nullable = false, columnDefinition = "jsonb")
+    private String defaultWarehouseByStorageGroupJson = "{}";
 
     @ManyToMany
     @JoinTable(
@@ -50,4 +52,12 @@ public class UserEntity extends PanacheEntityBase {
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<RoleEntity> roles;
+
+    @PrePersist
+    @PreUpdate
+    void ensureJsonDefaults() {
+        if (defaultWarehouseByStorageGroupJson == null || defaultWarehouseByStorageGroupJson.isBlank()) {
+            defaultWarehouseByStorageGroupJson = "{}";
+        }
+    }
 }

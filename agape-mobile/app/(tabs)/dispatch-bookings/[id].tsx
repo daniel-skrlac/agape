@@ -89,6 +89,7 @@ function buildValidatePayloadFromBooking(dto: DispatchBookingDetailDTO): Dispatc
 
   return {
     warehouseId,
+    documentId: Number((dto as any)?.documentId) || undefined,
     partnerId,
     draft: false,
     documentDate: undefined as any,
@@ -489,7 +490,7 @@ export default function DispatchBookingDetails() {
 
       <View style={{ flex: 1 }}>
         <Text style={s.h1} numberOfLines={1}>
-          Dispatch #{String(headerId ?? "")}
+          Otpremnica #{String(headerId ?? "")}
         </Text>
         <Text style={s.h2} numberOfLines={2}>
           {subtitle}

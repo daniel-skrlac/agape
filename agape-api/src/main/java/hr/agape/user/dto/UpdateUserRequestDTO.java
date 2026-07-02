@@ -1,8 +1,9 @@
 package hr.agape.user.dto;
 
-import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.util.Map;
 
 @Getter
 @Setter
@@ -11,6 +12,5 @@ public class UpdateUserRequestDTO {
     private String name;
     private String password;
 
-    @Positive
-    private Long defaultWarehouseId;
+    private Map<String, Long> defaultWarehouseByStorageGroup;
 }

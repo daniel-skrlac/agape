@@ -48,7 +48,7 @@ public class DispatchBookingSessionEntity extends PanacheEntityBase {
     @Column(columnDefinition = "text")
     private String note;
 
-    @Column(name = "warehouse_id", nullable = false)
+    @Column(name = "warehouse_id")
     private Long warehouseId;
 
     @Enumerated(EnumType.STRING)

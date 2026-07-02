@@ -2,12 +2,14 @@ package hr.agape.user.dto;
 
 import lombok.Data;
 
+import java.util.Map;
+
 @Data
 public class AuthResponseDTO {
 
     private Long userId;
     private String username;
     private String name;
-    private Long defaultWarehouseId;
+    private Map<String, Long> defaultWarehouseByStorageGroup = Map.of();
     private String token;
 }

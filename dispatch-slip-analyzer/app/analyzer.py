@@ -195,6 +195,9 @@ def analyze_dispatch_slip(image_bytes: bytes) -> dict:
     partner_number_crop = crop_norm(document, 0.030, 0.055, 0.245, 0.125)
     partner_crop = crop_norm(document, 0.030, 0.070, 0.360, 0.155)
     date_crop_wide = crop_norm(document, 0.595, 0.045, 0.985, 0.158)
+    # The wide crop keeps the full date box for context. The inner crop removes
+    # the label/table borders and gives Tesseract a cleaner handwritten date.
+    date_crop_inner = crop_norm(document, 0.655, 0.076, 0.965, 0.132)
     header_crop = crop_norm(document, 0.030, 0.050, 0.970, 0.155)
 
     quantity_jobs = build_quantity_jobs(document)
@@ -207,7 +210,7 @@ def analyze_dispatch_slip(image_bytes: bytes) -> dict:
 
     partner_number_future = executor.submit(ocr_digits_multi, partner_number_crop)
     partner_text_future = executor.submit(ocr_text, partner_crop, "--psm 6", TEXT_TIMEOUT_SECONDS)
-    date_text_future = executor.submit(ocr_date_regions, (date_crop_wide,))
+    date_text_future = executor.submit(ocr_date_regions, (date_crop_inner, date_crop_wide))
 
     quantity_futures = [
         executor.submit(
@@ -819,11 +822,11 @@ def clean_quantity_mask(mask: np.ndarray) -> np.ndarray:
     clean = mask.copy()
     h, w = clean.shape[:2]
 
-    # Remove table borders/lines.
-    for ratio in (0.28, 0.48):
-        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(8, round(w * ratio)), 1))
-        horizontal = cv2.morphologyEx(clean, cv2.MORPH_OPEN, horizontal_kernel)
-        clean = cv2.bitwise_and(clean, cv2.bitwise_not(horizontal))
+    # Remove table borders/lines. The kernel must be wider than handwritten
+    # digit strokes, otherwise open 4s lose their crossbar and become 1s.
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(24, round(w * 0.62)), 1))
+    horizontal = cv2.morphologyEx(clean, cv2.MORPH_OPEN, horizontal_kernel)
+    clean = cv2.bitwise_and(clean, cv2.bitwise_not(horizontal))
 
     vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(10, round(h * 0.86))))
     vertical = cv2.morphologyEx(clean, cv2.MORPH_OPEN, vertical_kernel)
@@ -909,7 +912,7 @@ def digit_components(mask: np.ndarray) -> list[Rect]:
 
         if center_x < 0.06 or center_x > 0.94:
             continue
-        if center_y < 0.14:
+        if center_y < 0.22:
             continue
         if cw > w * 0.36 and ch < h * 0.18:
             continue
@@ -1059,8 +1062,14 @@ def classify_digit_heuristic(mask: np.ndarray, box: Rect) -> Optional[DigitGuess
     middle = zones["middle"]
     bottom = zones["bottom"]
 
+    if is_single_component_open_four(aspect, density, left, center, right, top, middle, bottom):
+        return DigitGuess(4, 0.86, "single_component_open_four")
+
     if is_single_stroke(mask, box):
         return DigitGuess(1, 0.94, "single_stroke")
+
+    if is_center_dominant_one(aspect, density, left, center, right, top, middle, bottom):
+        return DigitGuess(1, 0.90, "center_dominant_one")
 
     if aspect < 0.46 and center + right > left * 1.10:
         return DigitGuess(1, 0.90, "narrow_center_right")
@@ -1118,6 +1127,56 @@ def is_right_slanted_one(
     return True
 
 
+def is_center_dominant_one(
+        aspect: float,
+        density: float,
+        left: int,
+        center: int,
+        right: int,
+        top: int,
+        middle: int,
+        bottom: int,
+) -> bool:
+    if aspect > 0.52 or density > 0.52:
+        return False
+
+    if center < max(24, (left + right) * 5.5):
+        return False
+
+    if middle < top * 1.20:
+        return False
+
+    if abs(top - bottom) > center * 0.40:
+        return False
+
+    return True
+
+
+def is_single_component_open_four(
+        aspect: float,
+        density: float,
+        left: int,
+        center: int,
+        right: int,
+        top: int,
+        middle: int,
+        bottom: int,
+) -> bool:
+    if aspect > 0.50 or density > 0.50:
+        return False
+
+    if right < max(8, left * 4.0):
+        return False
+
+    if middle < top * 1.25:
+        return False
+
+    if bottom < top * 1.10:
+        return False
+
+    return True
+
+
 def is_left_hook_two(
         aspect: float,
         density: float,
@@ -1153,7 +1212,7 @@ def is_curved_two(
         middle: int,
         bottom: int,
 ) -> bool:
-    if aspect < 0.56 or aspect > 0.78 or density > 0.50:
+    if aspect < 0.48 or aspect > 0.86 or density > 0.56:
         return False
 
     if top < middle * 0.90 or bottom < middle * 0.90:
@@ -1364,6 +1423,10 @@ def vote_number_candidates(candidates: list[NumberCandidate]) -> Optional[Number
     if local_two is not None:
         return local_two
 
+    local_shape = choose_local_shape_over_strong_one(grouped)
+    if local_shape is not None:
+        return local_shape
+
     best_value: Optional[int] = None
     best_score = 0.0
     best_raw = ""
@@ -1447,6 +1510,40 @@ def choose_local_two_over_fragmented_one(grouped: dict[int, list[NumberCandidate
         min(0.80, best_two.confidence),
         f"vote_{best_two.source}_over_fragmented_one",
         best_two.raw,
+    )
+
+
+def choose_local_shape_over_strong_one(grouped: dict[int, list[NumberCandidate]]) -> Optional[NumberCandidate]:
+    if 1 not in grouped:
+        return None
+
+    one_candidates = grouped[1]
+    if any("strong_dark" in candidate.source and candidate.confidence >= 0.93 for candidate in one_candidates):
+        return None
+
+    if any(("local_dark" in candidate.source or "blue" in candidate.source) and candidate.confidence >= 0.84 for candidate in one_candidates):
+        return None
+
+    if not any(("strong_dark" in candidate.source or "adaptive" in candidate.source) for candidate in one_candidates):
+        return None
+
+    shape_candidates = [
+        candidate
+        for value in (2, 3, 4)
+        for candidate in grouped.get(value, [])
+        if ("local_dark" in candidate.source or "blue" in candidate.source)
+        and candidate.confidence >= 0.80
+    ]
+
+    if not shape_candidates:
+        return None
+
+    best = max(shape_candidates, key=lambda item: item.confidence)
+    return NumberCandidate(
+        best.value,
+        min(0.83, best.confidence),
+        f"vote_{best.source}_over_strong_one",
+        best.raw,
     )
 
 

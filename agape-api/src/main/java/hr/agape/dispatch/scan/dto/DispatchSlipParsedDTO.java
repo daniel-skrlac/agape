@@ -17,6 +17,7 @@ public class DispatchSlipParsedDTO {
     private Long partnerId;
     private String partnerName;
     private Long templateId;
+    private Long documentId;
     private Long warehouseId;
 
     private LocalDate documentDate;

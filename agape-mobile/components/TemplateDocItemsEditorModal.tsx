@@ -37,6 +37,8 @@ type Props = {
   visible: boolean;
   title?: string;
   documentId?: number | null;
+  documentLabel?: string | null;
+  documentSubtitle?: string | null;
   initialItems?: TemplateItemResponseDTO[] | null;
   loading?: boolean;
   onClose: () => void;
@@ -52,9 +54,10 @@ function LockedCenterModal(props: {
   title: string;
   onClose: () => void;
   disableClose?: boolean;
+  onBodyScroll?: (event: any) => void;
   children: React.ReactNode;
 }) {
-  const { visible, title, onClose, disableClose, children } = props;
+  const { visible, title, onClose, disableClose, onBodyScroll, children } = props;
 
   return (
     <Modal
@@ -79,7 +82,12 @@ function LockedCenterModal(props: {
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={s.modalBody} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={s.modalBody}
+            keyboardShouldPersistTaps="handled"
+            onScroll={onBodyScroll}
+            scrollEventThrottle={16}
+          >
             {children}
           </ScrollView>
         </View>
@@ -93,6 +101,8 @@ export function TemplateDocItemsEditorModal(props: Props) {
     visible,
     title = "Stavke dokumenta",
     documentId,
+    documentLabel,
+    documentSubtitle,
     initialItems,
     loading = false,
     onClose,
@@ -108,6 +118,7 @@ export function TemplateDocItemsEditorModal(props: Props) {
   const [pickerItems, setPickerItems] = useState<ItemDescriptorResponseDTO[]>([]);
   const [pickerPage, setPickerPage] = useState(0);
   const [pickerTotal, setPickerTotal] = useState(0);
+  const [pickerLoadedQuery, setPickerLoadedQuery] = useState<string | null>(null);
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerLoadingMore, setPickerLoadingMore] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -136,6 +147,7 @@ export function TemplateDocItemsEditorModal(props: Props) {
     setPickerItems([]);
     setPickerPage(0);
     setPickerTotal(0);
+    setPickerLoadedQuery(null);
     setPickerLoading(false);
     setPickerLoadingMore(false);
     setPickerError(null);
@@ -156,6 +168,19 @@ export function TemplateDocItemsEditorModal(props: Props) {
   );
 
   const hasMorePickerResults = pickerItems.length < pickerTotal;
+  const missingItemMetaKey = useMemo(
+    () =>
+      sortedItems
+        .map((item) => Number(item.itemId))
+        .filter((itemId) => {
+          if (!itemId) return false;
+          const row = sortedItems.find((item) => Number(item.itemId) === itemId);
+          return !row?.itemName?.trim() && !row?.meta?.name?.trim();
+        })
+        .sort((a, b) => a - b)
+        .join(","),
+    [sortedItems]
+  );
 
   const loadPickerPage = useCallback(
     async (page: number, append: boolean) => {
@@ -190,6 +215,10 @@ export function TemplateDocItemsEditorModal(props: Props) {
           for (const x of incoming) map.set(Number(x.itemId), x);
           return Array.from(map.values());
         });
+
+        if (!append) {
+          setPickerLoadedQuery(pickerDebouncedQ || "");
+        }
       } catch (e) {
         if (reqId !== fetchReqRef.current) return;
         setPickerError(toUserMessage(e, "Greška pri učitavanju artikala."));
@@ -204,8 +233,59 @@ export function TemplateDocItemsEditorModal(props: Props) {
 
   useEffect(() => {
     if (!visible || !pickerOpen) return;
+    if (pickerLoadedQuery === (pickerDebouncedQ || "")) return;
     void loadPickerPage(0, false);
-  }, [visible, pickerOpen, pickerDebouncedQ, loadPickerPage]);
+  }, [visible, pickerOpen, pickerDebouncedQ, pickerLoadedQuery, loadPickerPage]);
+
+  useEffect(() => {
+    if (!visible || pickerOpen || !missingItemMetaKey) return;
+
+    let alive = true;
+    const ids = missingItemMetaKey
+      .split(",")
+      .map((x) => Number(x))
+      .filter((x) => x > 0);
+
+    (async () => {
+      const found = new Map<number, ItemDescriptorResponseDTO>();
+
+      for (const itemId of ids) {
+        try {
+          const res = await fetchItemsPage({
+            page: 0,
+            size: 25,
+            q: String(itemId),
+          });
+
+          const exact = (res.items ?? []).find((item) => Number(item.itemId) === itemId);
+          if (exact) found.set(itemId, exact);
+        } catch {
+          // Keep the modal usable; unresolved rows still show their item id.
+        }
+      }
+
+      if (!alive || found.size === 0) return;
+
+      setItems((prev) =>
+        prev.map((item) => {
+          const itemId = Number(item.itemId);
+          const meta = found.get(itemId);
+          if (!meta) return item;
+          return {
+            ...item,
+            itemName: item.itemName?.trim() || meta.name || "",
+            itemCode: item.itemCode?.trim() || meta.code || "",
+            unit: item.unit?.trim() || meta.unit || "",
+            meta: item.meta ?? meta,
+          };
+        })
+      );
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [fetchItemsPage, missingItemMetaKey, pickerOpen, visible]);
 
   const openPicker = () => {
     setScreenError(null);
@@ -216,20 +296,32 @@ export function TemplateDocItemsEditorModal(props: Props) {
 
   const closePicker = () => {
     setPickerOpen(false);
-    setPickerQ("");
-    setPickerDebouncedQ("");
-    setPickerItems([]);
-    setPickerPage(0);
-    setPickerTotal(0);
     setPickerLoading(false);
     setPickerLoadingMore(false);
     setPickerError(null);
   };
 
-  const loadMorePicker = async () => {
+  const loadMorePicker = useCallback(async () => {
     if (pickerLoading || pickerLoadingMore || !hasMorePickerResults) return;
     await loadPickerPage(pickerPage + 1, true);
-  };
+  }, [hasMorePickerResults, loadPickerPage, pickerLoading, pickerLoadingMore, pickerPage]);
+
+  const handleBodyScroll = useCallback(
+    (event: any) => {
+      if (!pickerOpen || pickerLoading || pickerLoadingMore || !hasMorePickerResults) return;
+
+      const native = event?.nativeEvent;
+      const visibleHeight = Number(native?.layoutMeasurement?.height ?? 0);
+      const offsetY = Number(native?.contentOffset?.y ?? 0);
+      const contentHeight = Number(native?.contentSize?.height ?? 0);
+
+      if (!Number.isFinite(visibleHeight + offsetY + contentHeight) || contentHeight <= 0) return;
+      if (visibleHeight + offsetY >= contentHeight - 180) {
+        void loadMorePicker();
+      }
+    },
+    [hasMorePickerResults, loadMorePicker, pickerLoading, pickerLoadingMore, pickerOpen]
+  );
 
   const addOne = (meta: ItemDescriptorResponseDTO) => {
     setScreenError(null);
@@ -313,7 +405,13 @@ export function TemplateDocItemsEditorModal(props: Props) {
         itemId: x.itemId,
         quantity: Number(x.quantity),
         sortOrder: i + 1,
-      }));
+        itemName: x.itemName?.trim() || x.meta?.name?.trim() || "",
+        name: x.itemName?.trim() || x.meta?.name?.trim() || "",
+        itemCode: x.itemCode?.trim() || x.meta?.code?.trim() || "",
+        code: x.itemCode?.trim() || x.meta?.code?.trim() || "",
+        unit: x.unit?.trim() || x.meta?.unit?.trim() || "",
+        barcode: (x as any)?.barcode?.trim?.() || (x.meta as any)?.barcode?.trim?.() || "",
+      } as any));
 
       await onSave(payload);
     } catch (e) {
@@ -325,9 +423,10 @@ export function TemplateDocItemsEditorModal(props: Props) {
     <LockedCenterModal
       visible={visible}
       title={pickerOpen ? "Odaberi artikl" : title}
-      disableClose={loading || pickerLoading || pickerLoadingMore}
+      disableClose={loading}
+      onBodyScroll={handleBodyScroll}
       onClose={() => {
-        if (loading || pickerLoading || pickerLoadingMore) return;
+        if (loading) return;
         onClose();
       }}
     >
@@ -336,14 +435,24 @@ export function TemplateDocItemsEditorModal(props: Props) {
           <ErrorCard
             title="Greška"
             message={topError}
-            actionText="Zatvori"
-            onAction={closeTopError}
+            actionText={pickerOpen ? "Pokušaj ponovno" : "Zatvori"}
+            onAction={() => {
+              if (!pickerOpen) {
+                closeTopError();
+                return;
+              }
+              setScreenError(null);
+              setPickerError(null);
+              setDismissedTopError(null);
+              void loadPickerPage(0, false);
+            }}
             titleLines={1}
             messageLines={3}
           />
         )}
 
-        <Text style={s.sheetTitle}>{documentId ? `Dokument #${documentId}` : "Dokument"}</Text>
+        <Text style={s.sheetTitle}>{documentLabel || (documentId ? `Dokument #${documentId}` : "Dokument")}</Text>
+        {!!documentSubtitle ? <Text style={s.sheetSubtitle}>{documentSubtitle}</Text> : null}
 
         {!pickerOpen ? (
           <>
@@ -475,7 +584,10 @@ export function TemplateDocItemsEditorModal(props: Props) {
                 editable={!pickerLoading && !pickerLoadingMore}
               />
 
-              <Text style={s.blockTitle}>Rezultati ({pickerItems.length}{pickerTotal ? ` / ${pickerTotal}` : ""})</Text>
+              <View style={s.pickerMetaRow}>
+                <Text style={s.blockTitle}>Rezultati ({pickerItems.length}{pickerTotal ? ` / ${pickerTotal}` : ""})</Text>
+                <Text style={s.selectedCount}>Dodano: {sortedItems.length}</Text>
+              </View>
 
               {pickerLoading ? (
                 <View style={s.loaderWrap}>
@@ -495,7 +607,7 @@ export function TemplateDocItemsEditorModal(props: Props) {
                       <View style={s.pickRowContent}>
                         <View style={s.pickRowInfo}>
                           <Text style={s.pickTitle} numberOfLines={2}>
-                            {it.name?.trim() ? it.name : `Artikl #${it.itemId}`}
+                            {it.name?.trim() ? it.name : "Učitavam artikl…"}
                           </Text>
 
                           <Text style={s.pickSub}>
@@ -519,23 +631,18 @@ export function TemplateDocItemsEditorModal(props: Props) {
                 </View>
               )}
 
-              {hasMorePickerResults && (
-                <Pressable
-                  style={[s.secondaryBtn, (pickerLoadingMore || loading) && s.disabled]}
-                  disabled={pickerLoadingMore || loading}
-                  onPress={loadMorePicker}
-                >
-                  <Text style={s.secondaryBtnText}>
-                    {pickerLoadingMore ? "Učitavam…" : "Učitaj još"}
-                  </Text>
-                </Pressable>
-              )}
+              {pickerLoadingMore ? (
+                <View style={s.loadMoreInline}>
+                  <ActivityIndicator size="small" />
+                  <Text style={s.muted}>Učitavam još artikala…</Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={s.rowBtns}>
               <Pressable
                 style={[s.btnWide, s.rowBtn]}
-                disabled={pickerLoading || pickerLoadingMore || loading}
+                disabled={loading}
                 onPress={closePicker}
               >
                 <Text style={s.btnText}>Natrag</Text>
@@ -544,12 +651,9 @@ export function TemplateDocItemsEditorModal(props: Props) {
               <Pressable
                 style={[s.primary, s.rowBtn, loading && s.disabled]}
                 disabled={loading}
-                onPress={() => {
-                  if (loading) return;
-                  onClose();
-                }}
+                onPress={closePicker}
               >
-                <Text style={s.primaryText}>Zatvori</Text>
+                <Text style={s.primaryText}>Gotovo</Text>
               </Pressable>
             </View>
           </>

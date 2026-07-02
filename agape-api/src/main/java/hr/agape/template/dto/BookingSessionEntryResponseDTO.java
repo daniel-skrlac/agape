@@ -16,6 +16,7 @@ public class BookingSessionEntryResponseDTO {
     private DraftMode draftMode;
     private Object docPatches;
     private Object extraItems;
+    private Object extraDocs;
     private String note;
     private LocalDate documentDate;
 }

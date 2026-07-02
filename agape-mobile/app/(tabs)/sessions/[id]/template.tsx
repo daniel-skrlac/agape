@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, Vi
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, router } from "expo-router";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useQuery } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import Colors from "@/src/constants/Colors";
@@ -12,7 +13,8 @@ import { ErrorCard } from "@/components/ErrorCard";
 import { toUserMessage } from "../../../../src/api//apiClient";
 import { usePullToRefresh } from "../../../../src/api//hooks/common/usePullToRefresh";
 import { useTemplateFolders, useTemplateList } from "../../../../src/api//hooks/templates/useDispatchTemplates";
-import type { FolderResponseDTO, TemplateResponseDTO } from "@/src/models/generated";
+import { documentDirectoryService } from "../../../../src/api/services/documentDirectoryService";
+import type { DocumentDescriptorResponseDTO, FolderResponseDTO, TemplateResponseDTO } from "@/src/models/generated";
 import { patchDraft } from "../../../../src/stores/entryDraftStore";
 
 const MAX_W = 560;
@@ -30,11 +32,26 @@ function normDocDocumentId(d: any): number {
   return Number(d?.documentId ?? d?.document_id ?? d?.document?.id ?? d?.document?.documentId ?? 0);
 }
 
-function normDocLabel(d: any): string {
+function descriptorLabel(descriptor: DocumentDescriptorResponseDTO): string {
+  const group = String(descriptor.storageGroupName ?? "").trim();
+  const display = String(descriptor.displayName ?? "").trim();
+  const id = Number(descriptor.documentId);
+
+  const title =
+    group && display && group !== display
+      ? `${group} • ${display}`
+      : group || display || (Number.isFinite(id) && id > 0 ? `Dokument #${id}` : "Dokument");
+
+  return Number.isFinite(id) && id > 0 ? `${title} (#${id})` : title;
+}
+
+function normDocLabel(d: any, descriptors: Map<number, DocumentDescriptorResponseDTO>): string {
   const name = String(d?.documentName ?? d?.document?.name ?? d?.name ?? "").trim();
   const code = String(d?.documentCode ?? d?.document?.code ?? d?.code ?? "").trim();
   const docId = normDocDocumentId(d);
+  const descriptor = descriptors.get(docId);
 
+  if (descriptor) return descriptorLabel(descriptor);
   if (name) return name;
   if (code) return code;
   if (docId) return `Dokument #${docId}`;
@@ -43,9 +60,9 @@ function normDocLabel(d: any): string {
   return tid ? `Doc #${tid}` : "Dokument";
 }
 
-function summarizeDocTypes(tpl: any): string {
+function summarizeDocTypes(tpl: any, descriptors: Map<number, DocumentDescriptorResponseDTO>): string {
   const docs = ((tpl as any)?.documents ?? (tpl as any)?.docs ?? []) as any[];
-  const labels = docs.map(normDocLabel).filter(Boolean);
+  const labels = docs.map((doc) => normDocLabel(doc, descriptors)).filter(Boolean);
 
   const uniq: string[] = [];
   for (const x of labels) {
@@ -95,6 +112,28 @@ export default function SessionTemplatePicker() {
     size: PAGE_SIZE,
     enabled: true,
   });
+
+  const docTypesQ = useQuery({
+    queryKey: ["session-template-picker", "document-descriptors", "OTPREMNICA"],
+    queryFn: ({ signal }) =>
+      documentDirectoryService.listDocTypesByCode(
+        {
+          documentCode: "OTPREMNICA",
+        },
+        signal
+      ),
+    staleTime: 16 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
+
+  const documentDescriptorById = useMemo(() => {
+    const map = new Map<number, DocumentDescriptorResponseDTO>();
+    for (const doc of (docTypesQ.data ?? []) as DocumentDescriptorResponseDTO[]) {
+      const id = Number(doc.documentId);
+      if (Number.isFinite(id) && id > 0) map.set(id, doc);
+    }
+    return map;
+  }, [docTypesQ.data]);
 
   const folderRows = useMemo(() => {
     const qq = debouncedQ.toLowerCase();
@@ -183,6 +222,10 @@ export default function SessionTemplatePicker() {
   const showFooterLoadMoreError = !!nextLoadMoreError;
 
   const isInitialLoading = (((showFolders && foldersQ.isLoading) || templatesQ.isLoading) && !refreshing);
+  const showInlineLoading =
+    !isInitialLoading &&
+    !refreshing &&
+    ((showFolders && foldersQ.loading) || templatesQ.loading || docTypesQ.isFetching);
 
   const breadcrumb = useMemo(() => folderStack.map((x) => x.name).join(" / "), [folderStack]);
 
@@ -288,6 +331,13 @@ export default function SessionTemplatePicker() {
           </View>
         ) : null}
 
+        {showInlineLoading ? (
+          <View style={s.inlineLoading}>
+            <ActivityIndicator size="small" />
+            <Text style={s.inlineLoadingText}>Osvježavam predloške…</Text>
+          </View>
+        ) : null}
+
         {isInitialLoading ? (
           <View style={s.center}>
             <ActivityIndicator />
@@ -344,7 +394,7 @@ export default function SessionTemplatePicker() {
               const tpl: any = item.raw;
               const perm = String(tpl?.sharedPermission ?? "").toUpperCase();
               const permLabel = tab === "shared" ? (perm ? `Dijeljeni • ${perm}` : "Dijeljeni") : "Moj";
-              const docTypes = summarizeDocTypes(tpl);
+              const docTypes = summarizeDocTypes(tpl, documentDescriptorById);
 
               return (
                 <Pressable style={s.row} onPress={() => pick(item.raw)}>
@@ -355,7 +405,7 @@ export default function SessionTemplatePicker() {
                     <Text style={s.rowSub} numberOfLines={1}>
                       #{tpl?.id} • {permLabel}
                     </Text>
-                    <Text style={s.rowDocType} numberOfLines={1}>
+                    <Text style={s.rowDocType} numberOfLines={2}>
                       {docTypes}
                     </Text>
                   </View>
@@ -463,6 +513,24 @@ const s = StyleSheet.create({
   },
   folderBackText: { fontWeight: "900", color: Colors.text },
   breadcrumbText: { flex: 1, fontWeight: "800", color: Colors.sub },
+
+  inlineLoading: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(148,163,184,0.26)",
+    backgroundColor: "rgba(255,255,255,0.72)",
+  },
+  inlineLoadingText: {
+    color: Colors.sub,
+    fontWeight: "900",
+    fontSize: 12,
+  },
 
   list: {
     flex: 1,

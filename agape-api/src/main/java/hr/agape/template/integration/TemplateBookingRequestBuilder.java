@@ -1,25 +1,39 @@
 package hr.agape.template.integration;
 
+import hr.agape.document.lookup.view.DocumentSlotTypeView;
+import hr.agape.document.repository.DocumentTypeRepository;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
 import hr.agape.template.domain.DispatchTemplateDocEntity;
 import hr.agape.template.domain.DispatchTemplateDocItemEntity;
 import hr.agape.template.domain.DispatchTemplateEntity;
 import hr.agape.template.dto.TemplateBookDocPatchDTO;
+import hr.agape.template.dto.TemplateBookExtraDocDTO;
 import hr.agape.template.dto.TemplateBookItemDTO;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class TemplateBookingRequestBuilder {
+
+    private final DocumentTypeRepository documentTypeRepository;
+
+    @Inject
+    public TemplateBookingRequestBuilder(DocumentTypeRepository documentTypeRepository) {
+        this.documentTypeRepository = documentTypeRepository;
+    }
 
     public List<DispatchRequestDTO> buildRequestsForPartner(
             Long warehouseId,
@@ -31,26 +45,113 @@ public class TemplateBookingRequestBuilder {
             List<TemplateBookItemDTO> extraItems,
             DispatchTemplateEntity template
     ) {
+        return buildRequestsForPartner(
+                warehouseId,
+                partnerId,
+                draft,
+                documentDate,
+                entryNote,
+                docPatches,
+                extraItems,
+                List.of(),
+                template
+        );
+    }
+
+    public List<DispatchRequestDTO> buildRequestsForPartner(
+            Long warehouseId,
+            Long partnerId,
+            boolean draft,
+            LocalDate documentDate,
+            String entryNote,
+            List<TemplateBookDocPatchDTO> docPatches,
+            List<TemplateBookItemDTO> extraItems,
+            List<TemplateBookExtraDocDTO> extraDocs,
+            DispatchTemplateEntity template
+    ) {
         List<DispatchTemplateDocEntity> docs = sortedDocs(template);
         Long firstDocId = resolveFirstDocId(docs);
         Map<Long, TemplateBookDocPatchDTO> patchByDocId = mapPatchesByDocId(docPatches);
+        Map<Long, ExtraDocGroup> extraDocByDocId = mapExtraDocsByDocumentId(extraDocs);
+        Set<Long> templateDocumentIds = new LinkedHashSet<>();
 
         List<DispatchRequestDTO> out = new ArrayList<>();
 
         for (DispatchTemplateDocEntity doc : docs) {
+            templateDocumentIds.add(doc.getDocumentId());
             TemplateBookDocPatchDTO patch = patchByDocId.get(doc.getDocumentId());
+            ExtraDocGroup extraDoc = extraDocByDocId.get(doc.getDocumentId());
             Map<Long, BigDecimal> qtyByItemId = buildBaseQtyMap(doc);
 
             applyPatchSetItems(qtyByItemId, patch);
             applyPatchRemoveItems(qtyByItemId, patch);
             applyPatchAddItems(qtyByItemId, patch);
             applyExtraItemsToFirstDoc(qtyByItemId, doc, firstDocId, extraItems);
+            applyExtraDocItems(qtyByItemId, extraDoc);
 
             if (qtyByItemId.isEmpty()) {
                 throw new IllegalArgumentException("Document " + doc.getDocumentId() + " has no items after overrides.");
             }
 
-            out.add(toDispatchRequest(warehouseId, partnerId, draft, documentDate, entryNote, doc, qtyByItemId));
+            out.add(toDispatchRequest(
+                    resolveWarehouseId(warehouseId, doc.getDocumentId()),
+                    doc.getDocumentId(),
+                    partnerId,
+                    resolveDraft(draft, extraDoc),
+                    documentDate,
+                    resolveNote(entryNote, doc, extraDoc),
+                    qtyByItemId
+            ));
+        }
+
+        for (ExtraDocGroup group : extraDocByDocId.values()) {
+            if (group == null || group.documentId() == null || templateDocumentIds.contains(group.documentId())) {
+                continue;
+            }
+
+            if (group.qtyByItemId().isEmpty()) {
+                continue;
+            }
+
+            out.add(toDispatchRequest(
+                    resolveWarehouseId(warehouseId, group.documentId()),
+                    group.documentId(),
+                    partnerId,
+                    resolveDraft(draft, group),
+                    documentDate,
+                    resolveNote(entryNote, null, group),
+                    group.qtyByItemId()
+            ));
+        }
+
+        return out;
+    }
+
+    public List<DispatchRequestDTO> buildExtraDocRequests(
+            Long fallbackWarehouseId,
+            Long partnerId,
+            boolean draft,
+            LocalDate documentDate,
+            String entryNote,
+            List<TemplateBookExtraDocDTO> extraDocs
+    ) {
+        Map<Long, ExtraDocGroup> extraDocByDocId = mapExtraDocsByDocumentId(extraDocs);
+        List<DispatchRequestDTO> out = new ArrayList<>();
+
+        for (ExtraDocGroup group : extraDocByDocId.values()) {
+            if (group == null || group.documentId() == null || group.qtyByItemId().isEmpty()) {
+                continue;
+            }
+
+            out.add(toDispatchRequest(
+                    resolveWarehouseId(fallbackWarehouseId, group.documentId()),
+                    group.documentId(),
+                    partnerId,
+                    resolveDraft(draft, group),
+                    documentDate,
+                    resolveNote(entryNote, null, group),
+                    group.qtyByItemId()
+            ));
         }
 
         return out;
@@ -83,6 +184,36 @@ public class TemplateBookingRequestBuilder {
                         p -> p,
                         (a, b) -> b // last wins
                 ));
+    }
+
+    private Map<Long, ExtraDocGroup> mapExtraDocsByDocumentId(List<TemplateBookExtraDocDTO> extraDocs) {
+        Map<Long, ExtraDocGroup> out = new LinkedHashMap<>();
+
+        for (TemplateBookExtraDocDTO doc : extraDocs == null ? List.<TemplateBookExtraDocDTO>of() : extraDocs) {
+            if (doc == null || doc.getDocumentId() == null) {
+                continue;
+            }
+
+            ExtraDocGroup group = out.computeIfAbsent(
+                    doc.getDocumentId(),
+                    documentId -> new ExtraDocGroup(documentId, null, null, new LinkedHashMap<>())
+            );
+
+            if (doc.getDraft() != null) {
+                group = group.withDraft(doc.getDraft());
+            }
+            if (doc.getNote() != null && !doc.getNote().isBlank()) {
+                group = group.withNote(doc.getNote().trim());
+            }
+
+            out.put(doc.getDocumentId(), group);
+
+            for (TemplateBookItemDTO item : doc.getItems() == null ? List.<TemplateBookItemDTO>of() : doc.getItems()) {
+                mergeItem(group.qtyByItemId(), item);
+            }
+        }
+
+        return out;
     }
 
     private Map<Long, BigDecimal> buildBaseQtyMap(DispatchTemplateDocEntity doc) {
@@ -139,6 +270,20 @@ public class TemplateBookingRequestBuilder {
         }
     }
 
+    private void applyExtraDocItems(Map<Long, BigDecimal> qtyByItemId, ExtraDocGroup extraDoc) {
+        if (extraDoc == null || extraDoc.qtyByItemId() == null) {
+            return;
+        }
+
+        for (Map.Entry<Long, BigDecimal> entry : extraDoc.qtyByItemId().entrySet()) {
+            BigDecimal quantity = entry.getValue();
+            if (entry.getKey() == null || quantity == null || quantity.signum() <= 0) {
+                continue;
+            }
+            qtyByItemId.merge(entry.getKey(), quantity, BigDecimal::add);
+        }
+    }
+
     private void mergeItem(Map<Long, BigDecimal> qtyByItemId, TemplateBookItemDTO item) {
         if (item == null || item.getItemId() == null) return;
 
@@ -159,21 +304,20 @@ public class TemplateBookingRequestBuilder {
 
     private DispatchRequestDTO toDispatchRequest(
             Long warehouseId,
+            Long documentId,
             Long partnerId,
             boolean draft,
             LocalDate documentDate,
-            String entryNote,
-            DispatchTemplateDocEntity doc,
+            String note,
             Map<Long, BigDecimal> qtyByItemId
     ) {
         DispatchRequestDTO dr = new DispatchRequestDTO();
-        dr.setDocumentId(doc.getDocumentId());
+        dr.setDocumentId(documentId);
         dr.setPartnerId(partnerId);
         dr.setWarehouseId(warehouseId);
         dr.setDraft(draft);
         dr.setDocumentDate(documentDate);
-
-        dr.setNote(resolveNote(entryNote, doc));
+        dr.setNote(note);
 
         List<DispatchRequestDTO.DispatchItemRequest> items = new ArrayList<>();
         for (Map.Entry<Long, BigDecimal> e : qtyByItemId.entrySet()) {
@@ -186,7 +330,34 @@ public class TemplateBookingRequestBuilder {
         return dr;
     }
 
-    private String resolveNote(String entryNote, DispatchTemplateDocEntity doc) {
+    private boolean resolveDraft(boolean defaultDraft, ExtraDocGroup extraDoc) {
+        if (extraDoc != null && extraDoc.draft() != null) {
+            return extraDoc.draft();
+        }
+        return defaultDraft;
+    }
+
+    private Long resolveWarehouseId(Long fallbackWarehouseId, Long documentId) {
+        if (documentId == null) {
+            return fallbackWarehouseId;
+        }
+
+        try {
+            DocumentSlotTypeView slot = documentTypeRepository.findDocumentSlot(documentId).orElse(null);
+            if (slot == null || slot.getWarehouseId() == null) {
+                return fallbackWarehouseId;
+            }
+            return slot.getWarehouseId().longValue();
+        } catch (SQLException e) {
+            throw new IllegalArgumentException("Could not resolve warehouse for document " + documentId + ".");
+        }
+    }
+
+    private String resolveNote(String entryNote, DispatchTemplateDocEntity doc, ExtraDocGroup extraDoc) {
+        if (extraDoc != null && extraDoc.note() != null && !extraDoc.note().isBlank()) {
+            return extraDoc.note().trim();
+        }
+
         String n = entryNote == null ? null : entryNote.trim();
         if (n != null && !n.isEmpty()) {
             return n;
@@ -199,5 +370,20 @@ public class TemplateBookingRequestBuilder {
         }
 
         return null;
+    }
+
+    private record ExtraDocGroup(
+            Long documentId,
+            Boolean draft,
+            String note,
+            Map<Long, BigDecimal> qtyByItemId
+    ) {
+        ExtraDocGroup withDraft(Boolean nextDraft) {
+            return new ExtraDocGroup(documentId, nextDraft, note, qtyByItemId);
+        }
+
+        ExtraDocGroup withNote(String nextNote) {
+            return new ExtraDocGroup(documentId, draft, nextNote, qtyByItemId);
+        }
     }
 }

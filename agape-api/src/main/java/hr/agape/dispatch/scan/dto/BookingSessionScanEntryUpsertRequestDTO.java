@@ -18,6 +18,7 @@ public class BookingSessionScanEntryUpsertRequestDTO {
     private Long partnerId;
 
     private Long templateId;
+    private Long documentId;
     private DraftMode draftMode;
     private LocalDate documentDate;
     private String note;

@@ -74,6 +74,14 @@ export const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  sheetSubtitle: {
+    marginTop: -6,
+    color: Colors.sub,
+    fontWeight: "800",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+
   primary: {
     flexDirection: "row",
     alignItems: "center",
@@ -163,6 +171,14 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  loadMoreInline: {
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
   block: {
     width: "100%",
     maxWidth: MAX_W,
@@ -174,6 +190,19 @@ export const styles = StyleSheet.create({
     fontWeight: "900",
     color: Colors.text,
     fontSize: 14,
+  },
+
+  pickerMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  selectedCount: {
+    color: Colors.sub,
+    fontWeight: "900",
+    fontSize: 12,
   },
 
   muted: {

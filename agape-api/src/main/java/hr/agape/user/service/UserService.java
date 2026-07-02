@@ -3,6 +3,7 @@ package hr.agape.user.service;
 import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
+import hr.agape.common.util.JsonUtil;
 import hr.agape.user.domain.UserEntity;
 import hr.agape.user.dto.UpdateUserRequestDTO;
 import hr.agape.user.dto.UserDirectoryResponseDTO;
@@ -17,6 +18,8 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @ApplicationScoped
 public class UserService {
@@ -25,13 +28,15 @@ public class UserService {
     private final UserMapper userMapper;
     private final UserDirectoryMapper directoryMapper;
     private final AuthUtil authUtil;
+    private final JsonUtil jsonUtil;
 
     @Inject
-    public UserService(UserRepository userRepo, UserMapper userMapper, UserDirectoryMapper directoryMapper, AuthUtil authUtil) {
+    public UserService(UserRepository userRepo, UserMapper userMapper, UserDirectoryMapper directoryMapper, AuthUtil authUtil, JsonUtil jsonUtil) {
         this.userRepo = userRepo;
         this.userMapper = userMapper;
         this.directoryMapper = directoryMapper;
         this.authUtil = authUtil;
+        this.jsonUtil = jsonUtil;
     }
 
     public ServiceResponseDTO<UserResponseDTO> getById(Long userId) {
@@ -96,8 +101,9 @@ public class UserService {
                 changed = true;
             }
 
-            if (req.getDefaultWarehouseId() != null) {
-                user.setDefaultWarehouseId(req.getDefaultWarehouseId());
+            if (req.getDefaultWarehouseByStorageGroup() != null) {
+                String json = jsonUtil.write(normalizeWarehouseDefaults(req.getDefaultWarehouseByStorageGroup()));
+                user.setDefaultWarehouseByStorageGroupJson(json == null || json.isBlank() ? "{}" : json);
                 changed = true;
             }
 
@@ -134,5 +140,28 @@ public class UserService {
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to get users data: " + e.getMessage());
         }
+    }
+
+    private Map<String, Long> normalizeWarehouseDefaults(Map<String, Long> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Long> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Long> entry : raw.entrySet()) {
+            String key = entry.getKey() == null ? "" : entry.getKey().trim();
+            Long value = entry.getValue();
+
+            if (key.isBlank()) {
+                continue;
+            }
+            if (value == null || value <= 0) {
+                continue;
+            }
+
+            out.put(key, value);
+        }
+
+        return out;
     }
 }

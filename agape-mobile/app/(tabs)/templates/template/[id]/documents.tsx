@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 
 import Screen from "@/components/ui/Screen";
 import NavigationHeader from "../../../../../components/NavigationHeader";
@@ -10,8 +11,8 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
 
 import { toUserMessage } from "../../../../../src/api/apiClient";
-import { useCurrentUser } from "../../../../../src/api/hooks/common/useCurrentUser";
 import { documentDirectoryService } from "../../../../../src/api/services/documentDirectoryService";
+import { itemDirectoryService } from "../../../../../src/api/services/itemDirectoryService";
 
 import type {
   DocumentDescriptorResponseDTO,
@@ -28,7 +29,6 @@ import {
 
 import { styles as s } from "../../../../../src/styles/TemplateDocuments.styles";
 import { TemplateDocItemsEditorModal } from "@/components/TemplateDocItemsEditorModal";
-import { useItemDirectory } from "../../../../../src/api/hooks/documents/useItemDirectory";
 
 type LockedCenterModalProps = {
   visible: boolean;
@@ -84,6 +84,77 @@ function buildExcludeDocumentIds(templateDocs?: TemplateDocResponseDTO[] | null)
   return Array.from(set);
 }
 
+function descriptorForDocument(
+  documentId: number | null | undefined,
+  descriptors: Map<number, DocumentDescriptorResponseDTO>
+): DocumentDescriptorResponseDTO | null {
+  const id = Number(documentId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return descriptors.get(id) ?? null;
+}
+
+function documentTitle(documentId: number | null | undefined, descriptor?: DocumentDescriptorResponseDTO | null): string {
+  const id = Number(documentId);
+  const display = String(descriptor?.displayName ?? "").trim();
+  const group = String(descriptor?.storageGroupName ?? "").trim();
+
+  if (group && display && group !== display) return `${group} • ${display}`;
+  if (group || display) return group || display;
+  return Number.isFinite(id) && id > 0 ? `Dokument #${id}` : "Dokument";
+}
+
+function documentSubtitle(documentId: number | null | undefined, descriptor?: DocumentDescriptorResponseDTO | null): string {
+  const id = Number(documentId);
+  const parts = [
+    descriptor?.documentCode ? `Šifra: ${descriptor.documentCode}` : null,
+    Number.isFinite(id) && id > 0 ? `Dokument #${id}` : null,
+    descriptor?.warehouseId ? `Skladište #${descriptor.warehouseId}` : null,
+  ].filter(Boolean);
+
+  return parts.join(" • ");
+}
+
+function documentGroupRank(descriptor?: DocumentDescriptorResponseDTO | null): number {
+  const text = `${descriptor?.storageGroupName ?? ""} ${descriptor?.displayName ?? ""}`.toLowerCase();
+  if (text.includes("socijalna")) return 0;
+  if (text.includes("doniran")) return 1;
+  return 2;
+}
+
+function compareDescriptors(a?: DocumentDescriptorResponseDTO | null, b?: DocumentDescriptorResponseDTO | null): number {
+  const rank = documentGroupRank(a) - documentGroupRank(b);
+  if (rank !== 0) return rank;
+
+  const name = String(a?.storageGroupName ?? a?.displayName ?? "").localeCompare(
+    String(b?.storageGroupName ?? b?.displayName ?? ""),
+    "hr",
+    { sensitivity: "base" }
+  );
+  if (name !== 0) return name;
+
+  const aw = Number(a?.warehouseId ?? 0);
+  const bw = Number(b?.warehouseId ?? 0);
+  if (aw !== bw) return aw - bw;
+
+  return Number(a?.documentId ?? 0) - Number(b?.documentId ?? 0);
+}
+
+function compareTemplateDocs(
+  a: TemplateDocResponseDTO,
+  b: TemplateDocResponseDTO,
+  descriptors: Map<number, DocumentDescriptorResponseDTO>
+): number {
+  const ad = descriptorForDocument(a.documentId, descriptors);
+  const bd = descriptorForDocument(b.documentId, descriptors);
+  const descriptorOrder = compareDescriptors(ad, bd);
+  if (descriptorOrder !== 0) return descriptorOrder;
+
+  const sortOrder = Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0);
+  if (sortOrder !== 0) return sortOrder;
+
+  return Number(a.documentId ?? 0) - Number(b.documentId ?? 0);
+}
+
 export default function TemplateDocumentsScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
 
@@ -92,18 +163,10 @@ export default function TemplateDocumentsScreen() {
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [params.id]);
 
-  const { session, ready } = useCurrentUser();
-  const warehouseId = session?.defaultWarehouseId ?? null;
-
   const templateQ = useTemplateDetail(templateId, { includeItemMeta: true });
   const upsertDocM = useUpsertTemplateDoc();
   const replaceItemsM = useReplaceTemplateDocItems();
   const deleteDocM = useDeleteTemplateDoc();
-
-  const { fetchItemsPage } = useItemDirectory({
-    warehouseId: warehouseId ? Number(warehouseId) : null,
-    enabled: true,
-  });
 
   const backHref = useMemo(() => {
     if (!templateId) {
@@ -117,14 +180,42 @@ export default function TemplateDocumentsScreen() {
   }, [templateId]);
 
   const template = templateQ.data;
-  const docs = useMemo(() => template?.documents ?? [], [template?.documents]);
+  const rawDocs = useMemo(() => template?.documents ?? [], [template?.documents]);
+
+  const documentDescriptorsQ = useQuery({
+    queryKey: ["template-documents", "document-descriptors", "ALL_OTPREMNICA_GROUPS"],
+    queryFn: ({ signal }) =>
+      documentDirectoryService.listDocTypesByCode(
+        {
+          documentCode: "OTPREMNICA",
+        },
+        signal
+      ),
+    staleTime: 16 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
+
+  const documentDescriptorById = useMemo(() => {
+    const map = new Map<number, DocumentDescriptorResponseDTO>();
+    for (const doc of (documentDescriptorsQ.data ?? []) as DocumentDescriptorResponseDTO[]) {
+      const id = Number(doc.documentId);
+      if (Number.isFinite(id) && id > 0) map.set(id, doc);
+    }
+    return map;
+  }, [documentDescriptorsQ.data]);
+
+  const docs = useMemo(
+    () => rawDocs.slice().sort((a, b) => compareTemplateDocs(a, b, documentDescriptorById)),
+    [rawDocs, documentDescriptorById]
+  );
+
   const excludeDocumentIds = useMemo(() => buildExcludeDocumentIds(docs), [docs]);
 
   const [docPickerOpen, setDocPickerOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<TemplateDocResponseDTO | null>(null);
-  const [draft, setDraft] = useState(true);
+  const [draft, setDraft] = useState(false);
   const [note, setNote] = useState("");
 
   const [itemsOpen, setItemsOpen] = useState(false);
@@ -135,6 +226,30 @@ export default function TemplateDocumentsScreen() {
 
   const [screenError, setScreenError] = useState<string | null>(null);
   const [dismissedTopError, setDismissedTopError] = useState<string | null>(null);
+
+  const fetchItemsPageForItemsDoc = useCallback(
+    async (args: { page: number; size: number; q?: string }) => {
+      const descriptor = descriptorForDocument(itemsDoc?.documentId, documentDescriptorById);
+      const targetWarehouseId = Number((descriptor as any)?.warehouseId ?? 0);
+
+      if (!targetWarehouseId) {
+        return {
+          items: [],
+          page: args.page,
+          size: args.size,
+          total: 0,
+        };
+      }
+
+      return itemDirectoryService.pageItems({
+        warehouseId: targetWarehouseId,
+        page: args.page,
+        size: args.size,
+        q: args.q,
+      });
+    },
+    [itemsDoc?.documentId, documentDescriptorById]
+  );
 
   const resetTransientErrors = useCallback(() => {
     setScreenError(null);
@@ -260,11 +375,10 @@ export default function TemplateDocumentsScreen() {
       [
         "template-documents",
         "document-picker",
-        warehouseId ?? "NO_WAREHOUSE",
         templateId ?? "NO_TEMPLATE",
         excludeDocumentIds.join(","),
       ] as const,
-    [warehouseId, templateId, excludeDocumentIds]
+    [templateId, excludeDocumentIds]
   );
 
   const queryDocTypesPage = useCallback(
@@ -279,18 +393,8 @@ export default function TemplateDocumentsScreen() {
       q?: string;
       signal?: AbortSignal;
     }) => {
-      if (!warehouseId) {
-        return {
-          items: [] as DocumentDescriptorResponseDTO[],
-          page,
-          size,
-          total: 0,
-        };
-      }
-
       const all = await documentDirectoryService.listDocTypesByCode(
         {
-          warehouseId,
           documentCode: "OTPREMNICA",
           q: q ?? undefined,
           excludeDocumentIds,
@@ -306,14 +410,11 @@ export default function TemplateDocumentsScreen() {
           const a = (d.displayName ?? "").toLowerCase();
           const b = (d.documentCode ?? "").toLowerCase();
           const c = String(d.documentId ?? "");
-          return a.includes(needle) || b.includes(needle) || c.includes(needle);
+          const group = String((d as any).storageGroupName ?? "").toLowerCase();
+          return a.includes(needle) || b.includes(needle) || c.includes(needle) || group.includes(needle);
         });
 
-      filtered.sort((a, b) =>
-        (a.displayName ?? "").localeCompare(b.displayName ?? "", "hr", {
-          sensitivity: "base",
-        })
-      );
+      filtered.sort(compareDescriptors);
 
       const start = page * size;
       const end = start + size;
@@ -325,31 +426,8 @@ export default function TemplateDocumentsScreen() {
         total: filtered.length,
       };
     },
-    [warehouseId, excludeDocumentIds]
+    [excludeDocumentIds]
   );
-
-  if (ready && !warehouseId) {
-    return (
-      <Screen>
-        <NavigationHeader
-          title="Dokumenti"
-          subtitle={templateId ? `Predložak #${templateId}` : "Predložak"}
-          fallbackHref={backHref}
-        />
-
-        <View style={s.container}>
-          <ErrorCard
-            title="Nedostaje glavno skladište"
-            message="U Postavkama prvo odaberi glavno skladište da bi mogao koristiti predloške."
-            actionText="Zatvori"
-            onAction={() => { }}
-            titleLines={2}
-            messageLines={3}
-          />
-        </View>
-      </Screen>
-    );
-  }
 
   return (
     <Screen>
@@ -388,45 +466,54 @@ export default function TemplateDocumentsScreen() {
             </Pressable>
 
             <FlatList
+              style={s.list}
               data={docs}
               keyExtractor={(d) => String(d.id)}
               contentContainerStyle={s.listContent}
-              renderItem={({ item }) => (
-                <View style={s.card}>
-                  <View style={s.cardHeaderRow}>
-                    <Text style={s.title}>Dokument #{item.documentId}</Text>
-                    <Text style={s.sub}>{item.draft ? "Draft" : "Final"}</Text>
-                  </View>
+              renderItem={({ item }) => {
+                const descriptor = descriptorForDocument(item.documentId, documentDescriptorById);
+                return (
+                  <View style={s.card}>
+                    <View style={s.cardHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.title}>{documentTitle(item.documentId, descriptor)}</Text>
+                        <Text style={s.desc} numberOfLines={2}>
+                          {documentSubtitle(item.documentId, descriptor)}
+                        </Text>
+                      </View>
+                      <Text style={s.sub}>{item.draft ? "Draft: DA" : "Draft: NE"}</Text>
+                    </View>
 
-                  {!!item.defaultNote && (
-                    <Text style={s.desc} numberOfLines={2}>
-                      Napomena: {item.defaultNote}
-                    </Text>
-                  )}
-
-                  <Text style={s.desc}>Stavki: {item.items?.length ?? 0}</Text>
-
-                  <View style={s.actionsRow}>
-                    <Pressable style={s.actionBtn} onPress={() => openEditDoc(item)}>
-                      <Text style={s.actionText}>Uredi</Text>
-                    </Pressable>
-
-                    <Pressable style={s.actionBtn} onPress={() => openItemsEditor(item)}>
-                      <Text style={s.actionText}>Stavke</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={[s.actionBtn, s.actionDangerBtn, deleteDocM.isPending && s.disabled]}
-                      disabled={deleteDocM.isPending}
-                      onPress={() => openDeleteConfirm(item)}
-                    >
-                      <Text style={[s.actionText, s.actionDangerText]}>
-                        {deleteDocM.isPending ? "…" : "Obriši"}
+                    {!!item.defaultNote && (
+                      <Text style={s.desc} numberOfLines={2}>
+                        Napomena: {item.defaultNote}
                       </Text>
-                    </Pressable>
+                    )}
+
+                    <Text style={s.desc}>Stavki: {item.items?.length ?? 0}</Text>
+
+                    <View style={s.actionsRow}>
+                      <Pressable style={s.actionBtn} onPress={() => openEditDoc(item)}>
+                        <Text style={s.actionText}>Uredi</Text>
+                      </Pressable>
+
+                      <Pressable style={s.actionBtn} onPress={() => openItemsEditor(item)}>
+                        <Text style={s.actionText}>Stavke</Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={[s.actionBtn, s.actionDangerBtn, deleteDocM.isPending && s.disabled]}
+                        disabled={deleteDocM.isPending}
+                        onPress={() => openDeleteConfirm(item)}
+                      >
+                        <Text style={[s.actionText, s.actionDangerText]}>
+                          {deleteDocM.isPending ? "…" : "Obriši"}
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
-              )}
+                );
+              }}
               ListEmptyComponent={<Text style={s.empty}>Nema dokumenata u predlošku.</Text>}
             />
 
@@ -453,7 +540,7 @@ export default function TemplateDocumentsScreen() {
                         payload: {
                           documentId: docType.documentId,
                           sortOrder: docs.length + 1,
-                          draft: true,
+                          draft: false,
                           defaultNote: "",
                         } as any,
                       });
@@ -464,9 +551,11 @@ export default function TemplateDocumentsScreen() {
                     }
                   }}
                 >
-                  <Text style={s.pickTitle}>{docType.displayName}</Text>
+                  <Text style={s.pickTitle}>
+                    {documentTitle(docType.documentId, docType)}
+                  </Text>
                   <Text style={s.pickSub}>
-                    Šifra: {docType.documentCode} • ID: {docType.documentId}
+                    {documentSubtitle(docType.documentId, docType)}
                   </Text>
                 </Pressable>
               )}
@@ -533,6 +622,14 @@ export default function TemplateDocumentsScreen() {
               visible={itemsOpen}
               title="Stavke dokumenta"
               documentId={itemsDoc?.documentId ?? null}
+              documentLabel={documentTitle(
+                itemsDoc?.documentId ?? null,
+                descriptorForDocument(itemsDoc?.documentId, documentDescriptorById)
+              )}
+              documentSubtitle={documentSubtitle(
+                itemsDoc?.documentId ?? null,
+                descriptorForDocument(itemsDoc?.documentId, documentDescriptorById)
+              )}
               initialItems={itemsDoc?.items ?? []}
               loading={replaceItemsM.isPending}
               onClose={() => {
@@ -541,7 +638,7 @@ export default function TemplateDocumentsScreen() {
                 setItemsDoc(null);
               }}
               onSave={saveDocItems}
-              fetchItemsPage={fetchItemsPage}
+              fetchItemsPage={fetchItemsPageForItemsDoc}
             />
 
             <CenterConfirmSheet
@@ -549,7 +646,7 @@ export default function TemplateDocumentsScreen() {
               title="Obrisati dokument?"
               description={
                 deleteDoc
-                  ? `Dokument #${deleteDoc.documentId}\nObrisat će se i sve stavke dokumenta iz predloška.`
+                  ? `${documentTitle(deleteDoc.documentId, descriptorForDocument(deleteDoc.documentId, documentDescriptorById))}\nObrisat će se i sve stavke dokumenta iz predloška.`
                   : ""
               }
               confirmText="Obriši"

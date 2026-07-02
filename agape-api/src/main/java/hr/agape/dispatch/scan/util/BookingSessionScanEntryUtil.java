@@ -4,6 +4,7 @@ import hr.agape.dispatch.scan.dto.BookingSessionScanEntryUpsertRequestDTO;
 import hr.agape.dispatch.scan.dto.BookingSessionScanLineDTO;
 import hr.agape.template.dto.BookingSessionEntryUpsertRequestDTO;
 import hr.agape.template.dto.TemplateBookDocPatchDTO;
+import hr.agape.template.dto.TemplateBookExtraDocDTO;
 import hr.agape.template.dto.TemplateBookItemDTO;
 import hr.agape.template.enumeration.DraftMode;
 
@@ -28,7 +29,8 @@ public final class BookingSessionScanEntryUtil {
         dto.setDraftMode(req.getDraftMode() == null ? DraftMode.FINAL : req.getDraftMode());
         dto.setDocumentDate(req.getDocumentDate());
         dto.setDocPatches(buildDocPatches(req.getLines(), req.getTemplateId()));
-        dto.setExtraItems(buildExtraItems(req.getLines(), req.getTemplateId()));
+        dto.setExtraItems(buildExtraItems(req.getLines(), req.getTemplateId(), req.getDocumentId()));
+        dto.setExtraDocs(buildExtraDocs(req.getLines(), req.getTemplateId(), req.getDocumentId()));
         dto.setNote(note);
         return dto;
     }
@@ -79,8 +81,12 @@ public final class BookingSessionScanEntryUtil {
 
     public static List<TemplateBookItemDTO> buildExtraItems(
             List<BookingSessionScanLineDTO> lines,
-            Long templateId
+            Long templateId,
+            Long documentId
     ) {
+        if (documentId != null) {
+            return List.of();
+        }
         if (lines == null || lines.isEmpty()) {
             return List.of();
         }
@@ -112,5 +118,49 @@ public final class BookingSessionScanEntryUtil {
         }
 
         return byItemId.values().stream().toList();
+    }
+
+    public static List<TemplateBookExtraDocDTO> buildExtraDocs(
+            List<BookingSessionScanLineDTO> lines,
+            Long templateId,
+            Long documentId
+    ) {
+        if (documentId == null || lines == null || lines.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, TemplateBookItemDTO> byItemId = new LinkedHashMap<>();
+
+        for (BookingSessionScanLineDTO line : lines) {
+            if (line == null
+                    || line.getItemId() == null
+                    || line.getQuantity() == null
+                    || line.getQuantity().signum() <= 0) {
+                continue;
+            }
+
+            boolean belongsToTemplateDocument = templateId != null && line.getDocumentId() != null;
+            if (belongsToTemplateDocument) {
+                continue;
+            }
+
+            TemplateBookItemDTO item = byItemId.computeIfAbsent(line.getItemId(), itemId -> {
+                TemplateBookItemDTO next = new TemplateBookItemDTO();
+                next.setItemId(itemId);
+                next.setQuantity(BigDecimal.ZERO);
+                return next;
+            });
+
+            item.setQuantity(item.getQuantity().add(line.getQuantity()));
+        }
+
+        if (byItemId.isEmpty()) {
+            return List.of();
+        }
+
+        TemplateBookExtraDocDTO doc = new TemplateBookExtraDocDTO();
+        doc.setDocumentId(documentId);
+        doc.setItems(new ArrayList<>(byItemId.values()));
+        return List.of(doc);
     }
 }

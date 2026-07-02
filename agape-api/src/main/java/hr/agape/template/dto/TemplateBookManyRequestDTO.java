@@ -15,7 +15,6 @@ public class TemplateBookManyRequestDTO {
     @NotNull
     private Long templateId;
 
-    @NotNull
     private Long warehouseId;
 
     @NotEmpty
@@ -30,4 +29,5 @@ public class TemplateBookManyRequestDTO {
 
     private List<TemplateBookDocPatchDTO> docPatches;
     private List<TemplateBookItemDTO> extraItems;
+    private List<TemplateBookExtraDocDTO> extraDocs;
 }

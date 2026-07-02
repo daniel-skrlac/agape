@@ -9,6 +9,7 @@ import hr.agape.item.repository.ItemDirectoryRepository;
 import hr.agape.item.util.ItemCodeUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +29,7 @@ public class ItemDirectoryService {
         this.mapper = mapper;
     }
 
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public Map<Long, ItemDescriptorResponseDTO> findItemsByIds(List<Long> itemIds) {
         try {
             if (itemIds == null || itemIds.isEmpty()) {
@@ -57,6 +59,26 @@ public class ItemDirectoryService {
         }
     }
 
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
+    public Map<String, ItemDescriptorResponseDTO> findItemsByWarehouseAndIds(Map<Long, ? extends Iterable<Long>> itemIdsByWarehouse) {
+        try {
+            if (itemIdsByWarehouse == null || itemIdsByWarehouse.isEmpty()) {
+                return Map.of();
+            }
+
+            return repo.findItemsByWarehouseAndIds(itemIdsByWarehouse).entrySet().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> mapper.toDto(entry.getValue()),
+                            (first, second) -> first,
+                            LinkedHashMap::new
+                    ));
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public Map<String, ItemDescriptorResponseDTO> findItemsByCodes(Long warehouseId, List<String> codes) {
         try {
             if (warehouseId == null) {
@@ -95,6 +117,7 @@ public class ItemDirectoryService {
         }
     }
 
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public ServiceResponseDTO<PagedResultDTO<ItemDescriptorResponseDTO>> pageItems(
             Long warehouseId,
             int page,

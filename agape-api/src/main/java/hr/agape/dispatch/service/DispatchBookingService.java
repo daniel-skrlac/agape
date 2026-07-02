@@ -18,7 +18,6 @@ import hr.agape.document.dto.DocumentItemLineDTO;
 import hr.agape.document.lookup.repository.DocumentItemLookupRepository;
 import hr.agape.document.lookup.repository.VatCategoryRepository;
 import hr.agape.document.lookup.view.DocumentItemAttributesView;
-import hr.agape.document.lookup.view.DocumentSlotTypeView;
 import hr.agape.document.repository.DocumentHeaderRepository;
 import hr.agape.document.repository.DocumentItemPriceRepository;
 import hr.agape.document.repository.DocumentItemRepository;
@@ -678,14 +677,13 @@ public class DispatchBookingService {
             return slotRepo.resolveDispatchDocumentIdForWarehouse(warehouseId);
         }
 
-        DocumentSlotTypeView configuredSlot = documentTypeRepo.findDocumentSlot(configuredDocumentId)
-                .orElseThrow(() -> new SQLException(
-                        "Unknown configured DOKUMENT_ID=" + configuredDocumentId
-                ));
+        if (!slotRepo.existsForWarehouse(configuredDocumentId, warehouseId)) {
+            throw new SQLException(
+                    "Configured DOKUMENT_ID=" + configuredDocumentId
+                            + " is not available for warehouseId=" + warehouseId
+            );
+        }
 
-        return slotRepo.resolveDocumentIdForWarehouseAndCode(
-                warehouseId,
-                configuredSlot.getDocumentCode()
-        );
+        return configuredDocumentId;
     }
 }

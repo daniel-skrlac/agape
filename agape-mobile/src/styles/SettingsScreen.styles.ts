@@ -61,6 +61,50 @@ export const styles = StyleSheet.create({
 
     fieldErr: { marginTop: 8, fontSize: 12, fontWeight: "800", color: "rgba(185,28,28,0.95)" },
 
+    infoBox: {
+        borderRadius: 16,
+        borderWidth: 1.25,
+        borderColor: "rgba(37,99,235,0.20)",
+        backgroundColor: "rgba(239,246,255,0.92)",
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+    },
+    infoHeaderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    infoLabel: { fontSize: 12, fontWeight: "900", color: "rgba(37,99,235,0.95)" },
+    infoText: { marginTop: 4, fontSize: 13, lineHeight: 18, fontWeight: "800", color: Colors.text },
+    docInfoList: { marginTop: 10, gap: 8 },
+    docInfoCard: {
+        borderRadius: 14,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(37,99,235,0.20)",
+        backgroundColor: "rgba(255,255,255,0.78)",
+        paddingHorizontal: 10,
+        paddingVertical: 10,
+    },
+    docInfoTitle: { fontSize: 13, lineHeight: 17, fontWeight: "900", color: Colors.text },
+    docInfoGrid: { marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 7 },
+    docInfoChip: {
+        minWidth: "30%",
+        flexGrow: 1,
+        borderRadius: 12,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(15,23,42,0.10)",
+        backgroundColor: "rgba(248,250,252,0.92)",
+        paddingHorizontal: 8,
+        paddingVertical: 7,
+    },
+    docInfoChipLabel: { fontSize: 10, fontWeight: "900", color: "rgba(15,23,42,0.52)" },
+    docInfoChipValue: { marginTop: 2, fontSize: 12, fontWeight: "900", color: Colors.text },
+
+    groupDefaultsBlock: {
+        marginTop: 16,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: "rgba(15,23,42,0.12)",
+        paddingTop: 14,
+    },
+    groupDefaultsTitle: { fontSize: 15, fontWeight: "900", color: Colors.text },
+    groupDefaultsText: { marginTop: 4, fontSize: 12, lineHeight: 17, fontWeight: "800", color: "rgba(15,23,42,0.66)" },
+
     divider: { height: 1, backgroundColor: "rgba(2, 6, 23, 0.12)", marginTop: 12 },
 
     dropdown: { marginTop: 12, gap: 10 },

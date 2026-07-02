@@ -19,7 +19,7 @@ export const authService = {
             userId: data.userId,
             username: data.username,
             name: data.name,
-            defaultWarehouseId: data.defaultWarehouseId
+            defaultWarehouseByStorageGroup: normalizeWarehouseDefaults((data as any).defaultWarehouseByStorageGroup),
         });
 
         return data;
@@ -36,3 +36,17 @@ export const authService = {
         await clearSession();
     },
 };
+
+function normalizeWarehouseDefaults(raw: unknown): Record<string, number> {
+    const out: Record<string, number> = {};
+    if (!raw || typeof raw !== "object") return out;
+
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        const storageGroupId = String(key).trim();
+        const warehouseId = Number(value);
+        if (!storageGroupId || !Number.isFinite(warehouseId) || warehouseId <= 0) continue;
+        out[storageGroupId] = warehouseId;
+    }
+
+    return out;
+}

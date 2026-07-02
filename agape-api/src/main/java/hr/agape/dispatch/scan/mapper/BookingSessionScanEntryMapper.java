@@ -41,6 +41,7 @@ public interface BookingSessionScanEntryMapper {
         BookingSessionScanValidateRequestDTO dto = new BookingSessionScanValidateRequestDTO();
         dto.setPartnerId(req.getPartnerId());
         dto.setTemplateId(req.getTemplateId());
+        dto.setDocumentId(req.getDocumentId());
         dto.setDocumentDate(req.getDocumentDate());
         dto.setNote(req.getNote());
         dto.setLines(req.getLines() == null ? List.of() : req.getLines().stream().map(this::toCandidateLine).toList());
@@ -60,6 +61,7 @@ public interface BookingSessionScanEntryMapper {
         dto.setPartnerId(req.getPartnerId());
         dto.setPartnerName(partnerName);
         dto.setTemplateId(req.getTemplateId());
+        dto.setDocumentId(req.getDocumentId());
         dto.setDocumentDate(req.getDocumentDate());
         dto.setPartnerResolved(partnerResolved);
         dto.setRequiresManualPartner(!Boolean.TRUE.equals(partnerResolved));
@@ -79,6 +81,7 @@ public interface BookingSessionScanEntryMapper {
         dto.setPartnerId(validation.getPartnerId());
         dto.setPartnerName(validation.getPartnerName());
         dto.setTemplateId(validation.getTemplateId());
+        dto.setDocumentId(validation.getDocumentId());
         dto.setWarehouseId(session.getWarehouseId());
         dto.setDocumentDate(validation.getDocumentDate());
         dto.setRawText(rawText);
@@ -97,7 +100,7 @@ public interface BookingSessionScanEntryMapper {
         return dto;
     }
 
-    default String resolveScanNote(String note) {
+    private String resolveScanNote(String note) {
         if (note != null && !note.isBlank()) {
             return note.trim();
         }

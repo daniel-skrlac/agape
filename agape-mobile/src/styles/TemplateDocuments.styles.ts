@@ -5,8 +5,13 @@ export const MAX_W = 560;
 
 export const styles = StyleSheet.create({
     container: {
+        flex: 1,
         padding: 14,
         gap: 12,
+    },
+
+    list: {
+        flex: 1,
     },
 
     loading: {
@@ -18,7 +23,7 @@ export const styles = StyleSheet.create({
 
     listContent: {
         gap: 10,
-        paddingBottom: 24,
+        paddingBottom: 96,
     },
 
     primary: {

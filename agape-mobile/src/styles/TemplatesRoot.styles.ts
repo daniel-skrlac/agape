@@ -86,6 +86,25 @@ export const styles = StyleSheet.create({
         color: Colors.text,
     },
 
+    inlineLoading: {
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: 999,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: "rgba(148,163,184,0.26)",
+        backgroundColor: "rgba(255,255,255,0.72)",
+    },
+
+    inlineLoadingText: {
+        color: Colors.sub,
+        fontWeight: "900",
+        fontSize: 12,
+    },
+
     list: {
         flex: 1,
     },

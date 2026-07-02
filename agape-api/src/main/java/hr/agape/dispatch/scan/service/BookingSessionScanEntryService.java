@@ -3,6 +3,9 @@ package hr.agape.dispatch.scan.service;
 import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
+import hr.agape.document.lookup.view.DocumentSlotTypeView;
+import hr.agape.document.repository.DocumentTypeRepository;
+import hr.agape.document.util.DocumentScanSupport;
 import hr.agape.dispatch.scan.client.DispatchSlipAnalyzerClient;
 import hr.agape.dispatch.scan.dto.BookingSessionScanEntryUpsertRequestDTO;
 import hr.agape.dispatch.scan.dto.BookingSessionScanLineCandidateDTO;
@@ -72,6 +75,7 @@ public class BookingSessionScanEntryService {
     private final PartnerService partnerService;
     private final BookingSessionScanEntryMapper mapper;
     private final DispatchSlipAnalyzerClient analyzerClient;
+    private final DocumentTypeRepository documentTypeRepository;
 
     @Inject
     public BookingSessionScanEntryService(
@@ -82,7 +86,8 @@ public class BookingSessionScanEntryService {
             ItemDirectoryService itemDirectoryService,
             PartnerService partnerService,
             BookingSessionScanEntryMapper mapper,
-            DispatchSlipAnalyzerClient analyzerClient
+            DispatchSlipAnalyzerClient analyzerClient,
+            DocumentTypeRepository documentTypeRepository
     ) {
         this.authUtil = authUtil;
         this.sessionRepo = sessionRepo;
@@ -92,6 +97,7 @@ public class BookingSessionScanEntryService {
         this.partnerService = partnerService;
         this.mapper = mapper;
         this.analyzerClient = analyzerClient;
+        this.documentTypeRepository = documentTypeRepository;
     }
 
     public ServiceResponseDTO<BookingSessionScanValidateResponseDTO> validateScanEntry(
@@ -122,6 +128,7 @@ public class BookingSessionScanEntryService {
             FileUpload file,
             Long partnerId,
             Long templateId,
+            Long documentId,
             String documentDate,
             String note
     ) {
@@ -134,6 +141,11 @@ public class BookingSessionScanEntryService {
             }
 
             DispatchSlipUploadFileUtil.validate(file);
+
+            DispatchTemplateEntity template = resolveTemplate(templateId, userId);
+            Long scanDocumentId = resolveScanDocumentId(documentId, template);
+            DocumentSlotTypeView scanDocument = requireScanSupportedDocument(scanDocumentId);
+            Long scanWarehouseId = scanDocument.getWarehouseId().longValue();
 
             DispatchSlipAnalyzerResponseDTO analysis = analyzerClient.analyze(file);
             String rawText = DispatchSlipTextParser.normalizeRawText(analysis.getRawText());
@@ -165,6 +177,7 @@ public class BookingSessionScanEntryService {
             BookingSessionScanValidateRequestDTO validateReq = new BookingSessionScanValidateRequestDTO();
             validateReq.setPartnerId(effectivePartnerId);
             validateReq.setTemplateId(templateId);
+            validateReq.setDocumentId(scanDocumentId);
             validateReq.setDocumentDate(resolvedDocumentDate);
             validateReq.setNote(note);
             validateReq.setLines(candidates);
@@ -173,6 +186,7 @@ public class BookingSessionScanEntryService {
                     buildValidationResponse(session, userId, validateReq);
 
             DispatchSlipParsedDTO parsed = mapper.toParsedDto(session, validation, note, rawText);
+            parsed.setWarehouseId(scanWarehouseId);
             parsed.setDetectedPartnerText(resolveDetectedPartnerText(
                     detectedPartnerNumber,
                     analysis.getPartnerText(),
@@ -195,7 +209,7 @@ public class BookingSessionScanEntryService {
                     parsed.getWarnings(),
                     analysis,
                     documentDate,
-                    session.getWarehouseId(),
+                    parsed.getWarehouseId(),
                     validation.getLines()
             ));
 
@@ -257,13 +271,15 @@ public class BookingSessionScanEntryService {
             BookingSessionScanValidateRequestDTO req
     ) {
         DispatchTemplateEntity template = resolveTemplate(req.getTemplateId(), userId);
+        Long scanDocumentId = resolveScanDocumentId(req.getDocumentId(), template);
+        Long scanWarehouseId = requireScanSupportedDocument(scanDocumentId).getWarehouseId().longValue();
 
         List<BookingSessionScanLineValidationDTO> lines = mapper.toValidationLines(
                 req.getLines() == null ? List.of() : req.getLines()
         );
 
         enrichFromItemIds(lines);
-        enrichFromItemCodes(lines, session.getWarehouseId());
+        enrichFromItemCodes(lines, scanWarehouseId);
         enrichDocumentIdsFromTemplate(lines, template);
         applyValidationFlags(lines, req.getTemplateId());
 
@@ -275,12 +291,65 @@ public class BookingSessionScanEntryService {
 
         return mapper.toValidationResponse(
                 session,
-                req,
+                withResolvedDocumentId(req, scanDocumentId),
                 resolvePartnerName(req.getPartnerId()),
                 lines,
                 partnerResolved,
                 partnerResolved && hasPositiveLine && allLinesValid
         );
+    }
+
+    private BookingSessionScanValidateRequestDTO withResolvedDocumentId(
+            BookingSessionScanValidateRequestDTO req,
+            Long documentId
+    ) {
+        req.setDocumentId(documentId);
+        return req;
+    }
+
+    private Long resolveScanDocumentId(Long requestedDocumentId, DispatchTemplateEntity template) {
+        if (requestedDocumentId != null && requestedDocumentId > 0) {
+            return requestedDocumentId;
+        }
+
+        if (template != null && template.getDocuments() != null && template.getDocuments().size() == 1) {
+            return template.getDocuments().iterator().next().getDocumentId();
+        }
+
+        if (template == null) {
+            throw new IllegalArgumentException("Odaberi grupu otpremnice prije analize skena.");
+        }
+
+        throw new IllegalArgumentException("Odaberi grupu otpremnice prije analize skena.");
+    }
+
+    private DocumentSlotTypeView requireScanSupportedDocument(Long documentId) {
+        if (documentId == null || documentId <= 0) {
+            throw new IllegalArgumentException("Odaberi grupu otpremnice prije analize skena.");
+        }
+
+        try {
+            DocumentSlotTypeView slot = documentTypeRepository.findDocumentSlot(documentId).orElse(null);
+            if (slot == null) {
+                throw new IllegalArgumentException("Odabrani dokument nije pronađen.");
+            }
+
+            if (!DocumentScanSupport.isSupportedForDispatchSlipScan(slot)) {
+                throw new IllegalArgumentException(
+                        "Odabrani dokument nije podržan za skeniranje. Skeniranje je dostupno samo za Socijalna samoposluga otpremnice."
+                );
+            }
+
+            if (slot.getWarehouseId() == null || slot.getWarehouseId() <= 0) {
+                throw new IllegalArgumentException("Nije moguće odrediti skladište za odabranu grupu otpremnice.");
+            }
+
+            return slot;
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Nije moguće provjeriti odabrani dokument za skeniranje.");
+        }
     }
 
     private DispatchTemplateEntity resolveTemplate(Long templateId, Long userId) {

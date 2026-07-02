@@ -22,6 +22,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 
 import { ErrorCard } from "@/components/ErrorCard";
 import { CenterConfirmSheet } from "@/components/CenterConfirmSheet";
@@ -33,12 +34,14 @@ import { SearchPickerSheet } from "@/components/SearchPickerSheet";
 import Colors from "@/src/constants/Colors";
 import type {
     BookingSessionScanValidateResponseDTO,
+    DocumentDescriptorResponseDTO,
     DispatchSlipParsedDTO,
     ItemDescriptorResponseDTO,
     PartnerResponseDTO,
 } from "@/src/models/generated";
 import { toUserMessage } from "@/src/api/apiClient";
 import { useBookingSession } from "@/src/api/hooks/sessions/useBookingSessions";
+import { useCurrentUser } from "@/src/api/hooks/common/useCurrentUser";
 import {
     useParseDispatchSlip,
     useSaveDispatchSlipScanEntry,
@@ -46,6 +49,7 @@ import {
 import { clearDraft as clearEntryDraft } from "@/src/stores/entryDraftStore";
 import { partnerService } from "@/src/api/services/partnerService";
 import { itemDirectoryService } from "@/src/api/services/itemDirectoryService";
+import { documentDirectoryService } from "@/src/api/services/documentDirectoryService";
 import { s } from "@/src/styles/DispatchSlipScan.styles";
 import { dateToIsoLocal, fmtHrFromIso, isoToDateLocal, todayLocalNoon } from "@/src/utils/dateIso";
 
@@ -140,6 +144,52 @@ function cleanNumber(v: unknown): number | null {
 function cleanParamText(v: unknown) {
     const text = String(firstParam(v) ?? "").trim();
     return text || null;
+}
+
+function documentGroupRank(doc: DocumentDescriptorResponseDTO | null | undefined): number {
+    const text = `${(doc as any)?.storageGroupName ?? ""} ${(doc as any)?.displayName ?? ""}`.toLowerCase();
+    if (text.includes("socijalna")) return 0;
+    if (text.includes("doniran")) return 1;
+    return 2;
+}
+
+function compareDocumentDescriptors(
+    a: DocumentDescriptorResponseDTO | null | undefined,
+    b: DocumentDescriptorResponseDTO | null | undefined
+) {
+    const rank = documentGroupRank(a) - documentGroupRank(b);
+    if (rank !== 0) return rank;
+
+    const an = String((a as any)?.storageGroupName ?? (a as any)?.displayName ?? "");
+    const bn = String((b as any)?.storageGroupName ?? (b as any)?.displayName ?? "");
+    const name = an.localeCompare(bn, "hr", { sensitivity: "base" });
+    if (name !== 0) return name;
+
+    const aw = Number((a as any)?.warehouseId ?? 0);
+    const bw = Number((b as any)?.warehouseId ?? 0);
+    if (aw !== bw) return aw - bw;
+
+    return Number((a as any)?.documentId ?? 0) - Number((b as any)?.documentId ?? 0);
+}
+
+function isScanSupportedDocument(doc: DocumentDescriptorResponseDTO | null | undefined) {
+    return (doc as any)?.scanSupported === true;
+}
+
+function documentDisplayTitle(doc: DocumentDescriptorResponseDTO | null | undefined, fallbackDocumentId?: number | null) {
+    const group = String((doc as any)?.storageGroupName ?? "").trim();
+    const display = String((doc as any)?.displayName ?? "").trim();
+    const code = String((doc as any)?.documentCode ?? "").trim();
+    if (group && display && group !== display) return `${group} • ${display}`;
+    return group || display || code || (fallbackDocumentId ? `Dokument #${fallbackDocumentId}` : "Odaberi dokument");
+}
+
+function documentDisplaySubtitle(doc: DocumentDescriptorResponseDTO | null | undefined) {
+    if (!doc) return "Odaberi dokument i skladište za skeniranje.";
+    return [
+        (doc as any)?.documentId ? `Dokument #${(doc as any).documentId}` : null,
+        (doc as any)?.warehouseId ? `Skladište #${(doc as any).warehouseId}` : null,
+    ].filter(Boolean).join(" • ");
 }
 
 function toDateInput(v: unknown) {
@@ -375,29 +425,6 @@ function makeValidationKey(page: Pick<ScanPage, "partnerId" | "templateId" | "do
     });
 }
 
-function scanPageSaveFingerprint(page: ScanPage) {
-    const lines = page.lines
-        .filter((line) => quantityValue(line) > 0)
-        .map((line) => ({
-            documentId: cleanNumber(line.documentId),
-            itemId: cleanNumber(line.itemId),
-            quantity: quantityValue(line),
-        }))
-        .filter((line) => line.itemId && line.quantity > 0)
-        .sort((a, b) =>
-            Number(a.documentId ?? 0) - Number(b.documentId ?? 0)
-            || Number(a.itemId ?? 0) - Number(b.itemId ?? 0)
-            || Number(a.quantity) - Number(b.quantity)
-        );
-
-    return JSON.stringify({
-        partnerId: page.partnerId,
-        templateId: page.templateId,
-        documentDate: nullableDateInput(page.documentDate),
-        lines,
-    });
-}
-
 function assuranceStyle(level: AssuranceLevel) {
     if (level === "high") return s.assuranceHigh;
     if (level === "medium") return s.assuranceMedium;
@@ -626,6 +653,7 @@ export default function DispatchSlipScanScreen() {
     const lockedPartnerContext = !!initialPartnerId;
 
     const sessionQ = useBookingSession(sessionId);
+    const { session: authSession } = useCurrentUser();
     const parseM = useParseDispatchSlip();
     const saveM = useSaveDispatchSlipScanEntry(sessionId);
 
@@ -637,6 +665,7 @@ export default function DispatchSlipScanScreen() {
     const [partnerPickerOpen, setPartnerPickerOpen] = useState(false);
     const [pickingAction, setPickingAction] = useState<PickingAction>(null);
     const [datePickerOpen, setDatePickerOpen] = useState(false);
+    const [documentPickerOpen, setDocumentPickerOpen] = useState(false);
     const [scannerSession, setScannerSession] = useState<ScannerSession | null>(null);
     const [scannerStageSize, setScannerStageSize] = useState({ width: 0, height: 0 });
     const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 });
@@ -645,9 +674,11 @@ export default function DispatchSlipScanScreen() {
     const [uploadSourceOpen, setUploadSourceOpen] = useState(false);
     const [pendingUploadSource, setPendingUploadSource] = useState<UploadSource | null>(null);
     const [gestureRefreshing, setGestureRefreshing] = useState(false);
+    const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
     const cameraRef = useRef<any>(null);
     const imageLoadTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const gestureRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const previousDocumentIdRef = useRef<number | null>(null);
     const windowSize = useWindowDimensions();
     const draftPath = useMemo(
         () => localDraftPath(sessionId, initialPartnerId, initialTemplateId),
@@ -660,8 +691,55 @@ export default function DispatchSlipScanScreen() {
         [analysisPulse]
     );
 
+    const documentDescriptorsQ = useQuery({
+        queryKey: ["scan", "document-groups", "OTPREMNICA"],
+        queryFn: ({ signal }) => documentDirectoryService.listDocTypesByCode({ documentCode: "OTPREMNICA" }, signal),
+        staleTime: 16 * 60 * 60 * 1000,
+        gcTime: 24 * 60 * 60 * 1000,
+    });
+
+    const documentDescriptors = useMemo(
+        () => ((documentDescriptorsQ.data ?? []) as DocumentDescriptorResponseDTO[])
+            .filter((doc) => cleanNumber((doc as any)?.documentId) != null)
+            .filter(isScanSupportedDocument)
+            .sort(compareDocumentDescriptors),
+        [documentDescriptorsQ.data]
+    );
+
+    const documentGroups = useMemo(() => {
+        const map = new Map<string, { id: string; name: string; docs: DocumentDescriptorResponseDTO[] }>();
+        for (const doc of documentDescriptors) {
+            const raw = cleanNumber((doc as any)?.storageGroupId);
+            const id = raw ? String(raw) : `doc-${(doc as any)?.documentId}`;
+            const name = String((doc as any)?.storageGroupName ?? (doc as any)?.displayName ?? "Grupa otpremnice").trim();
+            const current = map.get(id) ?? { id, name, docs: [] };
+            current.docs.push(doc);
+            map.set(id, current);
+        }
+        return Array.from(map.values()).sort((a, b) =>
+            compareDocumentDescriptors(a.docs[0] ?? null, b.docs[0] ?? null)
+        );
+    }, [documentDescriptors]);
+
+    const selectedDescriptor = useMemo(
+        () => selectedDocumentId
+            ? documentDescriptors.find((doc) => cleanNumber((doc as any)?.documentId) === selectedDocumentId) ?? null
+            : null,
+        [documentDescriptors, selectedDocumentId]
+    );
+
+    const scanDocumentGroup = useMemo(
+        () => documentGroups.find((group) => documentGroupRank(group.docs[0]) === 0) ?? null,
+        [documentGroups]
+    );
+
+    const scanDocuments = useMemo(
+        () => documentDescriptors.slice().sort(compareDocumentDescriptors),
+        [documentDescriptors]
+    );
+
+    const warehouseId = cleanNumber((selectedDescriptor as any)?.warehouseId);
     const currentPage = pages[currentPageIndex] ?? null;
-    const warehouseId = cleanNumber((sessionQ.data as any)?.warehouseId);
     const analyzing = parseM.isPending;
     const busy = analyzing || saveM.isPending || !!pickingAction;
     const totalSlides = pages.length + 1;
@@ -670,16 +748,36 @@ export default function DispatchSlipScanScreen() {
         () => isoToDateLocal(currentPage?.documentDate) ?? todayLocalNoon(),
         [currentPage?.documentDate]
     );
+
+    useEffect(() => {
+        if (selectedDocumentId || !documentGroups.length) return;
+
+        const defaults = ((authSession as any)?.defaultWarehouseByStorageGroup ?? {}) as Record<string, number>;
+        const scanGroup = scanDocumentGroup ?? documentGroups[0];
+        if (scanGroup) {
+            const preferredWarehouseId = Number(defaults[scanGroup.id] ?? 0);
+            const preferredDoc = preferredWarehouseId
+                ? scanGroup.docs.find((doc) => Number((doc as any)?.warehouseId ?? 0) === preferredWarehouseId)
+                : null;
+            setSelectedDocumentId(cleanNumber(((preferredDoc ?? scanGroup.docs[0]) as any)?.documentId));
+            return;
+        }
+    }, [authSession, documentGroups, scanDocumentGroup, selectedDocumentId]);
     const onGestureRefresh = useCallback(() => {
         if (gestureRefreshTimerRef.current) {
             clearTimeout(gestureRefreshTimerRef.current);
         }
         setGestureRefreshing(true);
-        gestureRefreshTimerRef.current = setTimeout(() => {
-            gestureRefreshTimerRef.current = null;
-            setGestureRefreshing(false);
-        }, 260);
-    }, []);
+        void Promise.allSettled([
+            Promise.resolve(sessionQ.refetch?.()),
+            Promise.resolve(documentDescriptorsQ.refetch?.()),
+        ]).finally(() => {
+            gestureRefreshTimerRef.current = setTimeout(() => {
+                gestureRefreshTimerRef.current = null;
+                setGestureRefreshing(false);
+            }, 180);
+        });
+    }, [documentDescriptorsQ, sessionQ]);
 
     useEffect(() => {
         return () => {
@@ -1094,6 +1192,7 @@ export default function DispatchSlipScanScreen() {
                     partnerId: nextPartnerId as any,
                     partnerName: (next as any)?.partnerName as any,
                     templateId: nextTemplateId as any,
+                    documentId: selectedDocumentId as any,
                     documentDate: nextDate as any,
                     partnerResolved: (nextPartnerId != null) as any,
                     requiresManualPartner: (nextPartnerId == null) as any,
@@ -1102,11 +1201,16 @@ export default function DispatchSlipScanScreen() {
                 } : null,
             };
         });
-    }, [sessionId, updatePage]);
+    }, [selectedDocumentId, sessionId, updatePage]);
 
     const analyzePage = useCallback(async (pageToAnalyze: ScanPage) => {
         try {
             setScreenError(null);
+
+            if (!selectedDocumentId) {
+                setScreenError("Odaberi grupu otpremnice prije analize.");
+                return;
+            }
 
             const result = await parseM.mutateAsync({
                 sessionId,
@@ -1115,6 +1219,7 @@ export default function DispatchSlipScanScreen() {
                 mimeType: pageToAnalyze.file.mimeType,
                 partnerId: pageToAnalyze.partnerId,
                 templateId: pageToAnalyze.templateId,
+                documentId: selectedDocumentId,
                 documentDate: pageToAnalyze.documentDate || null,
                 note: pageToAnalyze.note || null,
             });
@@ -1124,7 +1229,22 @@ export default function DispatchSlipScanScreen() {
             updatePage(pageToAnalyze.id, (page) => ({ ...page, validatedKey: null, lastValidation: null }));
             setScreenError(toUserMessage(e, "Greška pri analizi otpremnice."));
         }
-    }, [applyParsed, parseM, sessionId, updatePage]);
+    }, [applyParsed, parseM, selectedDocumentId, sessionId, updatePage]);
+
+    useEffect(() => {
+        const previous = previousDocumentIdRef.current;
+        previousDocumentIdRef.current = selectedDocumentId;
+
+        if (!selectedDocumentId || previous == null || previous === selectedDocumentId || pages.length === 0) {
+            return;
+        }
+
+        void (async () => {
+            for (const page of pages) {
+                await analyzePage(page);
+            }
+        })();
+    }, [analyzePage, pages, selectedDocumentId]);
 
     const parseCurrentPage = useCallback(async () => {
         if (!currentPage) return;
@@ -1337,14 +1457,20 @@ export default function DispatchSlipScanScreen() {
     const saveAllError = useMemo(() => {
         if (!pages.length) return "Dodaj barem jednu stranicu otpremnice.";
 
+        const latestByPartner = new Map<number, { page: ScanPage; index: number }>();
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
-            const hasPositive = page.lines.some((line) => quantityValue(line) > 0);
 
             if (!page.parsed) return `Stranica ${i + 1}: pričekaj analizu.`;
             if (!page.partnerId) return `Stranica ${i + 1}: odaberi partnera.`;
-            if (!hasPositive) return `Stranica ${i + 1}: unesi barem jednu količinu.`;
-            if (!pageReadyForSave(page)) return `Stranica ${i + 1}: poveži artikle za pozitivne količine.`;
+            latestByPartner.set(page.partnerId, { page, index: i });
+        }
+
+        for (const { page, index } of latestByPartner.values()) {
+            const hasPositive = page.lines.some((line) => quantityValue(line) > 0);
+
+            if (!hasPositive) return `Stranica ${index + 1}: unesi barem jednu količinu.`;
+            if (!pageReadyForSave(page)) return `Stranica ${index + 1}: poveži artikle za pozitivne količine.`;
         }
 
         return null;
@@ -1352,47 +1478,25 @@ export default function DispatchSlipScanScreen() {
 
     const saveAll = useCallback(async () => {
         if (saveAllError) return;
+        if (!selectedDocumentId) {
+            setScreenError("Odaberi grupu otpremnice prije spremanja.");
+            return;
+        }
 
-        const seenPages = new Set<string>();
-        let duplicatePages = 0;
         const groups = new Map<number, {
             partnerId: number;
             partnerNameHint: string | null;
             templateId: number | null;
             documentDate: string;
-            notes: string[];
             lines: any[];
+            note: string;
         }>();
 
         for (const page of pages) {
             const partnerId = page.partnerId;
             if (!partnerId) continue;
 
-            const pageFingerprint = scanPageSaveFingerprint(page);
-            if (seenPages.has(pageFingerprint)) {
-                duplicatePages++;
-                continue;
-            }
-            seenPages.add(pageFingerprint);
-
-            const group = groups.get(partnerId) ?? {
-                partnerId,
-                partnerNameHint: page.partnerNameHint,
-                templateId: page.templateId,
-                documentDate: page.documentDate,
-                notes: [],
-                lines: [],
-            };
-
-            if (group.templateId !== page.templateId) {
-                group.templateId = null;
-            }
-
-            if (page.note?.trim() && !group.notes.includes(page.note.trim())) {
-                group.notes.push(page.note.trim());
-            }
-
-            group.lines.push(...page.lines
+            const lines = page.lines
                 .filter((line) => quantityValue(line) > 0)
                 .map((line) => ({
                     documentId: cleanNumber(line.documentId) as any,
@@ -1404,18 +1508,21 @@ export default function DispatchSlipScanScreen() {
                     unit: line.unit ?? undefined,
                     quantity: quantityValue(line),
                 }))
-                .filter((line) => line.itemId && line.quantity > 0));
+                .filter((line) => line.itemId && line.quantity > 0);
 
-            groups.set(partnerId, group);
+            groups.set(partnerId, {
+                partnerId,
+                partnerNameHint: page.partnerNameHint,
+                templateId: page.templateId,
+                documentDate: page.documentDate,
+                note: page.note?.trim() || "",
+                lines,
+            });
         }
 
         const nonEmptyGroups = Array.from(groups.values()).filter((group) => group.lines.length > 0);
         if (!nonEmptyGroups.length) {
-            setScreenError(
-                duplicatePages > 0
-                    ? "Sve stranice koje pokušavaš spremiti već su dodane u ovoj obradi."
-                    : "Nema stavki za spremanje."
-            );
+            setScreenError("Nema stavki za spremanje.");
             return;
         }
 
@@ -1426,9 +1533,10 @@ export default function DispatchSlipScanScreen() {
                 await saveM.mutateAsync({
                     partnerId: group.partnerId,
                     templateId: (group.templateId || null) as any,
+                    documentId: selectedDocumentId as any,
                     draftMode: "FINAL" as any,
                     documentDate: nullableDateInput(group.documentDate) as any,
-                    note: group.notes.join("\n"),
+                    note: group.note,
                     lines: group.lines as any,
                 });
                 clearEntryDraft(sessionId, group.partnerId);
@@ -1454,7 +1562,7 @@ export default function DispatchSlipScanScreen() {
         } catch (e) {
             setScreenError(toUserMessage(e, "Greška pri spremanju stranica."));
         }
-    }, [draftPath, initialPartnerId, lockedPartnerContext, pages, routePartnerNameHint, saveAllError, saveM, sessionId]);
+    }, [draftPath, initialPartnerId, lockedPartnerContext, pages, routePartnerNameHint, saveAllError, saveM, selectedDocumentId, sessionId]);
 
     const resetLocalDraft = useCallback(async () => {
         setScreenError(null);
@@ -1564,6 +1672,51 @@ export default function DispatchSlipScanScreen() {
                             </View>
                         </Pressable>
                     )}
+                />
+
+                <SearchPickerSheet<DocumentDescriptorResponseDTO>
+                    visible={documentPickerOpen}
+                    title="Odaberi dokument"
+                    onClose={() => setDocumentPickerOpen(false)}
+                    keyOf={(doc) => String((doc as any)?.documentId)}
+                    queryKeyBase={["scan-documents", "OTPREMNICA"]}
+                    queryPage={async ({ page, size, q, signal }) => {
+                        const all = await documentDirectoryService.listDocTypesByCode(
+                            { documentCode: "OTPREMNICA", q },
+                            signal
+                        );
+                        const supported = all.filter(isScanSupportedDocument).sort(compareDocumentDescriptors);
+                        const start = page * size;
+                        return {
+                            items: supported.slice(start, start + size),
+                            page,
+                            size,
+                            total: supported.length,
+                        };
+                    }}
+                    searchPlaceholder="Pretraži dokumente..."
+                    renderRow={(doc, close) => {
+                        const docId = cleanNumber((doc as any)?.documentId);
+                        return (
+                            <Pressable
+                                style={s.pickerRow}
+                                onPress={() => {
+                                    if (!docId) return;
+                                    setSelectedDocumentId(docId);
+                                    close();
+                                }}
+                            >
+                                <View style={{ flex: 1 }}>
+                                    <Text style={s.pickerTitle} numberOfLines={2}>
+                                        {documentDisplayTitle(doc, docId)}
+                                    </Text>
+                                    <Text style={s.pickerSub} numberOfLines={1}>
+                                        {documentDisplaySubtitle(doc)}
+                                    </Text>
+                                </View>
+                            </Pressable>
+                        );
+                    }}
                 />
 
                 <CenterConfirmSheet
@@ -1794,6 +1947,36 @@ export default function DispatchSlipScanScreen() {
                             }}
                         />
                     )}
+
+                    {scanDocuments.length > 0 ? (
+                        <View style={s.scanGroupCard}>
+                            <Text style={s.scanGroupTitle}>Skeniranje otpremnice</Text>
+                            <Text style={s.scanGroupSub} numberOfLines={2}>
+                                {documentDisplaySubtitle(selectedDescriptor)}
+                            </Text>
+
+                            <Pressable
+                                style={s.scanDocumentPicker}
+                                disabled={busy}
+                                onPress={() => setDocumentPickerOpen(true)}
+                            >
+                                <View style={s.scanDocumentTextBlock}>
+                                    <Text style={s.scanDocumentTitle} numberOfLines={2}>
+                                        {documentDisplayTitle(selectedDescriptor, selectedDocumentId)}
+                                    </Text>
+                                    <Text style={s.scanDocumentSub} numberOfLines={1}>
+                                        {selectedDescriptor ? "Dodirni za promjenu dokumenta" : "Odaberi dokument"}
+                                    </Text>
+                                </View>
+                                <FontAwesome name="chevron-right" size={18} color={Colors.sub} />
+                            </Pressable>
+                        </View>
+                    ) : documentDescriptorsQ.isLoading ? (
+                        <View style={s.scanGroupCard}>
+                            <ActivityIndicator />
+                            <Text style={s.scanGroupSub}>Učitavam grupe otpremnice…</Text>
+                        </View>
+                    ) : null}
 
                     <View style={s.card}>
                         <Text style={s.title}>Stranice otpremnice</Text>

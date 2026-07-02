@@ -17,8 +17,6 @@ import java.util.List;
 @ApplicationScoped
 public class StockStatisticsService {
 
-    private static final int HOME_LIMIT = 10;
-
     private final StockStatisticsRepository repo;
     private final StockItemMapper itemMapper;
     private final StockTotalsMapper totalsMapper;
@@ -35,27 +33,42 @@ public class StockStatisticsService {
         this.totalsMapper = totalsMapper;
     }
 
-    @Transactional
-    public ServiceResponseDTO<StockStatisticsResponseDTO> getStatistics(Long warehouseId) {
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
+    public ServiceResponseDTO<StockStatisticsResponseDTO> getStatistics(
+            Long warehouseId,
+            Long storageGroupId,
+            Integer documentYear,
+            String documentCode
+    ) {
         try {
-            if (warehouseId == null) {
-                return ServiceResponseDirector.errorBadRequest("warehouseId is required");
-            }
+            String code = documentCode == null || documentCode.isBlank()
+                    ? "OTPREMNICA"
+                    : documentCode.trim().toUpperCase();
 
-            StockStatisticsTotalsDTO totals = repo.loadTotals(warehouseId);
+            StockStatisticsTotalsDTO totals = repo.loadTotals(warehouseId, storageGroupId, documentYear, code);
             StockStatisticsTotalsDTO totalsDto = totalsMapper.toDto(totals);
 
             List<StockItemSummaryDTO> missing =
-                    repo.findMissing(warehouseId, HOME_LIMIT).stream().map(itemMapper::toDto).toList();
+                    repo.findMissing(warehouseId, storageGroupId, documentYear, code)
+                            .stream().map(itemMapper::toDto).toList();
 
             List<StockItemSummaryDTO> needsFill =
-                    repo.findNeedsFill(warehouseId, HOME_LIMIT).stream().map(itemMapper::toDto).toList();
+                    repo.findNeedsFill(warehouseId, storageGroupId, documentYear, code)
+                            .stream().map(itemMapper::toDto).toList();
 
             List<StockItemSummaryDTO> most =
-                    repo.findMostInStock(warehouseId, HOME_LIMIT).stream().map(itemMapper::toDto).toList();
+                    repo.findMostInStock(warehouseId, storageGroupId, documentYear, code)
+                            .stream().map(itemMapper::toDto).toList();
+
+            List<Integer> availableYears = repo.listAvailableYears(code, warehouseId, storageGroupId);
 
             StockStatisticsResponseDTO dto = StockStatisticsResponseDTO.builder()
                     .totals(totalsDto)
+                    .selectedYear(documentYear)
+                    .selectedWarehouseId(warehouseId)
+                    .selectedStorageGroupId(storageGroupId)
+                    .documentCode(code)
+                    .availableYears(availableYears)
                     .missing(missing)
                     .needsFill(needsFill)
                     .mostInStock(most)

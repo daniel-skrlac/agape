@@ -29,10 +29,27 @@ public class DocumentSlotTypeView {
     private Integer documentId;
 
     /**
+     * Warehouse/catalog id from {@code SD_SIFREG.SKLADISTE_ID}.
+     */
+    private Integer warehouseId;
+
+    /**
      * Foreign key to the document type master.
      * <p>Source: {@code SD_SIFREZ.SD_SIFREZ_ID} (linked from {@code SD_SIFREG})</p>
      */
     private Integer sdSifrezId;
+
+    /**
+     * Legacy storage/category group from {@code SD_SIFREZ.SKL_SIFREZ_ID}.
+     * In the current dump this separates Socijalna samoposluga from
+     * Donirana hrana po Pravilniku even when both rows have DOKUMENTID=OTPREMNICA.
+     */
+    private Integer storageGroupId;
+
+    /**
+     * Human-readable category from {@code SKL_SIFREZ.OPIS}.
+     */
+    private String storageGroupName;
 
     /**
      * Logical code/name of the document type.

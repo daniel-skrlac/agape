@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
@@ -22,7 +22,6 @@ export default function Index() {
     const form = useLoginForm();
     const scrollRef = useRef<ScrollView>(null);
 
-    const [checkingAuth, setCheckingAuth] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
 
     const scrollToField = useCallback((y: number) => {
@@ -35,16 +34,11 @@ export default function Index() {
         let mounted = true;
 
         (async () => {
-            try {
-                const token = await getToken();
-                if (!mounted) return;
+            const token = await getToken();
+            if (!mounted) return;
 
-                if (token) {
-                    router.replace("/(tabs)/home");
-                    return;
-                }
-            } finally {
-                if (mounted) setCheckingAuth(false);
+            if (token) {
+                router.replace("/(tabs)/home");
             }
         })();
 
@@ -57,14 +51,6 @@ export default function Index() {
         const res = await form.submit();
         if (res.ok) router.replace("/(tabs)/home");
     };
-
-    if (checkingAuth) {
-        return (
-            <View style={styles.center}>
-                <ActivityIndicator size="large" />
-            </View>
-        );
-    }
 
     return (
         <TabScroll
@@ -93,7 +79,6 @@ export default function Index() {
                                         actionText="Zatvori"
                                         onAction={form.clearError}
                                         titleLines={1}
-                                        messageLines={2}
                                     />
                                 )}
 

@@ -1,15 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutAnimation, Pressable, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, LayoutAnimation, Pressable, Text, useWindowDimensions, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
+import { LinearGradient } from "expo-linear-gradient";
 
-import Screen from "../../components/ui/Screen";
 import TabScroll from "@/components/ui/TabScroll";
 import Strings from "../../src/constants/Strings";
 
 import { useCurrentUser } from "../../src/api/hooks/common/useCurrentUser";
 import { usePullToRefresh } from "../../src/api/hooks/common/usePullToRefresh";
-import { formatQtyHR, formatTimeHR } from "../../src/utils/format";
+import { formatQtyHR, formatTimeWithSecondsHR } from "../../src/utils/format";
 
 import { styles, RIPPLE, T } from "../../src/styles/HomeScreen.styles";
 import { ErrorCard } from "@/components/ErrorCard";
@@ -17,21 +18,21 @@ import { ErrorCard } from "@/components/ErrorCard";
 import { useWarehouses } from "../../src/api/hooks/dashboard/useWarehouses";
 import { useStockStatistics } from "../../src/api/hooks/dashboard/useStockStatistics";
 
-import WarehousePickerCard from "@/components/WarehousePickerCard";
 import { toUserMessage } from "../../src/api/apiClient";
+import { documentDirectoryService } from "@/src/api/services/documentDirectoryService";
+import type { DocumentDescriptorResponseDTO } from "@/src/models/generated";
 
 type SectionKey = "missing" | "needsFill" | "most";
+type FilterKey = "year" | "type" | "warehouse";
 
-const TOP_N = 10;
-const TOP_N_HINT = `Prikazano je samo prvih ${TOP_N} stavki u ovoj kategoriji.`;
 const TOP_ERR_HINT = "Greška - pogledaj poruku iznad.";
+const CURRENT_YEAR = new Date().getFullYear();
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { height: windowHeight } = useWindowDimensions();
 
   const { session } = useCurrentUser();
-  const defaultWarehouseId = (session?.defaultWarehouseId ?? null) as number | null;
-
   const warehousesQuery = useWarehouses() as any;
   const warehouses: number[] = (warehousesQuery?.data ?? []) as number[];
   const whLoading: boolean = !!warehousesQuery?.isLoading;
@@ -44,59 +45,62 @@ export default function HomeScreen() {
   );
 
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
-  const [warehouseOpen, setWarehouseOpen] = useState(false);
-  const followsDefaultRef = useRef(true);
+  const [storageGroupId, setStorageGroupId] = useState<number | null>(null);
+  const [documentYear, setDocumentYear] = useState<number | null>(CURRENT_YEAR);
+  const [knownYears, setKnownYears] = useState<number[]>([CURRENT_YEAR]);
+  const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
   const [openAcc, setOpenAcc] = useState<Record<SectionKey, boolean>>({
     missing: false,
     needsFill: false,
     most: false,
   });
 
+  const docTypesQuery = useQuery({
+    queryKey: ["home", "dispatch-document-types"],
+    queryFn: ({ signal }) =>
+      documentDirectoryService.listDocTypesByCode({ documentCode: "OTPREMNICA" }, signal),
+    staleTime: 16 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
+
   useFocusEffect(
     useCallback(() => {
-      followsDefaultRef.current = true;
-      setWarehouseOpen(false);
       setOpenAcc({ missing: false, needsFill: false, most: false });
-      setWarehouseId(null);
+      setOpenFilter(null);
       return () => {
-        setWarehouseOpen(false);
         setOpenAcc({ missing: false, needsFill: false, most: false });
+        setOpenFilter(null);
       };
     }, [])
   );
 
-  useEffect(() => {
-    if (!followsDefaultRef.current) return;
-    setWarehouseId(null);
-  }, [defaultWarehouseId]);
-
-  useEffect(() => {
-    if (!warehouses.length) return;
-
-    if (!followsDefaultRef.current && warehouseId != null) return;
-
-    const next =
-      defaultWarehouseId != null && warehouses.includes(defaultWarehouseId)
-        ? defaultWarehouseId
-        : warehouses[0];
-
-    if (warehouseId !== next) setWarehouseId(next);
-  }, [warehouses, defaultWarehouseId, warehouseId]);
-
-  const onSelectWarehouse = useCallback((id: number) => {
-    followsDefaultRef.current = false;
+  const onSelectWarehouse = useCallback((id: number | null) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setWarehouseId(id);
-    setWarehouseOpen(false);
+    setOpenFilter(null);
     setOpenAcc({ missing: false, needsFill: false, most: false });
   }, []);
 
-  const toggleWarehouse = useCallback(() => {
+  const onSelectStorageGroup = useCallback((id: number | null) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setWarehouseOpen((p) => !p);
+    setStorageGroupId(id);
+    setOpenFilter(null);
+    setOpenAcc({ missing: false, needsFill: false, most: false });
   }, []);
 
-  const stats = useStockStatistics(warehouseId);
+  const onSelectYear = useCallback((year: number | null) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setDocumentYear(year);
+    setOpenFilter(null);
+    setOpenAcc({ missing: false, needsFill: false, most: false });
+  }, []);
+
+  const stats = useStockStatistics({
+    warehouseId,
+    storageGroupId,
+    documentYear,
+    documentCode: "OTPREMNICA",
+  });
   const { data, isLoading, isFetching, dataUpdatedAt } = stats as any;
   const statsError = (stats as any)?.error;
 
@@ -120,50 +124,103 @@ export default function HomeScreen() {
     return Strings.home.hero.subtitle;
   }, [isLoading]);
 
-  const updatedText = useMemo(() => formatTimeHR(dataUpdatedAt), [dataUpdatedAt]);
-
-  const missingItems = (data?.missing ?? []).slice(0, 10);
-  const needsFillItems = (data?.needsFill ?? []).slice(0, 10);
-  const mostItems = (data?.mostInStock ?? []).slice(0, 10);
-
-  const selectedWarehouseLabel = useMemo(() => {
-    if (warehousesEmpty) return Strings.home.warehouse.empty;
-    if (warehouseId == null) return Strings.home.warehouse.none;
-    return Strings.home.warehouse.item(warehouseId);
-  }, [warehousesEmpty, warehouseId]);
-
-  const { refreshing, onRefresh } = usePullToRefresh([
+  const { refreshing, onRefresh, lastRefreshedAt } = usePullToRefresh([
     async () => {
-      followsDefaultRef.current = true;
-      setWarehouseId(null);
-      setWarehouseOpen(false);
       setOpenAcc({ missing: false, needsFill: false, most: false });
+      setOpenFilter(null);
 
-      await Promise.resolve(refetchWarehouses?.());
-      await stats.refetch?.();
+      await Promise.all([
+        Promise.resolve(refetchWarehouses?.()),
+        Promise.resolve(docTypesQuery.refetch?.()),
+        Promise.resolve(stats.refetch?.()),
+      ]);
     },
   ]);
+
+  const visibleUpdatedAt = Math.max(Number(dataUpdatedAt ?? 0), Number(lastRefreshedAt ?? 0));
+  const updatedText = useMemo(() => formatTimeWithSecondsHR(visibleUpdatedAt), [visibleUpdatedAt]);
+
+  const missingItems = data?.missing ?? [];
+  const needsFillItems = data?.needsFill ?? [];
+  const mostItems = data?.mostInStock ?? [];
+
+  const categories = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const doc of ((docTypesQuery.data ?? []) as DocumentDescriptorResponseDTO[])) {
+      const id = Number((doc as any)?.storageGroupId);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const name = String((doc as any)?.storageGroupName ?? "").trim() || `Grupa dokumenta ${id}`;
+      map.set(id, name);
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [docTypesQuery.data]);
+
+  useEffect(() => {
+    const incoming = (((data as any)?.availableYears ?? []) as any[])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 1990);
+
+    setKnownYears((prev) => {
+      const next = Array.from(new Set([CURRENT_YEAR, ...prev, ...incoming])).sort((a, b) => b - a);
+      if (next.length === prev.length && next.every((value, index) => value === prev[index])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [data]);
+
+  const yearOptions = useMemo(() => {
+    const set = new Set<number>();
+    set.add(CURRENT_YEAR);
+    for (const y of knownYears) {
+      if (Number.isFinite(y) && y > 1990) set.add(y);
+    }
+    return Array.from(set).sort((a, b) => b - a);
+  }, [knownYears]);
+
+  const selectedCategoryLabel = useMemo(() => {
+    if (storageGroupId == null) return "Sve grupe";
+    return categories.find((cat) => cat.id === storageGroupId)?.name ?? `Grupa dokumenta ${storageGroupId}`;
+  }, [categories, storageGroupId]);
+
+  const selectedWarehouseLabel = warehouseId == null ? "Sva skladišta" : `Skladište #${warehouseId}`;
+  const selectedYearLabel = documentYear == null ? "Sve godine" : String(documentYear);
 
   const statsRefreshingInline = isFetching && !refreshing;
 
   const whErrorMessage = useMemo(() => (whError ? toUserMessage(whError) : null), [whError]);
 
+  const docTypesErrorMessage = useMemo(
+    () => (docTypesQuery.error ? toUserMessage(docTypesQuery.error) : null),
+    [docTypesQuery.error]
+  );
+
   const statsErrorMessage = useMemo(() => {
     if (!statsError) return null;
-    if (warehouseId == null) return null;
     return toUserMessage(statsError);
-  }, [statsError, warehouseId]);
+  }, [statsError]);
 
-  const topError = useMemo(() => whErrorMessage || statsErrorMessage, [whErrorMessage, statsErrorMessage]);
-  const topErrorTitle = whErrorMessage ? "Ne mogu učitati skladišta" : "Ne mogu učitati statistiku";
+  const topError = useMemo(
+    () => whErrorMessage || docTypesErrorMessage || statsErrorMessage,
+    [whErrorMessage, docTypesErrorMessage, statsErrorMessage]
+  );
+  const topErrorTitle = whErrorMessage
+    ? "Ne mogu učitati skladišta"
+    : docTypesErrorMessage
+      ? "Ne mogu učitati vrste"
+      : "Ne mogu učitati statistiku";
+  const expandTopItems =
+    windowHeight >= 850 && !warehousesEmpty && openFilter == null && !openAcc.missing && !openAcc.needsFill && !openAcc.most;
 
   const onTopErrorAction = useCallback(() => {
     if (whErrorMessage) return refetchWarehouses?.();
+    if (docTypesErrorMessage) return docTypesQuery.refetch?.();
     return stats.refetch?.();
-  }, [whErrorMessage, refetchWarehouses, stats]);
+  }, [whErrorMessage, docTypesErrorMessage, refetchWarehouses, docTypesQuery, stats]);
 
   return (
     <TabScroll
+      style={styles.scroll}
       refreshing={refreshing}
       onRefresh={onRefresh}
       contentContainerStyle={styles.content}
@@ -171,7 +228,7 @@ export default function HomeScreen() {
       alwaysBounceVertical
       bounces
     >
-      <Screen>
+      <View style={styles.screenInner}>
         <View style={styles.sectionGap}>
           <HeroCard
             routerPushProfile={() => router.push("/profile")}
@@ -179,6 +236,7 @@ export default function HomeScreen() {
             headerSubtitle={headerSubtitle}
             totalsQty={formatQtyHR(totals?.totalStockQty)}
             updatedText={updatedText}
+            expanded={expandTopItems}
           />
         </View>
 
@@ -196,24 +254,107 @@ export default function HomeScreen() {
         ) : null}
 
         <View style={styles.sectionGap}>
-          <WarehousePickerCard
-            labelText={Strings.home.warehouse.label}
-            changeHintText={Strings.home.warehouse.changeHint}
-            loadingText={Strings.home.warehouse.loading}
-            emptyText={Strings.home.warehouse.empty}
-            open={warehouseOpen}
-            onToggle={toggleWarehouse}
-            warehouses={warehouses}
-            loading={whLoading}
-            error={null}
-            onRetry={() => refetchWarehouses?.()}
-            selectedId={warehouseId}
-            selectedLabel={whLoading ? Strings.home.warehouse.loading : selectedWarehouseLabel}
-            onSelect={onSelectWarehouse}
-            itemLabel={(id) => Strings.home.warehouse.item(id)}
-            inlineLoading={statsRefreshingInline}
-            style={styles.surface}
-          />
+          <LinearGradient
+            colors={["rgba(255,255,255,0.98)", "rgba(255,247,237,0.92)", "rgba(255,255,255,0.96)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.filterBar, expandTopItems && styles.filterBarExpanded]}
+          >
+            <View style={[styles.filterTopLine, expandTopItems && styles.filterTopLineExpanded]}>
+              <View style={styles.filterTitleRow}>
+                <View style={styles.filterMiniIcon}>
+                  <FontAwesome name="sliders" size={13} color={T.text} />
+                </View>
+                <Text style={styles.filterTitle}>Pregled zaliha</Text>
+              </View>
+              {statsRefreshingInline ? <ActivityIndicator size="small" color={T.warmAccent} /> : null}
+            </View>
+
+            <View style={[styles.filterSelectRow, expandTopItems && styles.filterSelectRowExpanded]}>
+              <FilterSelect
+                label="Godina"
+                value={selectedYearLabel}
+                icon="calendar"
+                open={openFilter === "year"}
+                expanded={expandTopItems}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setOpenFilter((value) => (value === "year" ? null : "year"));
+                }}
+              />
+              <FilterSelect
+                label="Grupa"
+                value={selectedCategoryLabel}
+                icon="tag"
+                open={openFilter === "type"}
+                expanded={expandTopItems}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setOpenFilter((value) => (value === "type" ? null : "type"));
+                }}
+              />
+              <FilterSelect
+                label="Skladište"
+                value={selectedWarehouseLabel}
+                icon="archive"
+                open={openFilter === "warehouse"}
+                expanded={expandTopItems}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setOpenFilter((value) => (value === "warehouse" ? null : "warehouse"));
+                }}
+              />
+            </View>
+
+            <View style={styles.filterSummary}>
+              <Text style={styles.filterSummaryLabel}>Odabrani filter</Text>
+              <Text style={styles.filterSummaryText}>
+                Grupa: {selectedCategoryLabel} • Godina: {selectedYearLabel} • {selectedWarehouseLabel}
+              </Text>
+            </View>
+
+            {openFilter === "year" ? (
+              <FilterDropdown>
+                <DropdownOption label="Sve godine" active={documentYear == null} onPress={() => onSelectYear(null)} />
+                {yearOptions.map((year) => (
+                  <DropdownOption
+                    key={year}
+                    label={String(year)}
+                    active={documentYear === year}
+                    onPress={() => onSelectYear(year)}
+                  />
+                ))}
+              </FilterDropdown>
+            ) : null}
+
+            {openFilter === "type" ? (
+              <FilterDropdown>
+                <DropdownOption label="Sve vrste" active={storageGroupId == null} onPress={() => onSelectStorageGroup(null)} />
+                {categories.map((cat) => (
+                  <DropdownOption
+                    key={cat.id}
+                    label={cat.name}
+                    active={storageGroupId === cat.id}
+                    onPress={() => onSelectStorageGroup(cat.id)}
+                  />
+                ))}
+              </FilterDropdown>
+            ) : null}
+
+            {openFilter === "warehouse" ? (
+              <FilterDropdown>
+                <DropdownOption label="Sva skladišta" active={warehouseId == null} onPress={() => onSelectWarehouse(null)} />
+                {warehouses.map((id) => (
+                  <DropdownOption
+                    key={id}
+                    label={`Skladište #${id}`}
+                    active={warehouseId === id}
+                    onPress={() => onSelectWarehouse(id)}
+                  />
+                ))}
+              </FilterDropdown>
+            ) : null}
+          </LinearGradient>
         </View>
 
         {warehousesEmpty ? (
@@ -225,32 +366,29 @@ export default function HomeScreen() {
         {!warehousesEmpty ? (
           <>
             <View style={styles.sectionGap}>
-              <View style={styles.metricsGrid}>
-                <MetricTile
-                  icon="cubes"
-                  title={Strings.home.metrics.totalItems}
-                  value={formatQtyHR(totals?.totalItems)}
-                  tone="neutral"
-                />
-                <MetricTile
-                  icon="exclamation-circle"
-                  title={Strings.home.metrics.missing}
-                  value={formatQtyHR(totals?.missingCount)}
-                  tone="warm"
-                />
-                <MetricTile
-                  icon="arrow-up"
-                  title={Strings.home.metrics.needsFill}
-                  value={formatQtyHR(totals?.needsFillCount)}
-                  tone="warm"
-                />
-                <MetricTile
-                  icon="bookmark"
-                  title={Strings.home.metrics.reserved}
-                  value={formatQtyHR(totals?.reservedCount)}
-                  tone="cool"
-                />
-              </View>
+              <StatusRail
+                items={[
+                  {
+                    icon: "cubes",
+                    label: Strings.home.metrics.totalItems,
+                    value: formatQtyHR(totals?.totalItems),
+                    tone: "neutral",
+                  },
+                  {
+                    icon: "exclamation-circle",
+                    label: Strings.home.metrics.missing,
+                    value: formatQtyHR(totals?.missingCount),
+                    tone: "warm",
+                  },
+                  {
+                    icon: "arrow-up",
+                    label: Strings.home.metrics.needsFill,
+                    value: formatQtyHR(totals?.needsFillCount),
+                    tone: "warm",
+                  },
+                ]}
+                expanded={expandTopItems}
+              />
             </View>
 
             <View style={styles.sectionGapStack}>
@@ -259,12 +397,10 @@ export default function HomeScreen() {
                 tone="warm"
                 title={Strings.home.sections.missingTitle}
                 subtitle={Strings.home.sections.missingSub}
-                count={data?.missing?.length ?? 0}
+                count={totals?.missingCount ?? 0}
                 open={openAcc.missing}
                 onPress={() => toggleAcc("missing")}
               >
-                <Text style={styles.accHintText}>{TOP_N_HINT}</Text>
-
                 {isLoading ? (
                   <EmptyLine text={Strings.home.empty.loading} />
                 ) : topError ? (
@@ -293,11 +429,10 @@ export default function HomeScreen() {
                 tone="warm"
                 title={Strings.home.sections.needsFillTitle}
                 subtitle={Strings.home.sections.needsFillSub}
-                count={data?.needsFill?.length ?? 0}
+                count={totals?.needsFillCount ?? 0}
                 open={openAcc.needsFill}
                 onPress={() => toggleAcc("needsFill")}
               >
-                <Text style={styles.accHintText}>{TOP_N_HINT}</Text>
                 {isLoading ? (
                   <EmptyLine text={Strings.home.empty.loading} />
                 ) : topError ? (
@@ -330,7 +465,6 @@ export default function HomeScreen() {
                 open={openAcc.most}
                 onPress={() => toggleAcc("most")}
               >
-                <Text style={styles.accHintText}>{TOP_N_HINT}</Text>
                 {isLoading ? (
                   <EmptyLine text={Strings.home.empty.loading} />
                 ) : topError ? (
@@ -357,8 +491,7 @@ export default function HomeScreen() {
           </>
         ) : null}
 
-        <View style={styles.bottomSpacer} />
-      </Screen>
+      </View>
     </TabScroll>
   );
 }
@@ -373,48 +506,55 @@ function HeroCard(props: {
   headerSubtitle: string;
   totalsQty: string;
   updatedText: string;
+  expanded?: boolean;
 }) {
   return (
     <View style={styles.heroWrap}>
-      <View style={styles.heroBgCard}>
-        <View style={styles.heroTopRow}>
+      <LinearGradient
+        colors={["#FFF1E7", "#FFFFFF", "#EEF4FF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.heroBgCard, props.expanded && styles.heroBgCardExpanded]}
+      >
+        <View pointerEvents="none" style={styles.heroAccentRail} />
+        <View style={[styles.heroTopRow, props.expanded && styles.heroTopRowExpanded]}>
           <View style={styles.heroAccentDot} />
           <Text style={styles.heroBadge}>{Strings.home.hero.eyebrow}</Text>
         </View>
 
         <View style={styles.heroRow}>
           <View style={styles.flex1}>
-            <Text style={styles.heroTitle} numberOfLines={1}>
+            <Text style={[styles.heroTitle, props.expanded && styles.heroTitleExpanded]} numberOfLines={1}>
               {Strings.home.hero.title(props.displayName)}
             </Text>
-            <Text style={styles.heroSubtitle}>{props.headerSubtitle}</Text>
+            <Text style={[styles.heroSubtitle, props.expanded && styles.heroSubtitleExpanded]}>{props.headerSubtitle}</Text>
           </View>
 
-          <Pressable onPress={props.routerPushProfile} style={styles.avatar}>
-            <FontAwesome name="user" size={18} color={T.text} />
+          <Pressable onPress={props.routerPushProfile} style={[styles.avatar, props.expanded && styles.avatarExpanded]}>
+            <FontAwesome name="user" size={props.expanded ? 20 : 18} color={T.text} />
           </Pressable>
         </View>
 
-        <View style={styles.kpiRow}>
-          <KpiChip icon="archive" label={Strings.home.meta.totalQty} value={props.totalsQty} />
-          <KpiChip icon="clock-o" label={Strings.home.meta.updatedAt} value={props.updatedText} />
+        <View style={[styles.kpiRow, props.expanded && styles.kpiRowExpanded]}>
+          <KpiChip icon="archive" label={Strings.home.meta.totalQty} value={props.totalsQty} expanded={props.expanded} />
+          <KpiChip icon="clock-o" label={Strings.home.meta.updatedAt} value={props.updatedText} expanded={props.expanded} />
         </View>
-      </View>
+      </LinearGradient>
     </View>
   );
 }
 
-function KpiChip(props: { icon: React.ComponentProps<typeof FontAwesome>["name"]; label: string; value: string }) {
+function KpiChip(props: { icon: React.ComponentProps<typeof FontAwesome>["name"]; label: string; value: string; expanded?: boolean }) {
   return (
-    <View style={styles.kpiChip}>
-      <View style={styles.kpiChipIcon}>
-        <FontAwesome name={props.icon} size={14} color={T.text} />
+    <View style={[styles.kpiChip, props.expanded && styles.kpiChipExpanded]}>
+      <View style={[styles.kpiChipIcon, props.expanded && styles.kpiChipIconExpanded]}>
+        <FontAwesome name={props.icon} size={props.expanded ? 15 : 14} color={T.text} />
       </View>
       <View style={styles.flex1}>
-        <Text style={styles.kpiChipLabel} numberOfLines={1}>
+        <Text style={[styles.kpiChipLabel, props.expanded && styles.kpiChipLabelExpanded]} numberOfLines={1}>
           {props.label}
         </Text>
-        <Text style={styles.kpiChipValue} numberOfLines={1}>
+        <Text style={[styles.kpiChipValue, props.expanded && styles.kpiChipValueExpanded]} numberOfLines={1}>
           {props.value}
         </Text>
       </View>
@@ -422,35 +562,39 @@ function KpiChip(props: { icon: React.ComponentProps<typeof FontAwesome>["name"]
   );
 }
 
-function MetricTile(props: {
-  icon: React.ComponentProps<typeof FontAwesome>["name"];
-  title: string;
-  value: string;
-  tone: "neutral" | "warm" | "cool";
-  fullWidth?: boolean;
+function StatusRail(props: {
+  items: Array<{
+    icon: React.ComponentProps<typeof FontAwesome>["name"];
+    label: string;
+    value: string;
+    tone: "neutral" | "warm" | "cool";
+  }>;
+  expanded?: boolean;
 }) {
-  const bg = props.tone === "warm" ? styles.metricWarm : props.tone === "cool" ? styles.metricCool : styles.metricNeutral;
-  const iconBg =
-    props.tone === "warm" ? styles.metricIconWarm : props.tone === "cool" ? styles.metricIconCool : styles.metricIconNeut;
-  const border =
-    props.tone === "warm"
-      ? styles.metricBorderWarm
-      : props.tone === "cool"
-        ? styles.metricBorderCool
-        : styles.metricBorderNeutral;
-
   return (
-    <View style={[styles.metricTile, bg, border, props.fullWidth && styles.fullWidthCard]}>
-      <View style={[styles.metricIcon, iconBg]}>
-        <FontAwesome name={props.icon} size={16} color={T.text} />
-      </View>
-      <Text style={styles.metricTitle} numberOfLines={1}>
-        {props.title}
-      </Text>
-      <Text style={styles.metricValue} numberOfLines={1}>
-        {props.value}
-      </Text>
-    </View>
+    <LinearGradient
+      colors={["rgba(255,255,255,0.98)", "rgba(248,250,252,0.94)", "rgba(255,247,237,0.80)"]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.statusRail, props.expanded && styles.statusRailExpanded]}
+    >
+      {props.items.map((item, index) => {
+        const toneStyle =
+          item.tone === "warm" ? styles.statusIconWarm : item.tone === "cool" ? styles.statusIconCool : styles.statusIconNeutral;
+        return (
+          <View key={`${item.label}-${index}`} style={[styles.statusItem, props.expanded && styles.statusItemExpanded]}>
+            <View style={[styles.statusIcon, toneStyle, props.expanded && styles.statusIconExpanded]}>
+              <FontAwesome name={item.icon} size={props.expanded ? 15 : 13} color={T.text} />
+            </View>
+            <View style={styles.flex1}>
+              <Text style={[styles.statusValue, props.expanded && styles.statusValueExpanded]} numberOfLines={1}>{item.value}</Text>
+              <Text style={[styles.statusLabel, props.expanded && styles.statusLabelExpanded]} numberOfLines={1}>{item.label}</Text>
+            </View>
+            {index < props.items.length - 1 ? <View style={styles.statusDivider} /> : null}
+          </View>
+        );
+      })}
+    </LinearGradient>
   );
 }
 
@@ -465,34 +609,45 @@ function Accordion(props: {
   children: React.ReactNode;
 }) {
   const iconTone = props.tone === "warm" ? styles.accIconWarm : styles.accIconCool;
+  const headerColors =
+    props.tone === "warm"
+      ? (["rgba(255,255,255,0.98)", "rgba(255,247,237,0.88)"] as const)
+      : (["rgba(255,255,255,0.98)", "rgba(239,246,255,0.88)"] as const);
 
   return (
     <Surface style={styles.accSurface}>
-      <Pressable
-        onPress={props.onPress}
-        android_ripple={{ color: RIPPLE }}
-        style={({ pressed }) => [styles.accHeader, pressed && styles.pressed]}
+      <LinearGradient
+        colors={headerColors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.accHeaderGradient}
       >
-        <View style={[styles.accIcon, iconTone]}>
-          <FontAwesome name={props.icon} size={16} color={T.text} />
-        </View>
-
-        <View style={styles.flex1}>
-          <Text style={styles.accTitle} numberOfLines={1}>
-            {props.title}
-          </Text>
-          <Text style={styles.accSub} numberOfLines={1}>
-            {props.subtitle}
-          </Text>
-        </View>
-
-        <View style={styles.accRight}>
-          <View style={styles.countPill}>
-            <Text style={styles.countPillText}>{formatQtyHR(props.count)}</Text>
+        <Pressable
+          onPress={props.onPress}
+          android_ripple={{ color: RIPPLE }}
+          style={({ pressed }) => [styles.accHeader, pressed && styles.pressed]}
+        >
+          <View style={[styles.accIcon, iconTone]}>
+            <FontAwesome name={props.icon} size={16} color={T.text} />
           </View>
-          <FontAwesome name={props.open ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
-        </View>
-      </Pressable>
+
+          <View style={styles.flex1}>
+            <Text style={styles.accTitle} numberOfLines={1}>
+              {props.title}
+            </Text>
+            <Text style={styles.accSub} numberOfLines={1}>
+              {props.subtitle}
+            </Text>
+          </View>
+
+          <View style={styles.accRight}>
+            <View style={styles.countPill}>
+              <Text style={styles.countPillText}>{formatQtyHR(props.count)}</Text>
+            </View>
+            <FontAwesome name={props.open ? "chevron-up" : "chevron-down"} size={16} color={T.muted} />
+          </View>
+        </Pressable>
+      </LinearGradient>
 
       <View style={[styles.accDivider, { height: 1 }]} />
 
@@ -536,6 +691,70 @@ function StockRow(props: {
           {props.rightBottom}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function FilterSelect(props: {
+  label: string;
+  icon: React.ComponentProps<typeof FontAwesome>["name"];
+  value: string;
+  open: boolean;
+  expanded?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={props.onPress}
+      style={({ pressed }) => [
+        styles.filterSelect,
+        props.open && styles.filterSelectOpen,
+        props.expanded && styles.filterSelectExpanded,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={[styles.filterSelectIcon, props.open && styles.filterSelectIconOpen]}>
+        <FontAwesome name={props.icon} size={13} color={T.text} />
+      </View>
+      <View style={styles.flex1}>
+        <Text style={[styles.filterSelectLabel, props.open && styles.filterSelectLabelOpen, props.expanded && styles.filterSelectLabelExpanded]} numberOfLines={1}>
+          {props.label}
+        </Text>
+        <Text style={[styles.filterSelectValue, props.expanded && styles.filterSelectValueExpanded]} numberOfLines={1}>
+          {props.value}
+        </Text>
+      </View>
+      <FontAwesome name={props.open ? "chevron-up" : "chevron-down"} size={12} color={T.muted} />
+    </Pressable>
+  );
+}
+
+function FilterDropdown({ children }: { children: React.ReactNode }) {
+  return <View style={styles.filterDropdown}>{children}</View>;
+}
+
+function DropdownOption(props: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <View style={styles.dropdownOptionWrap}>
+      <Pressable
+        onPress={props.onPress}
+        style={({ pressed }) => [
+          styles.dropdownOption,
+          props.active && styles.dropdownOptionActive,
+          pressed && styles.dropdownOptionPressed,
+        ]}
+      >
+        <Text style={[styles.dropdownOptionText, props.active && styles.dropdownOptionTextActive]} numberOfLines={2}>
+          {props.label}
+        </Text>
+        {props.active ? (
+          <View style={styles.dropdownCheckPill}>
+            <FontAwesome name="check" size={12} color={T.text} />
+          </View>
+        ) : (
+          <View style={styles.dropdownCheckGhost} />
+        )}
+      </Pressable>
     </View>
   );
 }

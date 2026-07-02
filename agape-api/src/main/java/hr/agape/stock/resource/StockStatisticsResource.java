@@ -29,8 +29,13 @@ public class StockStatisticsResource {
     }
 
     @GET
-    public Response getStatistics(@QueryParam("warehouseId") Long warehouseId) {
-        return Responses.from(service.getStatistics(warehouseId));
+    public Response getStatistics(
+            @QueryParam("warehouseId") Long warehouseId,
+            @QueryParam("storageGroupId") Long storageGroupId,
+            @QueryParam("documentYear") Integer documentYear,
+            @QueryParam("documentCode") String documentCode
+    ) {
+        return Responses.from(service.getStatistics(warehouseId, storageGroupId, documentYear, documentCode));
     }
 
 }

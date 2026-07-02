@@ -31,10 +31,10 @@ public class DispatchRequestValidationDTO {
     private Long warehouseId;
 
     /**
-     * Derived server-side: SD_GLAVA.DOKUMENT_ID.
-     * DO NOT send from client.
+     * Optional explicit legacy document slot (SD_GLAVA.DOKUMENT_ID).
+     * When provided, validation uses this exact warehouse/document mapping.
+     * When omitted, validation falls back to the warehouse default OTPREMNICA mapping.
      */
-    @JsonIgnore
     private Long documentId;
 
     /**

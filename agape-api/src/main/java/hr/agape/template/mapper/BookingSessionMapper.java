@@ -21,6 +21,7 @@ public abstract class BookingSessionMapper {
 
     @Mapping(target = "docPatches", expression = "java(parseJson(entry.getDocPatchesJson()))")
     @Mapping(target = "extraItems", expression = "java(parseJson(entry.getExtraItemsJson()))")
+    @Mapping(target = "extraDocs", expression = "java(parseJson(entry.getExtraDocsJson()))")
     @Mapping(target = "partnerName", ignore = true)
     public abstract BookingSessionEntryResponseDTO toDto(DispatchBookingSessionEntryEntity entry);
 

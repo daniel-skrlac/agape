@@ -123,6 +123,7 @@ public class PartnerService {
         }
     }
 
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public Map<Long, PartnerResponseDTO> findPartnersByIds(List<Long> partnerIds) {
         try {
             if (partnerIds == null || partnerIds.isEmpty()) {
@@ -152,6 +153,7 @@ public class PartnerService {
         }
     }
 
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
     public PartnerResponseDTO findByPartnerNumber(Integer partnerNumber) {
         try {
             PartnerEntity partner = repo.findByPartnerNumber(requireLegacyTenantId(), partnerNumber);

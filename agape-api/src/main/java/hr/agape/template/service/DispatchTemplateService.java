@@ -235,6 +235,7 @@ public class DispatchTemplateService {
                     req.getNote(),          // ✅ NEW
                     req.getDocPatches(),
                     req.getExtraItems(),
+                    req.getExtraDocs(),
                     t
             );
 
@@ -269,6 +270,7 @@ public class DispatchTemplateService {
                         req.getNote(),
                         req.getDocPatches(),
                         req.getExtraItems(),
+                        req.getExtraDocs(),
                         t
                 ));
             }

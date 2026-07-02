@@ -14,7 +14,6 @@ public class TemplateBookOneRequestDTO {
     @NotNull
     private Long templateId;
 
-    @NotNull
     private Long warehouseId;
 
     @NotNull
@@ -32,5 +31,6 @@ public class TemplateBookOneRequestDTO {
     private List<TemplateBookDocPatchDTO> docPatches;
 
     private List<TemplateBookItemDTO> extraItems;
-}
 
+    private List<TemplateBookExtraDocDTO> extraDocs;
+}
