@@ -143,6 +143,8 @@ public class DispatchBookingValidateService {
                 if (state == null) {
                     results.add(DispatchBulkValidationRowDTO.builder()
                             .partnerId(item.partnerId())
+                            .warehouseId(item.request().getWarehouseId())
+                            .documentId(item.request().getDocumentId())
                             .data(null)
                             .error("Warehouse state not initialized.")
                             .build());
@@ -152,6 +154,9 @@ public class DispatchBookingValidateService {
                 if (state.initError() != null) {
                     results.add(DispatchBulkValidationRowDTO.builder()
                             .partnerId(item.partnerId())
+                            .warehouseId(state.warehouseId())
+                            .documentId(state.documentId())
+                            .documentCode(state.slot() == null ? null : state.slot().getDocumentCode())
                             .data(null)
                             .error(state.initError())
                             .build());
@@ -168,12 +173,18 @@ public class DispatchBookingValidateService {
 
                     results.add(DispatchBulkValidationRowDTO.builder()
                             .partnerId(item.partnerId())
+                            .warehouseId(data.getWarehouseId())
+                            .documentId(data.getDocumentId())
+                            .documentCode(data.getDocumentCode())
                             .data(data)
                             .error(null)
                             .build());
                 } catch (Exception ex) {
                     results.add(DispatchBulkValidationRowDTO.builder()
                             .partnerId(item.partnerId())
+                            .warehouseId(item.request().getWarehouseId())
+                            .documentId(item.request().getDocumentId())
+                            .documentCode(state.slot() == null ? null : state.slot().getDocumentCode())
                             .data(null)
                             .error("Validate failed.")
                             .build());

@@ -43,6 +43,7 @@ type Props<T> = {
   closeOnBackdropPress?: boolean;
   staleTime?: number;
   gcTime?: number;
+  renderFooter?: (close: () => void) => React.ReactNode;
 };
 
 export function SearchPickerSheet<T>(props: Props<T>) {
@@ -59,6 +60,7 @@ export function SearchPickerSheet<T>(props: Props<T>) {
     closeOnBackdropPress = false,
     staleTime = 15 * 60 * 1000,
     gcTime = 24 * 60 * 60 * 1000,
+    renderFooter,
   } = props;
 
   const [q, setQ] = useState("");
@@ -198,6 +200,12 @@ export function SearchPickerSheet<T>(props: Props<T>) {
               }
             />
           )}
+
+          {!!renderFooter ? (
+            <View style={s.footer}>
+              {renderFooter(close)}
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -253,4 +261,10 @@ const s = StyleSheet.create({
   center: { padding: 20, alignItems: "center", gap: 10 },
   muted: { color: Colors.sub, fontWeight: "800" },
   empty: { textAlign: "center", color: Colors.sub, fontWeight: "800", paddingVertical: 18 },
+  footer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+    padding: 14,
+    backgroundColor: Colors.bg,
+  },
 });

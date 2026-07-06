@@ -1,22 +1,30 @@
 import { useEffect, useState } from "react";
-import { getSession, subscribeSession, type AuthSession } from "../../sessionStore";
+import {
+    getCachedSession,
+    getSession,
+    isSessionHydrated,
+    subscribeSession,
+    type AuthSession,
+} from "../../sessionStore";
 
 export function useCurrentUser() {
-    const [session, setSession] = useState<AuthSession | null>(null);
-    const [ready, setReady] = useState(false);
+    const [session, setSession] = useState<AuthSession | null>(() => getCachedSession());
+    const [ready, setReady] = useState(() => isSessionHydrated());
 
     useEffect(() => {
         let mounted = true;
 
-        (async () => {
-            try {
-                const s = await getSession();
-                if (!mounted) return;
-                setSession(s);
-            } finally {
-                if (mounted) setReady(true);
-            }
-        })();
+        if (!isSessionHydrated()) {
+            (async () => {
+                try {
+                    const s = await getSession();
+                    if (!mounted) return;
+                    setSession(s);
+                } finally {
+                    if (mounted) setReady(true);
+                }
+            })();
+        }
 
         const unsub = subscribeSession((s) => setSession(s));
 

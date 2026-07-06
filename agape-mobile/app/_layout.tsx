@@ -5,13 +5,15 @@ import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as SplashScreen from "expo-splash-screen";
 import { Asset } from "expo-asset";
+import { DancingScript_700Bold, useFonts } from "@expo-google-fonts/dancing-script";
 
 import { queryClient } from "../src/query/queryClient";
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
-  const [ready, setReady] = useState(false);
+  const [assetsReady, setAssetsReady] = useState(false);
+  const [fontsLoaded, fontError] = useFonts({ DancingScript_700Bold });
 
   useEffect(() => {
     let mounted = true;
@@ -23,8 +25,7 @@ export default function RootLayout() {
         ]);
       } finally {
         if (mounted) {
-          setReady(true);
-          await SplashScreen.hideAsync();
+          setAssetsReady(true);
         }
       }
     })();
@@ -33,6 +34,13 @@ export default function RootLayout() {
       mounted = false;
     };
   }, []);
+
+  const ready = assetsReady && (fontsLoaded || !!fontError);
+
+  useEffect(() => {
+    if (!ready) return;
+    SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
 
   if (!ready) return null;
 
@@ -51,5 +59,5 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, position: "relative" },
+  root: { flex: 1, position: "relative", backgroundColor: "#FFFFFF" },
 });

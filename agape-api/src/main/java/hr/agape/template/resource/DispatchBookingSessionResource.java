@@ -122,6 +122,12 @@ public class DispatchBookingSessionResource {
     }
 
     @POST
+    @Path("/{id}/validate-finalization")
+    public Response validateFinalization(@PathParam("id") Long sessionId) {
+        return Responses.from(service.validateSessionFinalization(sessionId));
+    }
+
+    @POST
     @Path("/{id}/finalize")
     public Response finalize(@PathParam("id") Long sessionId) {
         return Responses.from(service.finalizeSession(sessionId));

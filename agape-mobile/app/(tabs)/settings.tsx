@@ -64,6 +64,11 @@ export default function SettingsScreen() {
     }
   }, [allDocumentTypesQ, form]);
 
+  const refreshDocumentsQuietly = useCallback(async () => {
+    form.clearStatus();
+    await Promise.resolve(allDocumentTypesQ.refetch());
+  }, [allDocumentTypesQ, form]);
+
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -76,7 +81,7 @@ export default function SettingsScreen() {
 
   const { refreshing, onRefresh } = usePullToRefresh([
     async () => {
-      await retryDocuments();
+      await refreshDocumentsQuietly();
       form.resetToSaved(savedByStorageGroup);
     },
   ]);
@@ -95,6 +100,7 @@ export default function SettingsScreen() {
   const visibleTopError = useMemo(() => (hideTopError ? null : topError), [hideTopError, topError]);
 
   const topErrorActionText = useMemo(() => (documentErrorMessage ? "Pokušaj ponovno" : "Zatvori"), [documentErrorMessage]);
+  const initialDocumentsLoading = allDocumentTypesQ.isLoading && documentGroups.length === 0 && !documentErrorMessage;
 
   const onTopErrorAction = useCallback(() => {
     if (documentErrorMessage) {
@@ -143,7 +149,13 @@ export default function SettingsScreen() {
             </View>
           ) : null}
 
-          {documentGroups.length > 0 ? (
+          {initialDocumentsLoading ? (
+            <View style={S.initialLoadingBlock}>
+              <ActivityIndicator color="#F97316" />
+              <Text style={S.initialLoadingTitle}>Učitavam postavke otpremnica...</Text>
+              <Text style={S.initialLoadingText}>Pripremam zadana skladišta i dokumente.</Text>
+            </View>
+          ) : documentGroups.length > 0 ? (
             <View style={S.groupDefaultsBlock}>
               <Text style={S.groupDefaultsTitle}>Zadana skladišta</Text>
               <Text style={S.groupDefaultsText}>

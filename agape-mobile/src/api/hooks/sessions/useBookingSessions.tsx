@@ -175,3 +175,9 @@ export function useFinalizeBookingSession(sessionId: number) {
     },
   });
 }
+
+export function useValidateBookingSessionFinalization(sessionId: number) {
+  return useMutation({
+    mutationFn: () => dispatchBookingSessionService.validateFinalization(sessionId),
+  });
+}

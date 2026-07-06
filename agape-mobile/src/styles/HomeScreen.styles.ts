@@ -51,6 +51,30 @@ export const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
+  retryCard: {
+    borderRadius: 18,
+    borderWidth: 1.25,
+    borderColor: "rgba(251,146,60,0.24)",
+    backgroundColor: "#FFF7ED",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  retryIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(251,146,60,0.28)",
+    backgroundColor: "rgba(255,255,255,0.86)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryTitle: { fontSize: 14, fontWeight: "900", color: T.text },
+  retryMessage: { marginTop: 3, fontSize: 12, lineHeight: 16, fontWeight: "700", color: T.muted },
+
   heroWrap: { borderRadius: 20, overflow: "hidden" },
   heroBgCard: {
     borderRadius: 20,

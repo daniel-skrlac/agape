@@ -33,6 +33,7 @@ export default function SessionPartnerPicker() {
 
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const endReachedLockRef = useRef(false);
 
@@ -124,7 +125,16 @@ export default function SessionPartnerPicker() {
       alive = false;
       controller.abort();
     };
-  }, [page, debouncedQ]);
+  }, [page, debouncedQ, refreshTick]);
+
+  const refreshNow = () => {
+    if (loading || loadingMore) return;
+    setHasMore(true);
+    setTotal(null);
+    endReachedLockRef.current = false;
+    setPage(0);
+    setRefreshTick((x) => x + 1);
+  };
 
   const pick = (p: any) => {
     const partnerId = Number(p?.id ?? 0);
@@ -190,6 +200,8 @@ export default function SessionPartnerPicker() {
             data={items}
             keyExtractor={(x: any) => String((x as any)?.id)}
             keyboardShouldPersistTaps="handled"
+            refreshing={loading && page === 0}
+            onRefresh={refreshNow}
             contentContainerStyle={[s.listContent, { paddingBottom: listBottomPad }]}
             scrollIndicatorInsets={{ bottom: listBottomPad }}
             onMomentumScrollBegin={() => {

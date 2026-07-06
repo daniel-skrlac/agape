@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -29,6 +29,7 @@ import { toUserMessage } from "../../../../src/api//apiClient";
 import { useBookingSession, useUpsertBookingSessionEntry } from "../../../../src/api//hooks/sessions/useBookingSessions";
 import { useTemplateDetail } from "../../../../src/api//hooks/templates/useDispatchTemplates";
 import { useCurrentUser } from "../../../../src/api/hooks/common/useCurrentUser";
+import { usePullToRefresh } from "../../../../src/api/hooks/common/usePullToRefresh";
 import { documentDirectoryService } from "../../../../src/api/services/documentDirectoryService";
 import { partnerService } from "../../../../src/api/services/partnerService";
 
@@ -675,8 +676,23 @@ export default function SessionEntryEditor() {
 
   const retryTopError = useCallback(async () => {
     setScreenError(null);
-    await Promise.allSettled([sQ.refetch(), tplQ.refetch()]);
-  }, [sQ, tplQ]);
+    await Promise.allSettled([
+      sQ.refetch(),
+      tplId ? tplQ.refetch() : Promise.resolve(null),
+      documentDescriptorsQ.refetch(),
+    ]);
+  }, [sQ, tplQ, tplId, documentDescriptorsQ]);
+
+  const { refreshing, onRefresh } = usePullToRefresh([
+    async () => {
+      setScreenError(null);
+      await Promise.allSettled([
+        sQ.refetch(),
+        tplId ? tplQ.refetch() : Promise.resolve(null),
+        documentDescriptorsQ.refetch(),
+      ]);
+    },
+  ]);
 
   useEffect(() => {
     if (!sessionId || !partnerId || !session) return;
@@ -1026,6 +1042,15 @@ export default function SessionEntryEditor() {
         style={{ flex: 1 }}
         contentContainerStyle={st.container}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.orange}
+            colors={[Colors.orange]}
+            progressBackgroundColor={Colors.light.background}
+          />
+        }
       >
         {!!topError && (
           <ErrorCard

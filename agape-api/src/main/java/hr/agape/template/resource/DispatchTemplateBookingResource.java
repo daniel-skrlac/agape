@@ -31,6 +31,18 @@ public class DispatchTemplateBookingResource {
     }
 
     @POST
+    @Path("/validate")
+    public Response validateOne(@Valid TemplateBookOneRequestDTO req) {
+        return Responses.from(service.validateTemplateForOnePartner(req));
+    }
+
+    @POST
+    @Path("/validate/bulk")
+    public Response validateMany(@Valid TemplateBookManyRequestDTO req) {
+        return Responses.from(service.validateTemplateForManyPartners(req));
+    }
+
+    @POST
     @Path("/")
     public Response bookOne(@Valid TemplateBookOneRequestDTO req) {
         return Responses.from(service.bookFromTemplateForOnePartner(req));

@@ -49,6 +49,7 @@ export default function HomeScreen() {
   const [documentYear, setDocumentYear] = useState<number | null>(CURRENT_YEAR);
   const [knownYears, setKnownYears] = useState<number[]>([CURRENT_YEAR]);
   const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
+  const [retryingTopError, setRetryingTopError] = useState(false);
   const [openAcc, setOpenAcc] = useState<Record<SectionKey, boolean>>({
     missing: false,
     needsFill: false,
@@ -103,6 +104,8 @@ export default function HomeScreen() {
   });
   const { data, isLoading, isFetching, dataUpdatedAt } = stats as any;
   const statsError = (stats as any)?.error;
+  const refetchDocTypes = docTypesQuery.refetch;
+  const refetchStats = stats.refetch;
 
   const totals = data?.totals;
 
@@ -124,17 +127,34 @@ export default function HomeScreen() {
     return Strings.home.hero.subtitle;
   }, [isLoading]);
 
-  const { refreshing, onRefresh, lastRefreshedAt } = usePullToRefresh([
-    async () => {
+  const refetchHomeData = useCallback(
+    async (showTopLoader = false) => {
       setOpenAcc({ missing: false, needsFill: false, most: false });
       setOpenFilter(null);
 
-      await Promise.all([
-        Promise.resolve(refetchWarehouses?.()),
-        Promise.resolve(docTypesQuery.refetch?.()),
-        Promise.resolve(stats.refetch?.()),
-      ]);
+      if (showTopLoader) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setRetryingTopError(true);
+      }
+
+      try {
+        await Promise.allSettled([
+          Promise.resolve(refetchWarehouses?.()),
+          Promise.resolve(refetchDocTypes?.()),
+          Promise.resolve(refetchStats?.()),
+        ]);
+      } finally {
+        if (showTopLoader) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setRetryingTopError(false);
+        }
+      }
     },
+    [refetchWarehouses, refetchDocTypes, refetchStats]
+  );
+
+  const { refreshing, onRefresh, lastRefreshedAt } = usePullToRefresh([
+    async () => refetchHomeData(false),
   ]);
 
   const visibleUpdatedAt = Math.max(Number(dataUpdatedAt ?? 0), Number(lastRefreshedAt ?? 0));
@@ -213,10 +233,8 @@ export default function HomeScreen() {
     windowHeight >= 850 && !warehousesEmpty && openFilter == null && !openAcc.missing && !openAcc.needsFill && !openAcc.most;
 
   const onTopErrorAction = useCallback(() => {
-    if (whErrorMessage) return refetchWarehouses?.();
-    if (docTypesErrorMessage) return docTypesQuery.refetch?.();
-    return stats.refetch?.();
-  }, [whErrorMessage, docTypesErrorMessage, refetchWarehouses, docTypesQuery, stats]);
+    void refetchHomeData(true);
+  }, [refetchHomeData]);
 
   return (
     <TabScroll
@@ -240,7 +258,11 @@ export default function HomeScreen() {
           />
         </View>
 
-        {!!topError ? (
+        {retryingTopError ? (
+          <View style={styles.sectionGap}>
+            <HomeRetryCard />
+          </View>
+        ) : !!topError ? (
           <View style={styles.sectionGap}>
             <ErrorCard
               title={topErrorTitle}
@@ -498,6 +520,20 @@ export default function HomeScreen() {
 
 function Surface({ children, style }: { children: React.ReactNode; style?: any }) {
   return <View style={[styles.surface, style]}>{children}</View>;
+}
+
+function HomeRetryCard() {
+  return (
+    <View style={styles.retryCard}>
+      <View style={styles.retryIcon}>
+        <ActivityIndicator size="small" color={T.warmAccent} />
+      </View>
+      <View style={styles.flex1}>
+        <Text style={styles.retryTitle}>Ponovno učitavam podatke</Text>
+        <Text style={styles.retryMessage}>Provjeravam skladišta, vrste i statistiku.</Text>
+      </View>
+    </View>
+  );
 }
 
 function HeroCard(props: {

@@ -17,6 +17,7 @@ export function useStockStatistics(args: {
         ],
         queryFn: ({ signal }) => stockStatisticsService.get(args, signal),
         placeholderData: (previousData) => previousData,
+        staleTime: 30_000,
         retry: 1,
         refetchOnReconnect: true,
     });

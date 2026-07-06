@@ -244,7 +244,7 @@ export function useDispatchBookingDetail(headerId: number | null) {
 export function useDispatchBookingValidate() {
   const mutation = useMutation({
     mutationFn: (payload: DispatchRequestValidationDTO) =>
-      api.request<any>(paths.validate, { method: "POST", body: payload } as any),
+      api.request<any>(paths.validate, { method: "POST", body: payload, timeoutMs: 60_000 } as any),
   });
 
   const errorMessage = useMemo(() => {
@@ -282,6 +282,7 @@ export function usePostDispatchBooking() {
       return api.request<DispatchResponseDTO>(paths.update(v.headerId), {
         method: "PUT",
         body: payload,
+        timeoutMs: 120_000,
       } as any);
     },
     onSuccess: async (_data, vars) => {

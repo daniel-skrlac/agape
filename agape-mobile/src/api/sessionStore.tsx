@@ -22,8 +22,12 @@ function safeParse<T>(raw: string | null): T | null {
 
 type Listener = (s: AuthSession | null) => void;
 const listeners = new Set<Listener>();
+let cachedSession: AuthSession | null = null;
+let sessionHydrated = false;
 
 function emit(session: AuthSession | null) {
+    cachedSession = session;
+    sessionHydrated = true;
     listeners.forEach((fn) => fn(session));
 }
 
@@ -69,11 +73,21 @@ export async function saveSession(session: AuthSession) {
 }
 
 export async function getSession(): Promise<AuthSession | null> {
-    if (Platform.OS === "web") {
-        return normalizeSession(safeParse<AuthSession>(localStorage.getItem(SESSION_KEY)));
+    if (sessionHydrated) {
+        return cachedSession;
     }
-    const raw = await SecureStore.getItemAsync(SESSION_KEY);
-    return normalizeSession(safeParse<AuthSession>(raw));
+
+    let session: AuthSession | null;
+    if (Platform.OS === "web") {
+        session = normalizeSession(safeParse<AuthSession>(localStorage.getItem(SESSION_KEY)));
+    } else {
+        const raw = await SecureStore.getItemAsync(SESSION_KEY);
+        session = normalizeSession(safeParse<AuthSession>(raw));
+    }
+
+    cachedSession = session;
+    sessionHydrated = true;
+    return session;
 }
 
 export async function clearSession() {
@@ -95,4 +109,12 @@ export async function updateSession(patch: Partial<AuthSession>) {
     const cur = await getSession();
     if (!cur) return;
     await saveSession({ ...cur, ...patch });
+}
+
+export function getCachedSession() {
+    return sessionHydrated ? cachedSession : null;
+}
+
+export function isSessionHydrated() {
+    return sessionHydrated;
 }

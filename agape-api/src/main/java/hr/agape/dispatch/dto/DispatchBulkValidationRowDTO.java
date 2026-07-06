@@ -10,6 +10,9 @@ import lombok.Setter;
 @Builder
 public class DispatchBulkValidationRowDTO {
     private Long partnerId;
+    private Long warehouseId;
+    private Long documentId;
+    private String documentCode;
     private WarehouseBookingImpactDTO data;
     private String error;
 }

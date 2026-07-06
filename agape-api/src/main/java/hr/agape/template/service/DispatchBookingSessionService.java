@@ -8,10 +8,15 @@ import hr.agape.common.util.JsonUtil;
 import hr.agape.document.lookup.view.DocumentSlotTypeView;
 import hr.agape.document.repository.DocumentTypeRepository;
 import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
+import hr.agape.dispatch.dto.DispatchBulkValidationItemDTO;
+import hr.agape.dispatch.dto.DispatchBulkValidationRequestDTO;
+import hr.agape.dispatch.dto.DispatchBulkValidationResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
+import hr.agape.dispatch.dto.DispatchRequestValidationDTO;
 import hr.agape.dispatch.scan.dto.BookingSessionScanEntryUpsertRequestDTO;
 import hr.agape.dispatch.scan.util.BookingSessionScanEntryUtil;
 import hr.agape.dispatch.service.DispatchBookingService;
+import hr.agape.dispatch.service.DispatchBookingValidateService;
 import hr.agape.item.dto.ItemDescriptorResponseDTO;
 import hr.agape.item.service.ItemDirectoryService;
 import hr.agape.partner.dto.PartnerResponseDTO;
@@ -69,6 +74,7 @@ public class DispatchBookingSessionService {
     private final TemplateBookingRequestBuilder bookingRequestBuilder;
 
     private final DispatchBookingService oracleBooking;
+    private final DispatchBookingValidateService bookingValidateService;
     private final BookingSessionMapper mapper;
 
     private final PartnerService partnerService;
@@ -83,6 +89,7 @@ public class DispatchBookingSessionService {
             DispatchBookingSessionEntryRepository entryRepo,
             DispatchTemplateRepository templateRepo, TemplateBookingRequestBuilder bookingRequestBuilder,
             DispatchBookingService oracleBooking,
+            DispatchBookingValidateService bookingValidateService,
             BookingSessionMapper mapper, PartnerService partnerService,
             ItemDirectoryService itemDirectoryService,
             DocumentTypeRepository documentTypeRepository
@@ -95,6 +102,7 @@ public class DispatchBookingSessionService {
         this.templateRepo = templateRepo;
         this.bookingRequestBuilder = bookingRequestBuilder;
         this.oracleBooking = oracleBooking;
+        this.bookingValidateService = bookingValidateService;
         this.mapper = mapper;
         this.partnerService = partnerService;
         this.itemDirectoryService = itemDirectoryService;
@@ -391,96 +399,9 @@ public class DispatchBookingSessionService {
         try {
             Long userId = authUtil.requireUserId();
 
-            DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
-            if (s == null) return ServiceResponseDirector.errorNotFound("Session not found.");
-            if (s.getStatus() != BookingSessionStatus.DRAFT) {
-                return ServiceResponseDirector.errorBadRequest("Session cannot be finalized.");
-            }
+            SessionDispatchPlan plan = buildSessionDispatchPlan(sessionId, userId);
 
-            List<DispatchBookingSessionEntryEntity> entries = entryRepo.listForSession(sessionId);
-            if (entries.isEmpty()) {
-                return ServiceResponseDirector.errorBadRequest("Session has no entries.");
-            }
-
-            List<Long> templateIds = entries.stream()
-                    .map(DispatchBookingSessionEntryEntity::getTemplateId)
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .toList();
-
-            Map<Long, DispatchTemplateEntity> templateById = templateRepo
-                    .listFullAccessibleByIds(userId, templateIds)
-                    .stream()
-                    .filter(t -> t.getId() != null)
-                    .collect(Collectors.toMap(
-                            DispatchTemplateEntity::getId,
-                            t -> t
-                    ));
-
-            List<DispatchRequestDTO> allRequests = new ArrayList<>();
-
-            for (DispatchBookingSessionEntryEntity e : entries) {
-                List<TemplateBookItemDTO> extraItems = jsonUtil.readList(
-                        e.getExtraItemsJson(),
-                        new TypeReference<>() {}
-                );
-                List<TemplateBookExtraDocDTO> extraDocs = jsonUtil.readList(
-                        e.getExtraDocsJson(),
-                        new TypeReference<>() {}
-                );
-
-                if (e.getTemplateId() == null) {
-                    if (isBlankItems(extraItems) && isBlankExtraDocs(extraDocs)) {
-                        return ServiceResponseDirector.errorBadRequest("Entry has no template and no standalone items: partner " + e.getPartnerId());
-                    }
-                    if (!isBlankExtraDocs(extraDocs)) {
-                        allRequests.addAll(
-                                bookingRequestBuilder.buildExtraDocRequests(
-                                        s.getWarehouseId(),
-                                        e.getPartnerId(),
-                                        e.getDraftMode().asDraftFlag(),
-                                        e.getDocumentDate(),
-                                        e.getNote(),
-                                        extraDocs
-                                )
-                        );
-                    }
-                    if (!isBlankItems(extraItems)) {
-                        allRequests.add(buildStandaloneRequest(s.getWarehouseId(), e, extraItems));
-                    }
-                    continue;
-                }
-
-                DispatchTemplateEntity t = templateById.get(e.getTemplateId());
-                if (t == null) {
-                    return ServiceResponseDirector.errorBadRequest("Template not accessible: " + e.getTemplateId());
-                }
-                if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
-                    return ServiceResponseDirector.errorBadRequest("Template has no documents: " + e.getTemplateId());
-                }
-
-                boolean draft = e.getDraftMode().asDraftFlag();
-
-                List<TemplateBookDocPatchDTO> patches = jsonUtil.readList(
-                        e.getDocPatchesJson(),
-                        new TypeReference<>() {}
-                );
-                allRequests.addAll(
-                        bookingRequestBuilder.buildRequestsForPartner(
-                                s.getWarehouseId(),
-                                e.getPartnerId(),
-                                draft,
-                                e.getDocumentDate(),
-                                e.getNote(),
-                                patches,
-                                extraItems,
-                                extraDocs,
-                                t
-                        )
-                );
-            }
-
-            ServiceResponseDTO<DispatchBulkResponseDTO> res = oracleBooking.bookBulk(allRequests);
+            ServiceResponseDTO<DispatchBulkResponseDTO> res = oracleBooking.bookBulk(plan.requests());
             if (!res.isSuccess()) return res;
 
             persistFinalization(sessionId, userId, res.getData());
@@ -492,6 +413,154 @@ public class DispatchBookingSessionService {
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Failed to finalize session.");
         }
+    }
+
+    @Transactional(Transactional.TxType.NOT_SUPPORTED)
+    public ServiceResponseDTO<DispatchBulkValidationResponseDTO> validateSessionFinalization(Long sessionId) {
+        try {
+            Long userId = authUtil.requireUserId();
+
+            SessionDispatchPlan plan = buildSessionDispatchPlan(sessionId, userId);
+            return bookingValidateService.validateBulk(toBulkValidationRequest(plan.requests()));
+        } catch (IllegalArgumentException e) {
+            return ServiceResponseDirector.errorBadRequest(e.getMessage());
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Failed to validate session.");
+        }
+    }
+
+    private SessionDispatchPlan buildSessionDispatchPlan(Long sessionId, Long userId) {
+        DispatchBookingSessionEntity s = sessionRepo.findOwned(sessionId, userId);
+        if (s == null) throw new IllegalArgumentException("Session not found.");
+        if (s.getStatus() != BookingSessionStatus.DRAFT) {
+            throw new IllegalArgumentException("Session cannot be finalized.");
+        }
+
+        List<DispatchBookingSessionEntryEntity> entries = entryRepo.listForSession(sessionId);
+        if (entries.isEmpty()) {
+            throw new IllegalArgumentException("Session has no entries.");
+        }
+
+        List<Long> templateIds = entries.stream()
+                .map(DispatchBookingSessionEntryEntity::getTemplateId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, DispatchTemplateEntity> templateById = templateRepo
+                .listFullAccessibleByIds(userId, templateIds)
+                .stream()
+                .filter(t -> t.getId() != null)
+                .collect(Collectors.toMap(
+                        DispatchTemplateEntity::getId,
+                        t -> t
+                ));
+
+        List<DispatchRequestDTO> allRequests = new ArrayList<>();
+
+        for (DispatchBookingSessionEntryEntity e : entries) {
+            List<TemplateBookItemDTO> extraItems = jsonUtil.readList(
+                    e.getExtraItemsJson(),
+                    new TypeReference<>() {}
+            );
+            List<TemplateBookExtraDocDTO> extraDocs = jsonUtil.readList(
+                    e.getExtraDocsJson(),
+                    new TypeReference<>() {}
+            );
+
+            if (e.getTemplateId() == null) {
+                if (isBlankItems(extraItems) && isBlankExtraDocs(extraDocs)) {
+                    throw new IllegalArgumentException("Entry has no template and no standalone items: partner " + e.getPartnerId());
+                }
+                if (!isBlankExtraDocs(extraDocs)) {
+                    allRequests.addAll(
+                            bookingRequestBuilder.buildExtraDocRequests(
+                                    s.getWarehouseId(),
+                                    e.getPartnerId(),
+                                    e.getDraftMode().asDraftFlag(),
+                                    e.getDocumentDate(),
+                                    e.getNote(),
+                                    extraDocs
+                            )
+                    );
+                }
+                if (!isBlankItems(extraItems)) {
+                    allRequests.add(buildStandaloneRequest(s.getWarehouseId(), e, extraItems));
+                }
+                continue;
+            }
+
+            DispatchTemplateEntity t = templateById.get(e.getTemplateId());
+            if (t == null) {
+                throw new IllegalArgumentException("Template not accessible: " + e.getTemplateId());
+            }
+            if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
+                throw new IllegalArgumentException("Template has no documents: " + e.getTemplateId());
+            }
+
+            boolean draft = e.getDraftMode().asDraftFlag();
+
+            List<TemplateBookDocPatchDTO> patches = jsonUtil.readList(
+                    e.getDocPatchesJson(),
+                    new TypeReference<>() {}
+            );
+            allRequests.addAll(
+                    bookingRequestBuilder.buildRequestsForPartner(
+                            s.getWarehouseId(),
+                            e.getPartnerId(),
+                            draft,
+                            e.getDocumentDate(),
+                            e.getNote(),
+                            patches,
+                            extraItems,
+                            extraDocs,
+                            t
+                    )
+            );
+        }
+
+        if (allRequests.isEmpty()) {
+            throw new IllegalArgumentException("Session has no valid booking requests.");
+        }
+
+        return new SessionDispatchPlan(s, allRequests);
+    }
+
+    private DispatchBulkValidationRequestDTO toBulkValidationRequest(List<DispatchRequestDTO> requests) {
+        DispatchBulkValidationRequestDTO out = new DispatchBulkValidationRequestDTO();
+        List<DispatchBulkValidationItemDTO> items = new ArrayList<>();
+
+        for (DispatchRequestDTO request : requests == null ? List.<DispatchRequestDTO>of() : requests) {
+            if (request == null) continue;
+
+            DispatchRequestValidationDTO validation = new DispatchRequestValidationDTO();
+            validation.setWarehouseId(request.getWarehouseId());
+            validation.setDocumentId(request.getDocumentId());
+            validation.setDocumentDate(request.getDocumentDate());
+            validation.setDraft(request.isDraft());
+            validation.setNote(request.getNote());
+
+            List<DispatchRequestValidationDTO.DispatchItemValidationRequest> lines = new ArrayList<>();
+            for (DispatchRequestDTO.DispatchItemRequest item : request.getItems() == null
+                    ? List.<DispatchRequestDTO.DispatchItemRequest>of()
+                    : request.getItems()) {
+                if (item == null) continue;
+                DispatchRequestValidationDTO.DispatchItemValidationRequest line =
+                        new DispatchRequestValidationDTO.DispatchItemValidationRequest();
+                line.setItemId(item.getItemId());
+                line.setQuantity(item.getQuantity());
+                lines.add(line);
+            }
+            validation.setItems(lines);
+
+            DispatchBulkValidationItemDTO row = new DispatchBulkValidationItemDTO();
+            row.setPartnerId(request.getPartnerId());
+            row.setRequest(validation);
+            items.add(row);
+        }
+
+        out.setItems(items);
+        return out;
     }
 
     private boolean isBlankItems(List<TemplateBookItemDTO> items) {
@@ -518,6 +587,12 @@ public class DispatchBookingSessionService {
             DispatchBookingSessionEntryEntity entry,
             List<TemplateBookItemDTO> extraItems
     ) {
+        if (warehouseId == null) {
+            throw new IllegalArgumentException(
+                    "Dodatne stavke bez predloška moraju imati odabran dokument. Otvori unos i spremi stavke kroz odabir dokumenta."
+            );
+        }
+
         DocumentSlotTypeView slot = resolveSingleDispatchDocumentSlot(warehouseId);
 
         DispatchRequestDTO request = new DispatchRequestDTO();
@@ -559,6 +634,12 @@ public class DispatchBookingSessionService {
                             + ". Select a document group before saving standalone items."
             );
         }
+    }
+
+    private record SessionDispatchPlan(
+            DispatchBookingSessionEntity session,
+            List<DispatchRequestDTO> requests
+    ) {
     }
 
     @Transactional(Transactional.TxType.REQUIRES_NEW)

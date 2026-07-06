@@ -5,8 +5,13 @@ import hr.agape.common.dto.PagedResultDTO;
 import hr.agape.common.response.ServiceResponseDTO;
 import hr.agape.common.response.ServiceResponseDirector;
 import hr.agape.dispatch.dto.DispatchBulkResponseDTO;
+import hr.agape.dispatch.dto.DispatchBulkValidationItemDTO;
+import hr.agape.dispatch.dto.DispatchBulkValidationRequestDTO;
+import hr.agape.dispatch.dto.DispatchBulkValidationResponseDTO;
 import hr.agape.dispatch.dto.DispatchRequestDTO;
+import hr.agape.dispatch.dto.DispatchRequestValidationDTO;
 import hr.agape.dispatch.service.DispatchBookingService;
+import hr.agape.dispatch.service.DispatchBookingValidateService;
 import hr.agape.item.dto.ItemDescriptorResponseDTO;
 import hr.agape.item.service.ItemDirectoryService;
 import hr.agape.template.domain.DispatchTemplateDocEntity;
@@ -66,6 +71,7 @@ public class DispatchTemplateService {
     private final TemplateNamingService templateNamingService;
 
     private final DispatchBookingService oracleBooking;
+    private final DispatchBookingValidateService bookingValidateService;
     private final AuthUtil authUtil;
 
     private final TemplateBookingRequestBuilder bookingRequestBuilder;
@@ -80,6 +86,7 @@ public class DispatchTemplateService {
             UserRepository userRepo,
             DispatchTemplateMapper templateMapper, TemplateNamingService templateNamingService,
             DispatchBookingService oracleBooking,
+            DispatchBookingValidateService bookingValidateService,
             AuthUtil authUtil, TemplateBookingRequestBuilder bookingRequestBuilder, ItemDirectoryService itemDirectoryService
     ) {
         this.folderRepo = folderRepo;
@@ -90,6 +97,7 @@ public class DispatchTemplateService {
         this.templateMapper = templateMapper;
         this.templateNamingService = templateNamingService;
         this.oracleBooking = oracleBooking;
+        this.bookingValidateService = bookingValidateService;
         this.authUtil = authUtil;
         this.bookingRequestBuilder = bookingRequestBuilder;
         this.itemDirectoryService = itemDirectoryService;
@@ -217,29 +225,7 @@ public class DispatchTemplateService {
 
     public ServiceResponseDTO<DispatchBulkResponseDTO> bookFromTemplateForOnePartner(TemplateBookOneRequestDTO req) {
         try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateEntity t = templateRepo.findFullAccessible(req.getTemplateId(), userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
-            if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
-                return ServiceResponseDirector.errorBadRequest("Template has no documents.");
-            }
-
-            boolean draft = req.getDraftMode().asDraftFlag();
-
-            List<DispatchRequestDTO> bulk = bookingRequestBuilder.buildRequestsForPartner(
-                    req.getWarehouseId(),
-                    req.getPartnerId(),
-                    draft,
-                    req.getDocumentDate(),
-                    req.getNote(),          // ✅ NEW
-                    req.getDocPatches(),
-                    req.getExtraItems(),
-                    req.getExtraDocs(),
-                    t
-            );
-
-            return oracleBooking.bookBulk(bulk);
+            return oracleBooking.bookBulk(buildTemplateRequestsForOnePartner(req));
 
         } catch (IllegalArgumentException e) {
             return ServiceResponseDirector.errorBadRequest(e.getMessage());
@@ -250,38 +236,119 @@ public class DispatchTemplateService {
 
     public ServiceResponseDTO<DispatchBulkResponseDTO> bookFromTemplateForManyPartners(TemplateBookManyRequestDTO req) {
         try {
-            Long userId = authUtil.requireUserId();
-
-            DispatchTemplateEntity t = templateRepo.findFullAccessible(req.getTemplateId(), userId);
-            if (t == null) return ServiceResponseDirector.errorNotFound("Template not found.");
-            if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
-                return ServiceResponseDirector.errorBadRequest("Template has no documents.");
-            }
-
-            boolean draft = req.getDraftMode().asDraftFlag();
-
-            List<DispatchRequestDTO> all = new ArrayList<>();
-            for (Long partnerId : req.getPartnerIds()) {
-                all.addAll(bookingRequestBuilder.buildRequestsForPartner(
-                        req.getWarehouseId(),
-                        partnerId,
-                        draft,
-                        req.getDocumentDate(),
-                        req.getNote(),
-                        req.getDocPatches(),
-                        req.getExtraItems(),
-                        req.getExtraDocs(),
-                        t
-                ));
-            }
-
-            return oracleBooking.bookBulk(all);
+            return oracleBooking.bookBulk(buildTemplateRequestsForManyPartners(req));
 
         } catch (IllegalArgumentException e) {
             return ServiceResponseDirector.errorBadRequest(e.getMessage());
         } catch (Exception e) {
             return ServiceResponseDirector.errorInternal("Template bulk booking failed.");
         }
+    }
+
+    public ServiceResponseDTO<DispatchBulkValidationResponseDTO> validateTemplateForOnePartner(TemplateBookOneRequestDTO req) {
+        try {
+            return bookingValidateService.validateBulk(toBulkValidationRequest(buildTemplateRequestsForOnePartner(req)));
+        } catch (IllegalArgumentException e) {
+            return ServiceResponseDirector.errorBadRequest(e.getMessage());
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Template validation failed.");
+        }
+    }
+
+    public ServiceResponseDTO<DispatchBulkValidationResponseDTO> validateTemplateForManyPartners(TemplateBookManyRequestDTO req) {
+        try {
+            return bookingValidateService.validateBulk(toBulkValidationRequest(buildTemplateRequestsForManyPartners(req)));
+        } catch (IllegalArgumentException e) {
+            return ServiceResponseDirector.errorBadRequest(e.getMessage());
+        } catch (Exception e) {
+            return ServiceResponseDirector.errorInternal("Template bulk validation failed.");
+        }
+    }
+
+    private List<DispatchRequestDTO> buildTemplateRequestsForOnePartner(TemplateBookOneRequestDTO req) {
+        Long userId = authUtil.requireUserId();
+
+        DispatchTemplateEntity t = templateRepo.findFullAccessible(req.getTemplateId(), userId);
+        if (t == null) throw new IllegalArgumentException("Template not found.");
+        if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
+            throw new IllegalArgumentException("Template has no documents.");
+        }
+
+        return bookingRequestBuilder.buildRequestsForPartner(
+                req.getWarehouseId(),
+                req.getPartnerId(),
+                req.getDraftMode().asDraftFlag(),
+                req.getDocumentDate(),
+                req.getNote(),
+                req.getDocPatches(),
+                req.getExtraItems(),
+                req.getExtraDocs(),
+                t
+        );
+    }
+
+    private List<DispatchRequestDTO> buildTemplateRequestsForManyPartners(TemplateBookManyRequestDTO req) {
+        Long userId = authUtil.requireUserId();
+
+        DispatchTemplateEntity t = templateRepo.findFullAccessible(req.getTemplateId(), userId);
+        if (t == null) throw new IllegalArgumentException("Template not found.");
+        if (t.getDocuments() == null || t.getDocuments().isEmpty()) {
+            throw new IllegalArgumentException("Template has no documents.");
+        }
+
+        boolean draft = req.getDraftMode().asDraftFlag();
+        List<DispatchRequestDTO> all = new ArrayList<>();
+        for (Long partnerId : req.getPartnerIds()) {
+            all.addAll(bookingRequestBuilder.buildRequestsForPartner(
+                    req.getWarehouseId(),
+                    partnerId,
+                    draft,
+                    req.getDocumentDate(),
+                    req.getNote(),
+                    req.getDocPatches(),
+                    req.getExtraItems(),
+                    req.getExtraDocs(),
+                    t
+            ));
+        }
+        return all;
+    }
+
+    private DispatchBulkValidationRequestDTO toBulkValidationRequest(List<DispatchRequestDTO> requests) {
+        DispatchBulkValidationRequestDTO out = new DispatchBulkValidationRequestDTO();
+        List<DispatchBulkValidationItemDTO> items = new ArrayList<>();
+
+        for (DispatchRequestDTO request : requests == null ? List.<DispatchRequestDTO>of() : requests) {
+            if (request == null) continue;
+
+            DispatchRequestValidationDTO validation = new DispatchRequestValidationDTO();
+            validation.setWarehouseId(request.getWarehouseId());
+            validation.setDocumentId(request.getDocumentId());
+            validation.setDocumentDate(request.getDocumentDate());
+            validation.setDraft(request.isDraft());
+            validation.setNote(request.getNote());
+
+            List<DispatchRequestValidationDTO.DispatchItemValidationRequest> lines = new ArrayList<>();
+            for (DispatchRequestDTO.DispatchItemRequest item : request.getItems() == null
+                    ? List.<DispatchRequestDTO.DispatchItemRequest>of()
+                    : request.getItems()) {
+                if (item == null) continue;
+                DispatchRequestValidationDTO.DispatchItemValidationRequest line =
+                        new DispatchRequestValidationDTO.DispatchItemValidationRequest();
+                line.setItemId(item.getItemId());
+                line.setQuantity(item.getQuantity());
+                lines.add(line);
+            }
+            validation.setItems(lines);
+
+            DispatchBulkValidationItemDTO row = new DispatchBulkValidationItemDTO();
+            row.setPartnerId(request.getPartnerId());
+            row.setRequest(validation);
+            items.add(row);
+        }
+
+        out.setItems(items);
+        return out;
     }
 
     @Transactional

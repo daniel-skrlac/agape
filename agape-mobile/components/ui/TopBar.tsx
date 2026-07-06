@@ -1,20 +1,17 @@
 import React from "react";
 import { View, Text, StyleSheet, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { DancingScript_700Bold, useFonts } from "@expo-google-fonts/dancing-script";
 
 const ORANGE = "#F97316";
 
 export default function TopBar() {
-    const [fontsLoaded] = useFonts({ DancingScript_700Bold });
-
     return (
         <SafeAreaView edges={["top"]} style={[styles.safe, { backgroundColor: "transparent" }]}>
             <View style={styles.bar}>
                 <View style={styles.titleWrap}>
                     <Text
                         allowFontScaling={false}
-                        style={[styles.title, fontsLoaded && { fontFamily: "DancingScript_700Bold" }]}
+                        style={styles.title}
                     >
                         Agape
                     </Text>
@@ -49,6 +46,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 30,
         lineHeight: 52,
+        fontFamily: "DancingScript_700Bold",
         color: ORANGE,
         letterSpacing: 0.2,
         textAlign: "center",

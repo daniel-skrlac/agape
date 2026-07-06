@@ -23,6 +23,8 @@ type Props = {
 
   showConfirm?: boolean;
   bulkHint?: string | null;
+  loadingTitle?: string;
+  loadingSubtitle?: string;
 };
 
 type Status = "ok" | "warn";
@@ -45,6 +47,16 @@ function statusLabel(st: Status) {
 
 function modeTitle(data: any) {
   return data?.draft ? "Draft (neproknjiženo)" : "Final (proknjiženo)";
+}
+
+function documentTitle(data: any) {
+  const documentId = data?.documentId != null ? `Dokument #${data.documentId}` : "Dokument";
+  const code = String(data?.documentCode ?? "").trim();
+  return code ? `${documentId} • ${code}` : documentId;
+}
+
+function warehouseTitle(data: any) {
+  return data?.warehouseId != null ? `Skladište #${data.warehouseId}` : "Skladište";
 }
 
 type FieldKey = "currentQty" | "pendingOutQty" | "pendingInQty" | "inQty" | "outQty";
@@ -81,8 +93,20 @@ function renderBeforeAfterRow(key: string, label: string, beforeVal: any, afterV
 }
 
 export default function ValidateImpactModal(props: Props) {
-  const { visible, onClose, disableClose, loading, error, data, onConfirm, confirmText, showConfirm = true, bulkHint } =
-    props;
+  const {
+    visible,
+    onClose,
+    disableClose,
+    loading,
+    error,
+    data,
+    onConfirm,
+    confirmText,
+    showConfirm = true,
+    bulkHint,
+    loadingTitle = "Provjeravam…",
+    loadingSubtitle = "Analiziram stavke i očekivane promjene.",
+  } = props;
 
   const onlyChanges = true;
 
@@ -118,7 +142,7 @@ export default function ValidateImpactModal(props: Props) {
               <Text style={s.title}>Provjera utjecaja na skladište</Text>
               {!!data ? (
                 <Text style={s.subtitle}>
-                  {modeTitle(data as any)} • DOK: {String((data as any).documentCode ?? "")}
+                  {modeTitle(data as any)} • {documentTitle(data as any)} • {warehouseTitle(data as any)}
                 </Text>
               ) : (
                 <Text style={s.subtitle}>Prije kreiranja provjeravamo očekivane promjene.</Text>
@@ -139,8 +163,8 @@ export default function ValidateImpactModal(props: Props) {
             {loading ? (
               <View style={s.stateBox}>
                 <ActivityIndicator />
-                <Text style={s.stateTitle}>Provjeravam…</Text>
-                <Text style={s.stateSub}>Analiziram stavke i očekivane promjene.</Text>
+                <Text style={s.stateTitle}>{loadingTitle}</Text>
+                <Text style={s.stateSub}>{loadingSubtitle}</Text>
               </View>
             ) : error ? (
               <ErrorCard
@@ -171,7 +195,25 @@ export default function ValidateImpactModal(props: Props) {
                   <View style={s.summaryRow}>
                     <View style={s.summaryCell}>
                       <Text style={s.summaryLabel}>Skladište</Text>
-                      <Text style={s.summaryValue}>{String((data as any).warehouseId ?? "")}</Text>
+                      <Text style={s.summaryValue} numberOfLines={1}>
+                        {warehouseTitle(data as any)}
+                      </Text>
+                    </View>
+
+                    <View style={s.summaryCell}>
+                      <Text style={s.summaryLabel}>Dokument</Text>
+                      <Text style={s.summaryValue} numberOfLines={2}>
+                        {documentTitle(data as any)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={s.summaryRow}>
+                    <View style={s.summaryCell}>
+                      <Text style={s.summaryLabel}>Način</Text>
+                      <Text style={s.summaryValue} numberOfLines={1}>
+                        {modeTitle(data as any)}
+                      </Text>
                     </View>
 
                     <View style={s.summaryCell}>

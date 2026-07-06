@@ -83,13 +83,23 @@ export default function TabLayout() {
 
   if (checking) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
+      <AuthBackground>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={ORANGE} />
+        </View>
+      </AuthBackground>
     );
   }
 
-  if (!hasToken) return null;
+  if (!hasToken) {
+    return (
+      <AuthBackground>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={ORANGE} />
+        </View>
+      </AuthBackground>
+    );
+  }
 
   return (
     <AuthBackground>
@@ -99,6 +109,8 @@ export default function TabLayout() {
           header: () => <TopBar />,
           headerShadowVisible: false,
           headerStyle: { backgroundColor: "transparent" },
+          sceneStyle: { backgroundColor: "transparent" },
+          tabBarHideOnKeyboard: true,
 
           tabBarActiveTintColor: ORANGE,
           tabBarInactiveTintColor: INACTIVE,
@@ -120,7 +132,6 @@ export default function TabLayout() {
           }}
           options={{
             title: "Predlošci",
-            sceneStyle: { backgroundColor: "transparent" },
             tabBarIcon: ({ color }) => <TabBarIcon name="copy" color={color} />,
           }}
         />
@@ -145,7 +156,6 @@ export default function TabLayout() {
           name="home"
           options={{
             title: "Početna",
-            sceneStyle: { backgroundColor: "transparent" },
             tabBarLabelStyle: { marginBottom: 6 },
             tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
             tabBarButton: (props) => <HomeTabButton {...props} />,
@@ -162,7 +172,6 @@ export default function TabLayout() {
           }}
           options={{
             title: "Pregled",
-            sceneStyle: { backgroundColor: "transparent" },
             tabBarIcon: ({ color, size }) => (
               <MaterialCommunityIcons name="clipboard-check-outline" size={size} color={color} />
             ),
@@ -173,7 +182,6 @@ export default function TabLayout() {
           name="settings"
           options={{
             title: "Postavke",
-            sceneStyle: { backgroundColor: "transparent" },
             tabBarIcon: ({ color }) => <TabBarIcon name="gear" color={color} />,
           }}
         />
@@ -183,7 +191,6 @@ export default function TabLayout() {
           options={{
             title: "Profil",
             href: null,
-            sceneStyle: { backgroundColor: "transparent" },
           }}
         />
       </Tabs>

@@ -43,9 +43,12 @@ import type {
 
 import { partnerService } from "../../../../../src/api/services/partnerService";
 import { useCurrentUser } from "../../../../../src/api/hooks/common/useCurrentUser";
-import { useDispatchValidateBulk } from "../../../../../src/api/hooks/sessions/useDispatchValidate";
 import { toLocalDateString } from "@/src/utils/dateIso";
-import { useBookTemplateOne, useTemplateDetail } from "../../../../../src/api/hooks/templates/useDispatchTemplates";
+import {
+  useBookTemplateOne,
+  useTemplateDetail,
+  useValidateTemplateMany,
+} from "../../../../../src/api/hooks/templates/useDispatchTemplates";
 import { documentDirectoryService } from "../../../../../src/api/services/documentDirectoryService";
 import { itemDirectoryService } from "../../../../../src/api/services/itemDirectoryService";
 
@@ -500,7 +503,7 @@ export default function TemplateDispatchScreen() {
   const templateDocs: TemplateDocResponseDTO[] = (template?.documents ?? []) as any;
 
   const bookOneMutation = useBookTemplateOne();
-  const validateBulkMutation = useDispatchValidateBulk();
+  const validateTemplateMutation = useValidateTemplateMany();
 
   const documentDescriptorsQ = useQuery({
     queryKey: ["template-dispatch", "document-groups", "OTPREMNICA"],
@@ -954,29 +957,34 @@ export default function TemplateDispatchScreen() {
   const [validateDetailRow, setValidateDetailRow] = useState<ValidateRow | null>(null);
   const [detailFromMany, setDetailFromMany] = useState(false);
 
-  const validateLoading = validateBulkMutation.isPending;
+  const validateLoading = validateTemplateMutation.isPending;
+  const validationModalBusy = validateLoading || bookingBusy;
   const selectedValidateRow = validateDetailRow ?? (validateRows.length === 1 ? validateRows[0] : null);
   const validateData = selectedValidateRow?.data ?? null;
   const validateError =
     selectedValidateRow?.error ||
     selectedValidateRow?.warning ||
-    (validateBulkMutation.error
-      ? toUserMessage(validateBulkMutation.error, "Greška pri validaciji.")
+    (validateTemplateMutation.error
+      ? toUserMessage(validateTemplateMutation.error, "Greška pri validaciji.")
       : null);
+
+  const makeTemplateErrorRow = useCallback(
+    (message: string, partnerId?: number | null, partnerName?: string | null): ValidateRow => ({
+      partnerId: Number(partnerId ?? 0),
+      partnerName: partnerName?.trim() || "Predložak",
+      data: null,
+      error: message,
+      warning: null,
+      ok: 0,
+      warn: 0,
+      bad: 0,
+      total: 0,
+    }),
+    []
+  );
 
   const openValidateModal = async () => {
     setScreenError(null);
-
-    if (!bookingWarehouseId) {
-      setResultPopup({
-        visible: true,
-        kind: "error",
-        title: "Nedostaje grupa dokumenta",
-        message: "Predložak nema povezanu grupu otpremnice za validaciju.",
-        linkHeaderId: null,
-      });
-      return;
-    }
 
     if (selectedPartners.length === 0) {
       setResultPopup({
@@ -1000,29 +1008,17 @@ export default function TemplateDispatchScreen() {
       return;
     }
 
-    const bulk = buildBulkValidatePayload({
-      warehouseId: bookingWarehouseId,
-      selectedPartners,
-      draftMode,
-      templateDocs,
-      docPatches,
-      extraDocs: sortedExtraDocs,
-      partnerNoteById,
-    });
+    const partnerNameById: Record<string, string> = {};
+    const partnerIds = selectedPartners
+      .map((partner) => {
+        const partnerId = Number((partner as any)?.id);
+        if (!partnerId) return null;
+        partnerNameById[String(partnerId)] = partnerDisplayName(partner);
+        return partnerId;
+      })
+      .filter(Boolean) as number[];
 
-    if (!bulk.request.items.length) {
-      setResultPopup({
-        visible: true,
-        kind: "info",
-        title: "Nema stavki",
-        message: "Nema stavki za validaciju.",
-        linkHeaderId: null,
-      });
-      return;
-    }
-
-    const firstPayload = bulk.request.items[0]?.request as any;
-    if (!firstPayload?.items || firstPayload.items.length === 0) {
+    if (!partnerIds.length) {
       setResultPopup({
         visible: true,
         kind: "info",
@@ -1036,54 +1032,81 @@ export default function TemplateDispatchScreen() {
     setValidateRows([]);
     setValidateDetailRow(null);
     setDetailFromMany(false);
-    validateBulkMutation.reset();
+    validateTemplateMutation.reset();
 
-    if (bulk.request.items.length === 1) {
-      setIsValidateModalOpen(true);
-      setIsValidateSummaryOpen(false);
-    } else {
-      setIsValidateSummaryOpen(true);
-      setIsValidateModalOpen(false);
-    }
+    setIsValidateSummaryOpen(true);
+    setIsValidateModalOpen(false);
 
     try {
-      const response = await validateBulkMutation.mutateAsync(bulk.request as any);
+      const response = await validateTemplateMutation.mutateAsync({
+        templateId,
+        warehouseId: bookingWarehouseId ?? undefined,
+        partnerIds: partnerIds as any,
+        documentDate: toLocalDateString(new Date()) as any,
+        draftMode: draftMode as any,
+        docPatches: docPatches as any,
+        extraItems: [] as any,
+        extraDocs: sortedExtraDocs as any,
+        note: null as any,
+      } as any);
       const rows: ValidateRow[] = ((response as any)?.results ?? []).map((row: any) => {
         const partnerId = Number(row?.partnerId);
+        const data = row?.data ?? null;
+        const documentId = Number(data?.documentId ?? row?.documentId ?? 0) || 0;
+        const warehouseId = Number(data?.warehouseId ?? row?.warehouseId ?? 0) || 0;
+        const documentCode = String(data?.documentCode ?? row?.documentCode ?? "").trim();
+        const descriptor = documentId ? documentDescriptorById.get(documentId) ?? null : null;
+        const fallbackSub = [
+          documentCode || null,
+          documentId ? `Dokument #${documentId}` : null,
+          warehouseId ? `Skladište #${warehouseId}` : null,
+        ].filter(Boolean).join(" • ");
+
         return toValidateRow({
           partnerId,
-          partnerName: bulk.partnerNameById[String(partnerId)] ?? `Partner #${partnerId}`,
-          data: row?.data ?? null,
+          partnerName: partnerNameById[String(partnerId)] ?? `Partner #${partnerId}`,
+          contextLabel: descriptor || documentId ? documentGroupTitle(descriptor, documentId) : null,
+          contextSub: descriptor ? documentGroupSubtitle(descriptor) : fallbackSub || null,
+          data,
           error: row?.error ? String(row.error) : null,
           warning: null,
         });
       });
 
+      if (!rows.length) {
+        const partnerId = Number(partnerIds[0] ?? 0);
+        setIsValidateModalOpen(false);
+        setValidateRows([
+          makeTemplateErrorRow(
+            "Nema valjanih stavki za validaciju.",
+            partnerId,
+            partnerNameById[String(partnerId)] ?? "Partner"
+          ),
+        ]);
+        setIsValidateSummaryOpen(true);
+        return;
+      }
+
       setValidateRows(rows);
+      setIsValidateModalOpen(false);
+      setIsValidateSummaryOpen(true);
     } catch (e) {
       const message = toUserMessage(e, "Greška pri validaciji.");
-      if (bulk.request.items.length === 1) {
-        setValidateRows([{
-          partnerId: Number(bulk.request.items[0]?.partnerId ?? 0),
-          partnerName: bulk.partnerNameById[String(bulk.request.items[0]?.partnerId ?? "")] ?? "Partner",
-          data: null,
-          error: message,
-          warning: null,
-          ok: 0,
-          warn: 0,
-          bad: 0,
-          total: 0,
-        }]);
-      } else {
-        setValidateRows([]);
-        setIsValidateSummaryOpen(false);
-        setScreenError(message);
-      }
+      const partnerId = Number(partnerIds[0] ?? 0);
+      setIsValidateModalOpen(false);
+      setValidateRows([
+        makeTemplateErrorRow(
+          message,
+          partnerId,
+          partnerNameById[String(partnerId)] ?? (partnerIds.length === 1 ? "Partner" : "Predložak")
+        ),
+      ]);
+      setIsValidateSummaryOpen(true);
     }
   };
 
-  const submitBooking = async () => {
-    if (selectedPartners.length === 0) return;
+  const submitBooking = async (): Promise<boolean> => {
+    if (selectedPartners.length === 0) return false;
 
     if ((!templateDocs || templateDocs.length === 0) && extraDocsPayload.length === 0) {
       setResultPopup({
@@ -1093,7 +1116,7 @@ export default function TemplateDispatchScreen() {
         message: "Predložak nema dokumenata ni dodatnih stavki.",
         linkHeaderId: null,
       });
-      return;
+      return false;
     }
 
     const documentDate = toLocalDateString(new Date());
@@ -1136,6 +1159,7 @@ export default function TemplateDispatchScreen() {
           message: `Uspjeh: ${succeeded}/${total} • Neuspjeh: ${failed}`,
           linkHeaderId: succeeded > 0 ? createdHeaderId : null,
         });
+        return succeeded > 0;
       } catch (e) {
         setResultPopup({
           visible: true,
@@ -1144,9 +1168,8 @@ export default function TemplateDispatchScreen() {
           message: toUserMessage(e, "Greška pri kreiranju."),
           linkHeaderId: null,
         });
+        return false;
       }
-
-      return;
     }
 
     const total = selectedPartners.length;
@@ -1191,14 +1214,17 @@ export default function TemplateDispatchScreen() {
     });
 
     if (successCount > 0 && failCount === 0) clearLocalDraft();
+    return successCount > 0;
   };
 
   const confirmValidateAndSubmit = async () => {
-    setIsValidateModalOpen(false);
-    setIsValidateSummaryOpen(false);
     setValidateDetailRow(null);
     setDetailFromMany(false);
-    await submitBooking();
+    const created = await submitBooking();
+    if (created) {
+      setIsValidateModalOpen(false);
+      setIsValidateSummaryOpen(false);
+    }
   };
 
   const openDetailFromRow = useCallback((row: ValidateRow) => {
@@ -1584,6 +1610,23 @@ export default function TemplateDispatchScreen() {
           }
           staleTime={16 * 60 * 60 * 1000}
           gcTime={24 * 60 * 60 * 1000}
+          renderFooter={(close) => (
+            <View style={s.pickerFooterRow}>
+              <Pressable
+                style={[s.pickerFooterBtn, s.pickerFooterPrimary]}
+                onPress={close}
+              >
+                <Text style={s.pickerFooterPrimaryText}>Spremi</Text>
+              </Pressable>
+
+              <Pressable
+                style={[s.pickerFooterBtn, s.pickerFooterSecondary]}
+                onPress={close}
+              >
+                <Text style={s.pickerFooterSecondaryText}>Zatvori</Text>
+              </Pressable>
+            </View>
+          )}
           renderRow={(partner) => {
             const partnerId = Number((partner as any)?.id);
             const isSelected = selectedPartnerIds.has(partnerId);
@@ -1745,7 +1788,7 @@ export default function TemplateDispatchScreen() {
       <ValidateImpactModal
         visible={isValidateModalOpen}
         onClose={() => {
-          if (bookingBusy || validateLoading) return;
+          if (validationModalBusy) return;
           setIsValidateModalOpen(false);
 
           if (detailFromMany) {
@@ -1754,8 +1797,10 @@ export default function TemplateDispatchScreen() {
             setValidateDetailRow(null);
           }
         }}
-        disableClose={bookingBusy || validateLoading}
-        loading={validateLoading}
+        disableClose={validationModalBusy}
+        loading={validationModalBusy}
+        loadingTitle={bookingBusy ? "Kreiram…" : "Provjeravam…"}
+        loadingSubtitle={bookingBusy ? "Kreiram otpremnice za odabrane partnere." : "Analiziram stavke i očekivane promjene."}
         error={validateError}
         data={validateData}
         onConfirm={confirmValidateAndSubmit}
@@ -1765,11 +1810,11 @@ export default function TemplateDispatchScreen() {
 
       <ValidateManyModal
         visible={isValidateSummaryOpen}
-        loading={validateLoading}
+        loading={validationModalBusy}
         rows={validateRows}
-        disableClose={bookingBusy || validateLoading}
+        disableClose={validationModalBusy}
         onClose={() => {
-          if (bookingBusy || validateLoading) return;
+          if (validationModalBusy) return;
           setIsValidateSummaryOpen(false);
           setDetailFromMany(false);
           setValidateDetailRow(null);
@@ -1780,6 +1825,8 @@ export default function TemplateDispatchScreen() {
         subtitle="Provjera po partneru prije kreiranja otpremnica."
         confirmText="Kreiraj za odabrane partnere"
         disabledConfirmText="Ispravi prije kreiranja"
+        loadingTitle={bookingBusy ? "Kreiram…" : "Provjeravam…"}
+        loadingSubtitle={bookingBusy ? "Kreiram otpremnice za odabrane partnere." : "Molim pričekaj."}
       />
 
       <InfoResultPopup

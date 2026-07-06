@@ -14,6 +14,7 @@ import type {
   TemplateBookOneRequestDTO,
   TemplateBookManyRequestDTO,
   DispatchBulkResponseDTO,
+  DispatchBulkValidationResponseDTO,
   FolderCopyRequestDTO,
   PagedResultDTO,
 } from "@/src/models/generated";
@@ -222,6 +223,7 @@ export const dispatchTemplateService = {
       method: "POST",
       body: payload,
       signal,
+      timeoutMs: 120_000,
     });
   },
 
@@ -230,6 +232,25 @@ export const dispatchTemplateService = {
       method: "POST",
       body: payload,
       signal,
+      timeoutMs: 120_000,
+    });
+  },
+
+  validateOne(payload: TemplateBookOneRequestDTO, signal?: AbortSignal) {
+    return api.request<DispatchBulkValidationResponseDTO>("/api/v1/dispatch-template-booking/validate", {
+      method: "POST",
+      body: payload,
+      signal,
+      timeoutMs: 60_000,
+    });
+  },
+
+  validateMany(payload: TemplateBookManyRequestDTO, signal?: AbortSignal) {
+    return api.request<DispatchBulkValidationResponseDTO>("/api/v1/dispatch-template-booking/validate/bulk", {
+      method: "POST",
+      body: payload,
+      signal,
+      timeoutMs: 60_000,
     });
   },
 

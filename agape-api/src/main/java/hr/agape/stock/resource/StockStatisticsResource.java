@@ -35,7 +35,15 @@ public class StockStatisticsResource {
             @QueryParam("documentYear") Integer documentYear,
             @QueryParam("documentCode") String documentCode
     ) {
-        return Responses.from(service.getStatistics(warehouseId, storageGroupId, documentYear, documentCode));
+        return Responses.from(service.getStatistics(
+                positiveOrNull(warehouseId),
+                positiveOrNull(storageGroupId),
+                documentYear,
+                documentCode
+        ));
     }
 
+    private static Long positiveOrNull(Long value) {
+        return value == null || value <= 0 ? null : value;
+    }
 }

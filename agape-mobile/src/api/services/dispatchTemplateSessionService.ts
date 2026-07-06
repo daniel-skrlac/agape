@@ -3,6 +3,7 @@ import type {
   BookingSessionEntryUpsertRequestDTO,
   BookingSessionResponseDTO,
   DispatchBulkResponseDTO,
+  DispatchBulkValidationResponseDTO,
 } from "@/src/models/generated";
 import { api } from "../api";
 
@@ -78,6 +79,13 @@ const dispatchBookingSessionService = {
   finalize: (sessionId: number) =>
     api.request<DispatchBulkResponseDTO>(`${BASE}/${sessionId}/finalize`, {
       method: "POST",
+      timeoutMs: 120_000,
+    }),
+
+  validateFinalization: (sessionId: number) =>
+    api.request<DispatchBulkValidationResponseDTO>(`${BASE}/${sessionId}/validate-finalization`, {
+      method: "POST",
+      timeoutMs: 60_000,
     }),
 
   cancel: (sessionId: number) =>

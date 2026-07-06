@@ -1,6 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
-// Generated using typescript-generator version 3.2.1263 on 2026-07-02 21:00:11.
+// Generated using typescript-generator version 3.2.1263 on 2026-07-06 20:05:28.
 
 export interface PagedResultDTO<T> {
     items: T[];
@@ -107,6 +107,9 @@ export interface DispatchBulkValidationResponseDTO {
 
 export interface DispatchBulkValidationRowDTO {
     partnerId: number;
+    warehouseId: number;
+    documentId: number;
+    documentCode: string;
     data: WarehouseBookingImpactDTO;
     error: string;
 }

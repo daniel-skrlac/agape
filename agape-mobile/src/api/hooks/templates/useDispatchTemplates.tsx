@@ -52,6 +52,9 @@ const qk = {
   templateShares: (templateId: number) => ["dispatch-template-shares", templateId] as const,
 };
 
+const TEMPLATE_LIST_STALE_TIME_MS = 2 * 60 * 1000;
+const TEMPLATE_LIST_GC_TIME_MS = 15 * 60 * 1000;
+
 function getNextPageParam<T>(lastPage: PagedResultDTO<T>) {
   const page = Number(lastPage?.page ?? 0);
   const size = Number(lastPage?.size ?? 0);
@@ -101,6 +104,8 @@ export function useTemplateFolders(args: UseTemplateFoldersArgs = {}) {
     queryKey: qk.foldersRoot(normalizedQ),
     enabled: enabled && useRootEndpoint,
     queryFn: ({ signal }) => dispatchTemplateService.listRootFolders({ q: normalizedQ }, signal),
+    staleTime: TEMPLATE_LIST_STALE_TIME_MS,
+    gcTime: TEMPLATE_LIST_GC_TIME_MS,
   });
 
   const pagedQuery = useInfiniteQuery({
@@ -118,6 +123,8 @@ export function useTemplateFolders(args: UseTemplateFoldersArgs = {}) {
         signal
       ),
     getNextPageParam,
+    staleTime: TEMPLATE_LIST_STALE_TIME_MS,
+    gcTime: TEMPLATE_LIST_GC_TIME_MS,
   });
 
   const data = useMemo(() => {
@@ -152,7 +159,9 @@ export function useTemplateFolders(args: UseTemplateFoldersArgs = {}) {
   return {
     data,
     isLoading: useRootEndpoint ? rootQuery.isLoading : pagedQuery.isLoading,
-    loading: useRootEndpoint ? rootQuery.isFetching : pagedQuery.isFetching,
+    loading: useRootEndpoint
+      ? rootQuery.isFetching && data.length === 0
+      : pagedQuery.isFetching && !pagedQuery.isFetchingNextPage && data.length === 0,
     error: useRootEndpoint
       ? (rootQuery.error ?? null)
       : (pagedQuery.isError ? pagedQuery.error : null),
@@ -219,6 +228,8 @@ export function useTemplateList(args: UseTemplateListArgs) {
         signal
       ),
     getNextPageParam,
+    staleTime: TEMPLATE_LIST_STALE_TIME_MS,
+    gcTime: TEMPLATE_LIST_GC_TIME_MS,
   });
 
   const data = useMemo(() => {
@@ -246,7 +257,7 @@ export function useTemplateList(args: UseTemplateListArgs) {
   return {
     data,
     isLoading: query.isLoading,
-    loading: query.isFetching,
+    loading: query.isFetching && !query.isFetchingNextPage && data.length === 0,
     error: query.isError ? query.error : null,
 
     canLoadMore: !!query.hasNextPage,
@@ -268,23 +279,30 @@ type UseTemplateDetailOptions = {
 
 export function useTemplateDetail(id: number | null, options: UseTemplateDetailOptions = {}) {
   const includeItemMeta = options.includeItemMeta ?? false;
+  const templateId = Number(id ?? 0);
+  const enabled = Number.isFinite(templateId) && templateId > 0;
 
   const query = useQuery({
-    queryKey: id != null ? qk.templateDetail(Number(id), includeItemMeta) : ["dispatch-template", "null"],
-    enabled: id != null,
-    queryFn: ({ signal }) =>
-      dispatchTemplateService.getTemplate(Number(id), signal, { includeItemMeta }),
+    queryKey: enabled ? qk.templateDetail(templateId, includeItemMeta) : ["dispatch-template", "none", includeItemMeta],
+    enabled,
+    queryFn: ({ signal }) => {
+      if (!enabled) {
+        throw new Error("Template id is required.");
+      }
+
+      return dispatchTemplateService.getTemplate(templateId, signal, { includeItemMeta });
+    },
   });
 
   return {
-    data: query.data ?? null,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error ?? null,
-    errorMessage: query.error
+    data: enabled ? query.data ?? null : null,
+    isLoading: enabled && query.isLoading,
+    isFetching: enabled && query.isFetching,
+    error: enabled ? query.error ?? null : null,
+    errorMessage: enabled && query.error
       ? toUserMessage(query.error, "Greška prilikom učitavanja predloška.")
       : null,
-    refetch: query.refetch,
+    refetch: enabled ? query.refetch : async () => null as any,
   };
 }
 
@@ -509,6 +527,20 @@ export function useBookTemplateMany() {
   return useMutation({
     mutationFn: (payload: TemplateBookManyRequestDTO) =>
       dispatchTemplateService.bookMany(payload) as Promise<DispatchBulkResponseDTO>,
+  });
+}
+
+export function useValidateTemplateOne() {
+  return useMutation({
+    mutationFn: (payload: TemplateBookOneRequestDTO) =>
+      dispatchTemplateService.validateOne(payload),
+  });
+}
+
+export function useValidateTemplateMany() {
+  return useMutation({
+    mutationFn: (payload: TemplateBookManyRequestDTO) =>
+      dispatchTemplateService.validateMany(payload),
   });
 }
 

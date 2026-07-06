@@ -20,6 +20,28 @@ export const s = StyleSheet.create({
     },
     primaryText: { color: "#fff", fontWeight: "900" },
 
+    pickerFooterRow: {
+        gap: 10,
+    },
+    pickerFooterBtn: {
+        width: "100%",
+        minHeight: 46,
+        borderRadius: 14,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 12,
+    },
+    pickerFooterPrimary: {
+        backgroundColor: Colors.orange,
+    },
+    pickerFooterSecondary: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: Colors.border,
+        backgroundColor: "rgba(148,163,184,0.14)",
+    },
+    pickerFooterPrimaryText: { color: "#fff", fontWeight: "900" },
+    pickerFooterSecondaryText: { color: Colors.text, fontWeight: "900" },
+
     secondaryBtn: {
         paddingHorizontal: 12,
         paddingVertical: 8,

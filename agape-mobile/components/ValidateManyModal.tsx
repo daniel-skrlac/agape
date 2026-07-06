@@ -23,6 +23,8 @@ export type ValidateRow = {
   data: WarehouseBookingImpactDTO | null;
   error: string | null;
   warning: string | null;
+  contextLabel?: string | null;
+  contextSub?: string | null;
 };
 
 export function classifyValidationImpact(data: any) {
@@ -50,11 +52,13 @@ export function toValidateRow(args: {
   data: WarehouseBookingImpactDTO | null;
   error: string | null;
   warning?: string | null;
+  contextLabel?: string | null;
+  contextSub?: string | null;
 }): ValidateRow {
-  const { partnerId, partnerName, data, error, warning = null } = args;
+  const { partnerId, partnerName, data, error, warning = null, contextLabel = null, contextSub = null } = args;
   const stats = data ? classifyValidationImpact(data) : { ok: 0, warn: 0, bad: 0, total: 0 };
 
-  return { partnerId, partnerName, ...stats, data, error, warning };
+  return { partnerId, partnerName, ...stats, data, error, warning, contextLabel, contextSub };
 }
 
 function badgeStyle(kind: "OK" | "WARN") {
@@ -85,6 +89,8 @@ type Props = {
   subtitle?: string;
   confirmText?: string;
   disabledConfirmText?: string;
+  loadingTitle?: string;
+  loadingSubtitle?: string;
 };
 
 export default function ValidateManyModal(props: Props) {
@@ -100,6 +106,8 @@ export default function ValidateManyModal(props: Props) {
     subtitle = "Provjera po partneru prije finalnog knjiženja.",
     confirmText = "Knjiži sesiju",
     disabledConfirmText = "Ne mogu knjižiti",
+    loadingTitle = "Provjeravam…",
+    loadingSubtitle = "Molim pričekaj.",
   } = props;
 
   const summary = useMemo(() => {
@@ -142,8 +150,8 @@ export default function ValidateManyModal(props: Props) {
             {loading ? (
               <View style={s.stateBox}>
                 <ActivityIndicator />
-                <Text style={s.stateTitle}>Provjeravam…</Text>
-                <Text style={s.stateSub}>Molim pričekaj.</Text>
+                <Text style={s.stateTitle}>{loadingTitle}</Text>
+                <Text style={s.stateSub}>{loadingSubtitle}</Text>
               </View>
             ) : (
               <>
@@ -169,13 +177,13 @@ export default function ValidateManyModal(props: Props) {
                 )}
 
                 <View style={{ gap: 10 }}>
-                  {rows.map((r) => {
+                  {rows.map((r, idx) => {
                     const isOk = !r.error && r.bad === 0 && r.warn === 0;
                     const tone = badgeStyle(isOk ? "OK" : "WARN");
 
                     return (
                       <Pressable
-                        key={`r-${r.partnerId}`}
+                        key={`r-${r.partnerId}-${idx}`}
                         style={s.rowCard}
                         onPress={() => onOpenDetail(r)}
                         android_disableSound
@@ -185,6 +193,16 @@ export default function ValidateManyModal(props: Props) {
                             <Text style={s.rowName} numberOfLines={1}>
                               {r.partnerName}
                             </Text>
+                            {!!r.contextLabel ? (
+                              <Text style={s.rowContext} numberOfLines={1}>
+                                {r.contextLabel}
+                              </Text>
+                            ) : null}
+                            {!!r.contextSub ? (
+                              <Text style={s.rowContextSub} numberOfLines={2}>
+                                {r.contextSub}
+                              </Text>
+                            ) : null}
                             <Text style={s.rowSub}>
                               Stavki: {r.total}
                               {!!r.warning ? " • !" : ""}
@@ -336,6 +354,8 @@ const s = StyleSheet.create({
     gap: 10,
   },
   rowName: { fontWeight: "900", color: Colors.text, fontSize: 15 },
+  rowContext: { fontWeight: "900", color: Colors.text, fontSize: 12, marginTop: 4 },
+  rowContextSub: { fontWeight: "800", color: Colors.sub, fontSize: 11, marginTop: 2, lineHeight: 15 },
   rowSub: { fontWeight: "800", color: Colors.sub, fontSize: 12, marginTop: 2 },
 
   rowBottom: {

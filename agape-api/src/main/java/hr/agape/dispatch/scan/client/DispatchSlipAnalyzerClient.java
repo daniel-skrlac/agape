@@ -156,12 +156,24 @@ public class DispatchSlipAnalyzerClient {
             return "Datoteka slike nije poslana.";
         }
 
+        if (lower.contains("only image files are supported")) {
+            return "Podržane su samo slikovne datoteke.";
+        }
+
+        if (lower.contains("file is empty")) {
+            return "Slika otpremnice je prazna.";
+        }
+
         if (lower.contains("unsupported file type") || lower.contains("unsupported media type")) {
             return "Format slike nije podržan.";
         }
 
         if (lower.contains("cannot decode") || lower.contains("invalid image")) {
             return "Sliku nije moguće pročitati.";
+        }
+
+        if (lower.contains("failed to analyze dispatch slip")) {
+            return "Analizator nije uspio obraditi sliku.";
         }
 
         if (lower.contains("internal server error")) {

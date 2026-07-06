@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import Colors from "@/src/constants/Colors";
 import { CenterSheet } from "@/components/CenterSheet";
@@ -27,8 +27,18 @@ export function CenterConfirmSheet({
   closeOnBackdrop?: boolean;
 }) {
   const pressLockRef = useRef(false);
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
-  const locked = !!loading || pressLockRef.current;
+  useEffect(() => {
+    return () => {
+      if (lockTimerRef.current) {
+        clearTimeout(lockTimerRef.current);
+      }
+    };
+  }, []);
+
+  const locked = !!loading || confirming;
 
   const safeClose = () => {
     if (locked) return;
@@ -38,11 +48,17 @@ export function CenterConfirmSheet({
   const handleConfirm = async () => {
     if (pressLockRef.current || loading) return;
     pressLockRef.current = true;
+    setConfirming(true);
     try {
       await Promise.resolve(onConfirm());
     } finally {
-      setTimeout(() => {
+      if (lockTimerRef.current) {
+        clearTimeout(lockTimerRef.current);
+      }
+      lockTimerRef.current = setTimeout(() => {
         pressLockRef.current = false;
+        setConfirming(false);
+        lockTimerRef.current = null;
       }, 250);
     }
   };

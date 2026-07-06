@@ -132,6 +132,7 @@ export default function DispatchBookingDetails() {
   const [validateOpen, setValidateOpen] = useState(false);
   const [stornoConfirmOpen, setStornoConfirmOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [postBusy, setPostBusy] = useState(false);
 
   const [resultPopup, setResultPopup] = useState<ResultPopupState>({
     visible: false,
@@ -191,6 +192,8 @@ export default function DispatchBookingDetails() {
   const modalError = useMemo(() => {
     return validateM.errorMessage || postM.errorMessage || localError || null;
   }, [validateM.errorMessage, postM.errorMessage, localError]);
+
+  const validationModalBusy = validateM.loading || postM.loading || postBusy;
 
   const stornoConfirmDesc = useMemo(() => {
     const docCode = String((dto as any)?.documentCode ?? "").trim();
@@ -316,6 +319,7 @@ export default function DispatchBookingDetails() {
     setRetryingDetail(true);
 
     setLocalError(null);
+    setPostBusy(false);
     setValidateOpen(false);
     setStornoConfirmOpen(false);
     setResultPopup((prev) => ({ ...prev, visible: false }));
@@ -361,6 +365,7 @@ export default function DispatchBookingDetails() {
 
   const openValidate = useCallback(async () => {
     setLocalError(null);
+    setPostBusy(false);
     validateM.reset();
     postM.reset();
 
@@ -385,6 +390,8 @@ export default function DispatchBookingDetails() {
   }, [dto, headerId, canPost, validateM, postM]);
 
   const confirmValidateAndPost = useCallback(async () => {
+    if (postBusy || postM.loading) return;
+
     setLocalError(null);
 
     if (!dto || !headerId) return;
@@ -395,21 +402,24 @@ export default function DispatchBookingDetails() {
     }
 
     try {
+      setPostBusy(true);
       const res: any = await postM.post(headerId, { invalidateDetail: false });
-
-      setValidateOpen(false);
 
       const docCode = String((dto as any)?.documentCode ?? "").trim();
       const msg = docCode ? `Dokument ${docCode} je uspješno knjižen.` : "Dokument je uspješno knjižen.";
 
-      goToFinalIndex(msg);
-
       const nextDto = tryExtractDetailDto(res);
       if (nextDto) detailsQ.setBooking(nextDto as any);
+
+      setValidateOpen(false);
+      goToFinalIndex(msg);
     } catch (e) {
-      setLocalError(toUserMessage(e, Strings.settings.errors.generic));
+      setLocalError(toUserMessage(e, "Knjiženje dokumenta nije uspjelo."));
+      setValidateOpen(true);
+    } finally {
+      setPostBusy(false);
     }
-  }, [dto, headerId, canPost, postM, detailsQ, goToFinalIndex]);
+  }, [postBusy, postM, dto, headerId, canPost, detailsQ, goToFinalIndex]);
 
   const onDeleteDraft = useCallback(async () => {
     setLocalError(null);
@@ -643,11 +653,11 @@ export default function DispatchBookingDetails() {
 
         {canPost ? (
           <Pressable
-            style={[s.primary, (validateM.loading || postM.loading) && { opacity: 0.5 }]}
-            disabled={validateM.loading || postM.loading}
+            style={[s.primary, validationModalBusy && { opacity: 0.5 }]}
+            disabled={validationModalBusy}
             onPress={openValidate}
           >
-            <Text style={s.primaryText}>{validateM.loading || postM.loading ? "Radim…" : "Validiraj i knjiži"}</Text>
+            <Text style={s.primaryText}>{validationModalBusy ? "Radim…" : "Validiraj i knjiži"}</Text>
           </Pressable>
         ) : null}
 
@@ -772,15 +782,21 @@ export default function DispatchBookingDetails() {
       <ValidateImpactModal
         visible={validateOpen}
         onClose={() => {
-          if (validateM.loading || postM.loading) return;
+          if (validationModalBusy) return;
           setValidateOpen(false);
         }}
-        disableClose={validateM.loading || postM.loading}
-        loading={validateM.loading || postM.loading}
+        disableClose={validationModalBusy}
+        loading={validationModalBusy}
+        loadingTitle={postBusy || postM.loading ? "Knjižim…" : "Provjeravam…"}
+        loadingSubtitle={
+          postBusy || postM.loading
+            ? "Knjižim dokument i provjeravam rezultat."
+            : "Analiziram stavke i očekivane promjene."
+        }
         error={modalError}
         data={validateM.data}
         onConfirm={confirmValidateAndPost}
-        confirmText={postM.loading ? "Knjižim…" : "Knjiži"}
+        confirmText={postBusy || postM.loading ? "Knjižim…" : "Knjiži"}
       />
 
       <CenterConfirmSheet

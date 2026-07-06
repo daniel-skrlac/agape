@@ -225,7 +225,7 @@ export default function SessionTemplatePicker() {
   const showInlineLoading =
     !isInitialLoading &&
     !refreshing &&
-    ((showFolders && foldersQ.loading) || templatesQ.loading || docTypesQ.isFetching);
+    ((showFolders && foldersQ.loading) || templatesQ.loading || (docTypesQ.isFetching && !docTypesQ.data));
 
   const breadcrumb = useMemo(() => folderStack.map((x) => x.name).join(" / "), [folderStack]);
 

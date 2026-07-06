@@ -1,10 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -24,27 +23,21 @@ import type {
   BookingSessionEntryResponseDTO,
   BookingSessionResponseDTO,
   DraftMode,
-  DispatchRequestValidationDTO,
-  TemplateBookDocPatchDTO,
-  TemplateBookItemDTO,
   WarehouseBookingImpactDTO,
-  DispatchBulkValidationRequestDTO,
 } from "@/src/models/generated";
 
 import {
   useBookingSession,
   useDeleteBookingSessionEntry,
   useFinalizeBookingSession,
+  useValidateBookingSessionFinalization,
 } from "../../../../src/api/hooks/sessions/useBookingSessions";
-import { useDispatchValidateBulk } from "../../../../src/api/hooks/sessions/useDispatchValidate";
 import { usePullToRefresh } from "../../../../src/api/hooks/common/usePullToRefresh";
 import { toUserMessage } from "../../../../src/api/apiClient";
 
 import {
   clearDraft,
   clearDraftsForSession,
-  getDraft,
-  type EntryDraft,
 } from "../../../../src/stores/entryDraftStore";
 
 function cleanText(v: any) {
@@ -134,101 +127,6 @@ function entryMode(entry: any): DraftMode {
     ("DRAFT" as any)) as any);
 }
 
-function addQtyToMap(qty: Record<string, number>, itemId: any, q: any) {
-  const id = Number(itemId);
-  const n = Number(q ?? 0);
-  if (!id || !Number.isFinite(n) || n === 0) return;
-  const k = String(id);
-  qty[k] = Number(qty[k] ?? 0) + n;
-}
-
-function sumToItems(qty: Record<string, number>): TemplateBookItemDTO[] {
-  return Object.entries(qty)
-    .map(([k, v]) => ({ itemId: Number(k), quantity: Number(v) }))
-    .filter((x) => x.itemId && x.quantity > 0)
-    .sort((a, b) => Number(a.itemId) - Number(b.itemId));
-}
-
-function pickTouchedAware<T = any>(draft: EntryDraft | null, key: keyof EntryDraft, fallback: T): T {
-  if (!draft) return fallback;
-  if (draft._touched?.[key]) return (draft as any)[key] as T;
-  const value = (draft as any)[key];
-  return (value ?? fallback) as T;
-}
-
-function buildValidatePayloadFromEntry(args: {
-  sessionId: number;
-  warehouseId: number;
-  partnerId: number;
-  entry: any;
-}): { payload: DispatchRequestValidationDTO; warning: string | null } {
-  const { sessionId, warehouseId, partnerId, entry } = args;
-  const draft = getDraft(sessionId, partnerId);
-
-  const draftMode: DraftMode =
-    (pickTouchedAware<DraftMode | null>(draft, "draftMode", null) ||
-      (entry?.draftMode as any) ||
-      (entry?.draft ? ("DRAFT" as any) : ("FINAL" as any)) ||
-      ("DRAFT" as any)) as any;
-
-  const noteRaw = pickTouchedAware<any>(draft, "note", entry?.note);
-  const documentDateRaw = pickTouchedAware<any>(draft, "documentDate", entry?.documentDate);
-
-  const note = noteRaw ?? undefined;
-  const documentDate = documentDateRaw ?? undefined;
-
-  const docPatches: TemplateBookDocPatchDTO[] =
-    (pickTouchedAware<any>(draft, "docPatches", null) as any) ||
-    (entry?.docPatches as any) ||
-    (entry?.documentPatches as any) ||
-    (entry?.patches as any) ||
-    [];
-
-  const extraItems: TemplateBookItemDTO[] = (entry?.extraItems as any) || (entry?.extras as any) || [];
-  const directItems: TemplateBookItemDTO[] =
-    (entry?.items as any) || (entry?.validationItems as any) || (entry?.standaloneItems as any) || [];
-
-  const qty: Record<string, number> = {};
-  let warning: string | null = null;
-
-  const standaloneQty = pickTouchedAware<any>(draft, "standaloneQty", null);
-  if (standaloneQty && typeof standaloneQty === "object") {
-    Object.entries(standaloneQty).forEach(([k, v]) => addQtyToMap(qty, k, v));
-  }
-
-  (docPatches ?? []).forEach((p: any) => {
-    const exactItems = Array.isArray(p?.setItems) ? p.setItems : null;
-    const additiveItems = Array.isArray(p?.addItems) ? p.addItems : [];
-    ((exactItems ?? additiveItems) as any[]).forEach((it) => addQtyToMap(qty, it?.itemId, it?.quantity));
-  });
-  (extraItems ?? []).forEach((it: any) => addQtyToMap(qty, it?.itemId, it?.quantity));
-
-  if (Object.keys(qty).length === 0 && Array.isArray(directItems) && directItems.length > 0) {
-    (directItems as any[]).forEach((it) => addQtyToMap(qty, it?.itemId, it?.quantity));
-    warning = "Validacija koristi agregirane stavke iz entry payload-a.";
-  }
-
-  const items = sumToItems(qty);
-  const documentIds = Array.from(
-    new Set(
-      (docPatches ?? [])
-        .map((patch: any) => Number(patch?.documentId))
-        .filter((id) => Number.isFinite(id) && id > 0)
-    )
-  );
-
-  const payload: DispatchRequestValidationDTO = {
-    warehouseId: Number(warehouseId),
-    documentId: documentIds.length === 1 ? documentIds[0] : undefined,
-    documentDate: documentDate as any,
-    draft: draftMode === "DRAFT",
-    note,
-    items: items as any,
-  } as any;
-
-  return { payload, warning };
-}
-
 type ValidateRow = {
   partnerId: number;
   partnerName: string;
@@ -241,37 +139,6 @@ type ValidateRow = {
   warning: string | null;
 };
 
-function buildBulkValidateRequest(args: {
-  sessionId: number;
-  warehouseId: number;
-  entries: BookingSessionEntryResponseDTO[];
-}) {
-  const { sessionId, warehouseId, entries } = args;
-
-  const items: DispatchBulkValidationRequestDTO["items"] = [];
-  const warningByPartnerId: Record<string, string | null> = {};
-  const partnerNameById: Record<string, string> = {};
-
-  for (const entry of entries as any[]) {
-    const partnerId = Number(entry?.partnerId);
-    if (!partnerId) continue;
-
-    const partnerName = entryNameHint(entry) || `Partner #${partnerId}`;
-    const { payload, warning } = buildValidatePayloadFromEntry({
-      sessionId,
-      warehouseId,
-      partnerId,
-      entry,
-    });
-
-    items.push({ partnerId, request: payload });
-    partnerNameById[String(partnerId)] = partnerName;
-    warningByPartnerId[String(partnerId)] = warning;
-  }
-
-  return { request: { items }, warningByPartnerId, partnerNameById };
-}
-
 export default function SessionDetailIndex() {
   const params = useLocalSearchParams<{ id: string }>();
   const sessionId = Number(params.id);
@@ -281,7 +148,7 @@ export default function SessionDetailIndex() {
 
   const delEntryM = useDeleteBookingSessionEntry(sessionId);
   const finalizeM = useFinalizeBookingSession(sessionId);
-  const validateBulkM = useDispatchValidateBulk();
+  const validateSessionM = useValidateBookingSessionFinalization(sessionId);
 
   const [screenError, setScreenError] = useState<string | null>(null);
   const [suppressTopError, setSuppressTopError] = useState(false);
@@ -289,8 +156,8 @@ export default function SessionDetailIndex() {
   const resetMutationErrors = useCallback(() => {
     delEntryM.reset();
     finalizeM.reset();
-    validateBulkM.reset();
-  }, [delEntryM, finalizeM, validateBulkM]);
+    validateSessionM.reset();
+  }, [delEntryM, finalizeM, validateSessionM]);
 
   const rawTopError =
     screenError ||
@@ -412,6 +279,24 @@ export default function SessionDetailIndex() {
   const [validateOneWarning, setValidateOneWarning] = useState<string | null>(null);
 
   const [detailFromMany, setDetailFromMany] = useState(false);
+  const [finalizeBusy, setFinalizeBusy] = useState(false);
+  const finalizeBusyRef = useRef(false);
+  const validationModalBusy = validateBusy || finalizeBusy || finalizeM.isPending;
+
+  const makeSessionErrorRow = useCallback(
+    (message: string): ValidateRow => ({
+      partnerId: 0,
+      partnerName: "Evidencija",
+      data: null,
+      error: message,
+      warning: null,
+      ok: 0,
+      warn: 0,
+      bad: 0,
+      total: 0,
+    }),
+    []
+  );
 
   const startValidateThenConfirm = useCallback(async () => {
     if (!session || status !== "DRAFT") return;
@@ -419,127 +304,117 @@ export default function SessionDetailIndex() {
     setSuppressTopError(false);
     setScreenError(null);
     resetMutationErrors();
-
-    if (!warehouseId) {
-      setDetailFromMany(false);
-      setValidateOneData(null);
-      setValidateOneError("Nema skladišta na sesiji.");
-      setValidateOneWarning(null);
-      setValidateOpen(true);
-      return;
-    }
+    setValidateOpen(false);
+    setValidateOneData(null);
+    setValidateOneError(null);
+    setValidateOneWarning(null);
 
     if (!entries.length) {
       setDetailFromMany(false);
-      setValidateOneData(null);
-      setValidateOneError("Nema unosa za knjiženje.");
-      setValidateOneWarning(null);
-      setValidateOpen(true);
-      return;
-    }
-
-    const bulk = buildBulkValidateRequest({
-      sessionId,
-      warehouseId: Number(warehouseId),
-      entries,
-    });
-
-    if (!bulk.request.items.length) {
-      setDetailFromMany(false);
-      setValidateOneData(null);
-      setValidateOneError("Nema valjanih unosa za validaciju.");
-      setValidateOneWarning(null);
-      setValidateOpen(true);
-      return;
-    }
-
-    const isSingle = bulk.request.items.length === 1;
-
-    if (isSingle) {
-      setDetailFromMany(false);
-      setValidateOpen(true);
-      setValidateOneData(null);
-      setValidateOneError(null);
-      setValidateOneWarning(null);
-    } else {
-      setDetailFromMany(false);
+      setValidateOpen(false);
+      setValidateManyRows([makeSessionErrorRow("Nema unosa za knjiženje.")]);
       setValidateManyOpen(true);
-      setValidateManyRows([]);
+      return;
     }
 
+    setDetailFromMany(false);
+    setValidateManyOpen(true);
+    setValidateManyRows([]);
     setValidateBusy(true);
 
     try {
-      const res = await validateBulkM.mutateAsync(bulk.request);
+      const res = await validateSessionM.mutateAsync();
 
-      const rows: ValidateRow[] = (res.results ?? []).map((row) =>
-        toValidateRow({
-          partnerId: Number((row as any).partnerId),
-          partnerName:
-            bulk.partnerNameById[String((row as any).partnerId)] ||
-            `Partner #${Number((row as any).partnerId)}`,
-          data: (row as any).data ?? null,
+      const rows: ValidateRow[] = (res.results ?? []).map((row) => {
+        const partnerId = Number((row as any).partnerId);
+        const entry = entries.find((value: any) => Number(value?.partnerId) === partnerId);
+        const data = (row as any).data ?? null;
+        const documentId = Number(data?.documentId ?? (row as any)?.documentId ?? 0) || 0;
+        const warehouseId = Number(data?.warehouseId ?? (row as any)?.warehouseId ?? 0) || 0;
+        const documentCode = String(data?.documentCode ?? (row as any)?.documentCode ?? "").trim();
+        const contextSub = [
+          documentCode || null,
+          documentId ? `Dokument #${documentId}` : null,
+          warehouseId ? `Skladište #${warehouseId}` : null,
+        ].filter(Boolean).join(" • ");
+
+        return toValidateRow({
+          partnerId,
+          partnerName: entryNameHint(entry) || `Partner #${partnerId}`,
+          contextLabel: documentId ? `Dokument #${documentId}` : null,
+          contextSub: contextSub || null,
+          data,
           error: (row as any).error ?? null,
-          warning: bulk.warningByPartnerId[String((row as any).partnerId)] ?? null,
-        })
-      );
+          warning: null,
+        });
+      });
 
-      if (isSingle) {
-        const row = rows[0];
-        setValidateOneData(row?.data ?? null);
-        setValidateOneError(row?.error ?? null);
-        setValidateOneWarning(row?.warning ?? null);
-      } else {
-        setValidateManyRows(rows);
+      if (!rows.length) {
+        setValidateManyRows([makeSessionErrorRow("Nema valjanih stavki za validaciju.")]);
+        setValidateManyOpen(true);
+        return;
       }
+
+      setValidateManyRows(rows);
+      setValidateManyOpen(true);
     } catch (e) {
-      if (isSingle) {
-        setValidateOneData(null);
-        setValidateOneError(toUserMessage(e, "Greška pri validaciji."));
-        setValidateOneWarning(null);
-      } else {
-        setValidateManyRows([]);
-        setValidateManyOpen(false);
-        setScreenError(toUserMessage(e, "Greška pri validaciji sesije."));
-      }
+      const message = toUserMessage(e, "Greška pri validaciji sesije.");
+      setValidateOpen(false);
+      setValidateManyRows([makeSessionErrorRow(message)]);
+      setValidateManyOpen(true);
     } finally {
       setValidateBusy(false);
     }
-  }, [session, status, warehouseId, entries, sessionId, resetMutationErrors, validateBulkM]);
+  }, [session, status, entries, resetMutationErrors, validateSessionM, makeSessionErrorRow]);
 
   const confirmValidateAndFinalize = useCallback(async () => {
+    if (finalizeBusyRef.current || finalizeBusy || finalizeM.isPending) return;
+
     try {
       setSuppressTopError(false);
       setScreenError(null);
       resetMutationErrors();
 
-      setValidateOpen(false);
-      setValidateManyOpen(false);
+      finalizeBusyRef.current = true;
+      setFinalizeBusy(true);
       setDetailFromMany(false);
+      setValidateOneError(null);
+      setValidateOneWarning(null);
 
       const result: any = await finalizeM.mutateAsync();
+      const failed = Number(result?.failed ?? 0);
       clearDraftsForSession(sessionId);
       await sQ.refetch();
 
-      const failed = Number(result?.failed ?? 0);
       if (failed > 0) {
         const failedItems = Array.isArray(result?.items)
           ? result.items.filter((item: any) => item?.success === false)
           : [];
         const details = failedItems
           .map((item: any) => cleanText(item?.error))
-          .filter(Boolean)
-          .join("\n");
+            .filter(Boolean)
+            .join("\n");
 
-        setScreenError(
+        const message =
           `Sesija je zaključana nakon knjiženja, ali ${failed} unos${failed === 1 ? "" : "a"} nije uspješno knjiženo.`
-          + (details ? `\n${details}` : "")
-        );
+          + (details ? `\n${details}` : "");
+
+        setValidateOpen(false);
+        setValidateManyRows([makeSessionErrorRow(message)]);
+        setValidateManyOpen(true);
+      } else {
+        setValidateOpen(false);
+        setValidateManyOpen(false);
       }
     } catch (e) {
-      setScreenError(toUserMessage(e, "Greška pri knjiženju sesije."));
+      setValidateOpen(false);
+      setValidateManyRows([makeSessionErrorRow(toUserMessage(e, "Greška pri knjiženju sesije."))]);
+      setValidateManyOpen(true);
+    } finally {
+      finalizeBusyRef.current = false;
+      setFinalizeBusy(false);
     }
-  }, [finalizeM, sQ, sessionId, resetMutationErrors]);
+  }, [finalizeBusy, finalizeM, sQ, sessionId, resetMutationErrors, makeSessionErrorRow]);
 
   const openDetailFromRow = useCallback((row: ValidateRow) => {
     setDetailFromMany(true);
@@ -684,7 +559,9 @@ export default function SessionDetailIndex() {
 
                       <View style={st.metaChip}>
                         <FontAwesome name="home" size={13} color={Colors.sub} />
-                        <Text style={st.metaChipText}>Skladište #{(session as any).warehouseId}</Text>
+                        <Text style={st.metaChipText}>
+                          {warehouseId ? `Skladište #${warehouseId}` : "Dokumenti po unosu"}
+                        </Text>
                       </View>
                     </View>
 
@@ -776,7 +653,7 @@ export default function SessionDetailIndex() {
       <ValidateImpactModal
         visible={validateOpen}
         onClose={() => {
-          if (validateBusy || finalizeM.isPending) return;
+          if (validationModalBusy) return;
           setValidateOpen(false);
 
           if (detailFromMany) {
@@ -784,8 +661,10 @@ export default function SessionDetailIndex() {
             setDetailFromMany(false);
           }
         }}
-        disableClose={validateBusy || finalizeM.isPending}
-        loading={validateBusy}
+        disableClose={validationModalBusy}
+        loading={validationModalBusy}
+        loadingTitle={finalizeBusy || finalizeM.isPending ? "Knjižim…" : "Provjeravam…"}
+        loadingSubtitle={finalizeBusy || finalizeM.isPending ? "Kreiram otpremnice i spremam evidenciju." : "Analiziram stavke i očekivane promjene."}
         error={validateOneError ? validateOneError : validateOneWarning ? validateOneWarning : null}
         data={validateOneData}
         onConfirm={confirmValidateAndFinalize}
@@ -795,16 +674,18 @@ export default function SessionDetailIndex() {
 
       <ValidateManyModal
         visible={validateManyOpen}
-        loading={validateBusy}
+        loading={validationModalBusy}
         rows={validateManyRows}
-        disableClose={validateBusy || finalizeM.isPending}
+        disableClose={validationModalBusy}
         onClose={() => {
-          if (validateBusy || finalizeM.isPending) return;
+          if (validationModalBusy) return;
           setValidateManyOpen(false);
           setDetailFromMany(false);
         }}
         onConfirm={confirmValidateAndFinalize}
         onOpenDetail={openDetailFromRow}
+        loadingTitle={finalizeBusy || finalizeM.isPending ? "Knjižim…" : "Provjeravam…"}
+        loadingSubtitle={finalizeBusy || finalizeM.isPending ? "Kreiram otpremnice i zaključavam evidenciju." : "Molim pričekaj."}
       />
     </Screen>
   );

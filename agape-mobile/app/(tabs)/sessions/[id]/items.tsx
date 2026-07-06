@@ -686,8 +686,6 @@ export default function SessionEntryStandaloneItems() {
   const refreshNow = useCallback(() => {
     setLoadErr(null);
     setLoadMoreErr(null);
-    setItems([]);
-    setTotal(0);
     setPage(0);
     setReloadTick((x) => x + 1);
     sessionQ.refetch?.();
@@ -997,6 +995,8 @@ export default function SessionEntryStandaloneItems() {
                 data={addedItems}
                 keyExtractor={(x) => String((x as any).itemId)}
                 keyboardShouldPersistTaps="handled"
+                refreshing={loading && page === 0}
+                onRefresh={refreshNow}
                 contentContainerStyle={[s.listContent, { paddingBottom: listBottomPad }]}
                 scrollIndicatorInsets={{ bottom: listBottomPad }}
                 ListEmptyComponent={

@@ -638,6 +638,13 @@ async function restoreScanPageIfAvailable(raw: any) {
     return await scanFileAvailable(page.file) ? page : null;
 }
 
+function prefetchScanImages(pagesToPrefetch: ScanPage[]) {
+    for (const page of pagesToPrefetch) {
+        if (!page.file.mimeType.startsWith("image/")) continue;
+        void Image.prefetch(page.file.uri).catch(() => {});
+    }
+}
+
 export default function DispatchSlipScanScreen() {
     const params = useLocalSearchParams<{
         id: string;
@@ -1000,6 +1007,7 @@ export default function DispatchSlipScanScreen() {
                 : [];
 
             if (restoredPages.length) {
+                prefetchScanImages(restoredPages);
                 setPages(restoredPages);
                 setCurrentPageIndex(Math.max(0, Math.min(Number(draft?.currentPageIndex ?? 0), restoredPages.length)));
             } else if (draft?.pages?.length) {
@@ -1257,6 +1265,7 @@ export default function DispatchSlipScanScreen() {
         const startIndex = pages.length;
         const nextPages = files.map(makePage);
 
+        prefetchScanImages(nextPages);
         setPages((prev) => [...prev, ...nextPages]);
         setCurrentPageIndex(startIndex);
         setScreenError(null);
@@ -1273,6 +1282,7 @@ export default function DispatchSlipScanScreen() {
 
         if (mode === "replace" && currentPage) {
             const nextPage = resetPageForFile(currentPage, file);
+            prefetchScanImages([nextPage]);
             setPages((prev) => prev.map((page) => (page.id === currentPage.id ? nextPage : page)));
             setScreenError(null);
             setScannerSession(null);
@@ -1281,6 +1291,7 @@ export default function DispatchSlipScanScreen() {
         }
 
         const nextPage = makePage(file);
+        prefetchScanImages([nextPage]);
         setPages((prev) => {
             setCurrentPageIndex(prev.length);
             return [...prev, nextPage];

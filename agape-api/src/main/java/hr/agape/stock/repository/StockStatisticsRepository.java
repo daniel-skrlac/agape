@@ -56,6 +56,26 @@ public class StockStatisticsRepository {
     }
 
     /**
+     * Loads every active item in the selected warehouse/document context once.
+     * The dashboard derives totals and sections from this snapshot to avoid
+     * repeated Oracle round-trips for the same small legacy catalog.
+     */
+    public List<StockItemStatus> findAllEligible(
+            Long warehouseId,
+            Long storageGroupId,
+            Integer documentYear,
+            String documentCode
+    ) throws SQLException {
+        StringBuilder sql = baseSelect();
+        sql.append("""
+                ORDER BY n.NAZIV ASC NULLS LAST, z.ARTIKLID ASC
+                )
+                """);
+
+        return queryItems(sql.toString(), warehouseId, storageGroupId, documentYear, documentCode);
+    }
+
+    /**
      * Missing = item exists in eligible warehouse catalog, but has no stock row
      * or current quantity is null/zero/negative.
      */
