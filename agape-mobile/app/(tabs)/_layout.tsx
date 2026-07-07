@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Tabs, useRouter } from "expo-router";
 
@@ -10,6 +10,7 @@ import { useCurrentUser } from "@/src/api/hooks/common/useCurrentUser";
 
 const ORANGE = "#F97316";
 const INACTIVE = "#94A3B8";
+const TAB_BAR_BG = Platform.OS === "android" ? "#FFFFFF" : "rgba(255,255,255,0.72)";
 
 function TabBarIcon(props: { name: React.ComponentProps<typeof FontAwesome>["name"]; color: string }) {
   return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
@@ -95,9 +96,10 @@ export default function TabLayout() {
           tabBarActiveTintColor: ORANGE,
           tabBarInactiveTintColor: INACTIVE,
           tabBarStyle: {
-            backgroundColor: "rgba(255,255,255,0.72)",
+            backgroundColor: TAB_BAR_BG,
             borderTopColor: "rgba(2, 6, 23, 0.12)",
             borderTopWidth: StyleSheet.hairlineWidth,
+            elevation: Platform.OS === "android" ? 0 : undefined,
           },
         }}
       >

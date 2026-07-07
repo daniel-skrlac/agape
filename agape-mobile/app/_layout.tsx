@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
-import { View, StyleSheet } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { Image, Platform, View, StyleSheet } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as SplashScreen from "expo-splash-screen";
 import { Asset } from "expo-asset";
 import { DancingScript_700Bold, useFonts } from "@expo-google-fonts/dancing-script";
+import * as NavigationBar from "expo-navigation-bar";
 
 import { queryClient } from "../src/query/queryClient";
 import { KeyboardInsetProvider } from "@/src/keyboard/KeyboardInsetProvider";
@@ -14,6 +15,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const [assetsReady, setAssetsReady] = useState(false);
+  const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
   const [fontsLoaded, fontError] = useFonts({ DancingScript_700Bold });
 
   useEffect(() => {
@@ -23,6 +25,7 @@ export default function RootLayout() {
       try {
         await Asset.loadAsync([
           require("../assets/images/icon.png"),
+          require("../assets/images/splash.png"),
         ]);
       } finally {
         if (mounted) {
@@ -38,15 +41,24 @@ export default function RootLayout() {
 
   const ready = assetsReady && (fontsLoaded || !!fontError);
 
-  useEffect(() => {
-    if (!ready) return;
+  const hideNativeSplash = useCallback(() => {
+    if (nativeSplashHidden) return;
+    setNativeSplashHidden(true);
     SplashScreen.hideAsync().catch(() => {});
-  }, [ready]);
+  }, [nativeSplashHidden]);
 
-  if (!ready) return null;
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    NavigationBar.setStyle("light");
+    NavigationBar.setVisibilityAsync("visible").catch(() => {});
+  }, []);
+
+  if (!ready) {
+    return <BootSplash onLayout={hideNativeSplash} />;
+  }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }} onLayout={hideNativeSplash}>
       <QueryClientProvider client={queryClient}>
         <KeyboardInsetProvider>
           <View style={styles.root}>
@@ -67,6 +79,19 @@ export default function RootLayout() {
   );
 }
 
+function BootSplash({ onLayout }: { onLayout: () => void }) {
+  return (
+    <View style={styles.bootSplash} onLayout={onLayout}>
+      <Image
+        source={require("../assets/images/splash.png")}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, position: "relative", backgroundColor: "#FFFFFF" },
+  bootSplash: { flex: 1, backgroundColor: "#FFFFFF" },
 });

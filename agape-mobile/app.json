@@ -9,9 +9,11 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "cover",
       "backgroundColor": "#ffffff"
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#ffffff",
+      "barStyle": "dark-content"
     },
     "extra": {
       "eas": {
@@ -37,7 +39,29 @@
       "expo-secure-store",
       "expo-font",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "android": {
+            "backgroundColor": "#ffffff"
+          },
+          "ios": {
+            "image": "./assets/images/splash.png",
+            "resizeMode": "cover",
+            "backgroundColor": "#ffffff",
+            "enableFullScreenImage_legacy": true
+          }
+        }
+      ],
+      [
+        "expo-navigation-bar",
+        {
+          "backgroundColor": "#ffffff",
+          "barStyle": "dark"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
