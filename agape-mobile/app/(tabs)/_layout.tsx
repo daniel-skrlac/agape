@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Tabs, useRouter } from "expo-router";
 
-import { getToken } from "../../src/api/sessionStore";
 import AuthBackground from "@/components/auth/AuthBackground";
 import TopBar from "@/components/ui/TopBar";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useCurrentUser } from "@/src/api/hooks/common/useCurrentUser";
 
 const ORANGE = "#F97316";
 const INACTIVE = "#94A3B8";
@@ -57,31 +57,13 @@ function HomeTabButton({ children, onPress, accessibilityState }: any) {
 
 export default function TabLayout() {
   const router = useRouter();
-
-  const [checking, setChecking] = useState(true);
-  const [hasToken, setHasToken] = useState(false);
+  const { session, ready } = useCurrentUser();
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const token = await getToken();
-        if (!mounted) return;
-        setHasToken(!!token);
-      } finally {
-        if (mounted) setChecking(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    if (ready && !session) router.replace("/");
+  }, [ready, session, router]);
 
-  useEffect(() => {
-    if (!checking && !hasToken) router.replace("/");
-  }, [checking, hasToken, router]);
-
-  if (checking) {
+  if (!ready) {
     return (
       <AuthBackground>
         <View style={styles.center}>
@@ -91,12 +73,10 @@ export default function TabLayout() {
     );
   }
 
-  if (!hasToken) {
+  if (!session) {
     return (
       <AuthBackground>
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={ORANGE} />
-        </View>
+        <View style={styles.emptyRedirect} />
       </AuthBackground>
     );
   }
@@ -200,4 +180,5 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  emptyRedirect: { flex: 1 },
 });

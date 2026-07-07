@@ -1,7 +1,8 @@
 import React, { forwardRef } from "react";
-import { RefreshControl, ScrollView, ScrollViewProps } from "react-native";
+import { Platform, RefreshControl, ScrollView, ScrollViewProps } from "react-native";
 import Screen from "./Screen";
 import Colors from "@/src/constants/Colors";
+import { useKeyboardInset } from "@/src/keyboard/KeyboardInsetProvider";
 
 type Props = ScrollViewProps & {
     refreshing?: boolean;
@@ -19,13 +20,26 @@ const TabScroll = forwardRef<ScrollView, Props>(function TabScroll({
     withScreen = true,
     children,
     contentContainerStyle,
+    keyboardDismissMode,
+    keyboardShouldPersistTaps,
+    automaticallyAdjustKeyboardInsets,
     ...rest
 }: Props, ref) {
+    const keyboard = useKeyboardInset();
+    const keyboardPadding = Platform.OS === "android" && keyboard.visible ? keyboard.bottom + 24 : 0;
+
     const scroll = (
         <ScrollView
             ref={ref}
             {...rest}
-            contentContainerStyle={[{ flexGrow: 1 }, contentContainerStyle]}
+            keyboardDismissMode={keyboardDismissMode ?? (Platform.OS === "ios" ? "interactive" : "on-drag")}
+            keyboardShouldPersistTaps={keyboardShouldPersistTaps ?? "handled"}
+            automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets ?? true}
+            contentContainerStyle={[
+                { flexGrow: 1 },
+                contentContainerStyle,
+                keyboardPadding > 0 ? { paddingBottom: keyboardPadding } : null,
+            ]}
             refreshControl={
                 refreshing != null && onRefresh ? (
                     <RefreshControl

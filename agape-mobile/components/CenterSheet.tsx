@@ -1,6 +1,7 @@
 import React from "react";
 import { Keyboard, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import Colors from "@/src/constants/Colors";
+import { useKeyboardInset } from "@/src/keyboard/KeyboardInsetProvider";
 
 export function CenterSheet({
   visible,
@@ -22,6 +23,7 @@ export function CenterSheet({
   disableClose?: boolean;
 }) {
   const canClose = !disableClose;
+  const keyboard = useKeyboardInset();
 
   const handleClose = () => {
     if (!canClose) return;
@@ -47,7 +49,17 @@ export function CenterSheet({
           }}
         />
 
-        <View style={s.centerWrap} pointerEvents="box-none">
+        <View
+          style={[
+            s.centerWrap,
+            keyboard.visible && {
+              justifyContent: "flex-start",
+              paddingTop: 24,
+              paddingBottom: keyboard.bottom + 18,
+            },
+          ]}
+          pointerEvents="box-none"
+        >
           {/* ✅ tap anywhere in the modal area (outside inputs) -> dismiss keyboard */}
           <Pressable style={StyleSheet.absoluteFill} onPress={Keyboard.dismiss} />
 

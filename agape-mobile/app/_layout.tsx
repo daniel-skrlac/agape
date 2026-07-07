@@ -8,6 +8,7 @@ import { Asset } from "expo-asset";
 import { DancingScript_700Bold, useFonts } from "@expo-google-fonts/dancing-script";
 
 import { queryClient } from "../src/query/queryClient";
+import { KeyboardInsetProvider } from "@/src/keyboard/KeyboardInsetProvider";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -47,12 +48,20 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <View style={styles.root}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
-        </View>
+        <KeyboardInsetProvider>
+          <View style={styles.root}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                animation: "none",
+                contentStyle: { backgroundColor: "transparent" },
+              }}
+            >
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            </Stack>
+          </View>
+        </KeyboardInsetProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>
   );

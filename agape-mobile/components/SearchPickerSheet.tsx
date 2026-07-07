@@ -15,6 +15,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 
 import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "./ErrorCard";
+import { useKeyboardInset } from "@/src/keyboard/KeyboardInsetProvider";
 
 type PageResult<T> = {
   items: T[];
@@ -65,6 +66,7 @@ export function SearchPickerSheet<T>(props: Props<T>) {
 
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
+  const keyboard = useKeyboardInset();
 
   const size = initialSize;
   const normalizedQ = debouncedQ.trim();
@@ -122,7 +124,16 @@ export function SearchPickerSheet<T>(props: Props<T>) {
       statusBarTranslucent
       onRequestClose={close}
     >
-      <View style={s.backdrop}>
+      <View
+        style={[
+          s.backdrop,
+          keyboard.visible && {
+            justifyContent: "flex-start",
+            paddingTop: 28,
+            paddingBottom: keyboard.bottom + 16,
+          },
+        ]}
+      >
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={closeOnBackdropPress ? close : Keyboard.dismiss}
@@ -177,7 +188,10 @@ export function SearchPickerSheet<T>(props: Props<T>) {
             <FlatList
               data={items}
               keyExtractor={keyOf}
-              contentContainerStyle={s.list}
+              contentContainerStyle={[
+                s.list,
+                keyboard.visible ? { paddingBottom: keyboard.bottom + 16 } : null,
+              ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               onTouchStart={Keyboard.dismiss}

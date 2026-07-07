@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -14,7 +14,7 @@ interface TextFieldProps extends TextInputProps {
   right?: React.ReactNode;
 }
 
-const TextField: React.FC<TextFieldProps> = ({
+const TextField = forwardRef<TextInput, TextFieldProps>(function TextField({
   label,
   right,
   style,
@@ -22,9 +22,11 @@ const TextField: React.FC<TextFieldProps> = ({
   onBlur,
   editable = true,
   ...props
-}) => {
+}, ref) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
+
+  useImperativeHandle(ref, () => inputRef.current as TextInput);
 
   return (
     <View style={styles.container}>
@@ -65,7 +67,7 @@ const TextField: React.FC<TextFieldProps> = ({
       </Pressable>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: { marginBottom: 14 },

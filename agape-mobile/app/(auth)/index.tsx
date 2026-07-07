@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
@@ -16,19 +16,16 @@ import { getToken } from "../../src/api/sessionStore";
 import { ErrorCard } from "@/components/ErrorCard";
 import { styles } from "../../src/styles/LoginScreen.styles";
 import { useLoginForm } from "../../src/api/hooks/auth/useLoginForm";
+import { useKeyboardAwareScroll } from "@/src/hooks/useKeyboardAwareScroll";
 
 export default function Index() {
     const router = useRouter();
     const form = useLoginForm();
-    const scrollRef = useRef<ScrollView>(null);
+    const { scrollRef, revealInput } = useKeyboardAwareScroll(96);
+    const usernameInputRef = useRef<TextInput>(null);
+    const passwordInputRef = useRef<TextInput>(null);
 
     const [showPassword, setShowPassword] = useState(false);
-
-    const scrollToField = useCallback((y: number) => {
-        requestAnimationFrame(() => {
-            scrollRef.current?.scrollTo({ y, animated: true });
-        });
-    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -83,28 +80,32 @@ export default function Index() {
                                 )}
 
                                 <TextField
+                                    ref={usernameInputRef}
                                     label={Strings.auth.usernameLabel}
                                     placeholder={Strings.auth.usernamePlaceholder}
                                     autoCapitalize="none"
                                     value={form.values.username}
                                     onChangeText={form.setUsername}
-                                    onFocus={() => scrollToField(150)}
+                                    onFocus={() => revealInput(usernameInputRef)}
                                     onBlur={() => form.markTouched("username")}
                                     returnKeyType="next"
+                                    onSubmitEditing={() => passwordInputRef.current?.focus()}
                                 />
                                 {!!form.errors.usernameError && (
                                     <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
                                 )}
 
                                 <TextField
+                                    ref={passwordInputRef}
                                     label={Strings.auth.passwordLabel}
                                     placeholder={Strings.auth.passwordPlaceholder}
                                     secureTextEntry={!showPassword}
                                     value={form.values.password}
                                     onChangeText={form.setPassword}
-                                    onFocus={() => scrollToField(215)}
+                                    onFocus={() => revealInput(passwordInputRef)}
                                     onBlur={() => form.markTouched("password")}
                                     returnKeyType="done"
+                                    onSubmitEditing={handleLogin}
                                     right={
                                         <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
                                             <FontAwesome

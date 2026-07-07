@@ -13,6 +13,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Colors from "@/src/constants/Colors";
 import { ErrorCard } from "@/components/ErrorCard";
 import { toUserMessage } from "@/src/api/apiClient";
+import { useKeyboardInset } from "@/src/keyboard/KeyboardInsetProvider";
 
 import type {
   ItemDescriptorResponseDTO,
@@ -58,6 +59,7 @@ function LockedCenterModal(props: {
   children: React.ReactNode;
 }) {
   const { visible, title, onClose, disableClose, onBodyScroll, children } = props;
+  const keyboard = useKeyboardInset();
 
   return (
     <Modal
@@ -66,7 +68,16 @@ function LockedCenterModal(props: {
       animationType="fade"
       onRequestClose={disableClose ? undefined : onClose}
     >
-      <View style={s.modalWrap}>
+      <View
+        style={[
+          s.modalWrap,
+          keyboard.visible && {
+            justifyContent: "flex-start",
+            paddingTop: 24,
+            paddingBottom: keyboard.bottom + 16,
+          },
+        ]}
+      >
         <View style={s.backdrop} />
 
         <View style={s.modalCard}>
@@ -83,8 +94,12 @@ function LockedCenterModal(props: {
           </View>
 
           <ScrollView
-            contentContainerStyle={s.modalBody}
+            contentContainerStyle={[
+              s.modalBody,
+              keyboard.visible ? { paddingBottom: keyboard.bottom + 24 } : null,
+            ]}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             onScroll={onBodyScroll}
             scrollEventThrottle={16}
           >

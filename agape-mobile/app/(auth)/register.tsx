@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import React, { useRef, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useRouter } from "expo-router";
 
@@ -15,19 +15,18 @@ import Strings from "@/src/constants/Strings";
 import Colors from "@/src/constants/Colors";
 import { useRegisterForm } from "../../src/api/hooks/auth/useRegisterForm";
 import { styles } from "../../src/styles/RegisterScreen.styles";
+import { useKeyboardAwareScroll } from "@/src/hooks/useKeyboardAwareScroll";
 
 export default function RegisterScreen() {
   const router = useRouter();
   const form = useRegisterForm();
-  const scrollRef = useRef<ScrollView>(null);
+  const { scrollRef, revealInput } = useKeyboardAwareScroll(96);
+  const fullNameInputRef = useRef<TextInput>(null);
+  const oibInputRef = useRef<TextInput>(null);
+  const usernameInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
 
   const [showPassword, setShowPassword] = useState(false);
-
-  const scrollToField = useCallback((y: number) => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ y, animated: true });
-    });
-  }, []);
 
   const handleRegister = async () => {
     const res = await form.submit();
@@ -65,55 +64,63 @@ export default function RegisterScreen() {
                 )}
 
                 <TextField
+                  ref={fullNameInputRef}
                   label={Strings.auth.fullNameLabel}
                   placeholder={Strings.auth.fullNamePlaceholder}
                   value={form.values.fullName}
                   onChangeText={form.setFullName}
-                  onFocus={() => scrollToField(120)}
+                  onFocus={() => revealInput(fullNameInputRef)}
                   onBlur={() => form.markTouched("fullName")}
                   returnKeyType="next"
+                  onSubmitEditing={() => oibInputRef.current?.focus()}
                 />
                 {!!form.errors.fullNameError && (
                   <Text style={styles.fieldError}>{form.errors.fullNameError}</Text>
                 )}
 
                 <TextField
+                  ref={oibInputRef}
                   label={Strings.auth.oibLabel ?? "OIB:"}
                   placeholder={Strings.auth.oibPlaceholder}
                   value={form.values.oib}
                   onChangeText={form.setOib}
-                  onFocus={() => scrollToField(185)}
+                  onFocus={() => revealInput(oibInputRef)}
                   onBlur={() => form.markTouched("oib")}
                   keyboardType="number-pad"
                   returnKeyType="next"
+                  onSubmitEditing={() => usernameInputRef.current?.focus()}
                 />
                 {!!form.errors.oibError && (
                   <Text style={styles.fieldError}>{form.errors.oibError}</Text>
                 )}
 
                 <TextField
+                  ref={usernameInputRef}
                   label={Strings.auth.usernameLabel}
                   placeholder={Strings.auth.usernamePlaceholder}
                   autoCapitalize="none"
                   value={form.values.username}
                   onChangeText={form.setUsername}
-                  onFocus={() => scrollToField(250)}
+                  onFocus={() => revealInput(usernameInputRef)}
                   onBlur={() => form.markTouched("username")}
                   returnKeyType="next"
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
                 />
                 {!!form.errors.usernameError && (
                   <Text style={styles.fieldError}>{form.errors.usernameError}</Text>
                 )}
 
                 <TextField
+                  ref={passwordInputRef}
                   label={Strings.auth.passwordLabel}
                   placeholder={Strings.auth.passwordPlaceholder}
                   secureTextEntry={!showPassword}
                   value={form.values.password}
                   onChangeText={form.setPassword}
-                  onFocus={() => scrollToField(315)}
+                  onFocus={() => revealInput(passwordInputRef)}
                   onBlur={() => form.markTouched("password")}
                   returnKeyType="done"
+                  onSubmitEditing={handleRegister}
                   right={
                     <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10}>
                       <FontAwesome

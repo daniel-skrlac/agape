@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View, ViewStyle } from "react-native";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Colors from "@/src/constants/Colors";
+import { useKeyboardInset } from "@/src/keyboard/KeyboardInsetProvider";
 
 type FolderLike = {
   id: number;
@@ -63,6 +64,7 @@ export function FolderPicker(props: {
   } = props;
 
   const [q, setQ] = useState("");
+  const keyboard = useKeyboardInset();
 
   const model = useMemo(() => {
     const byId = new Map<number, FolderLike>();
@@ -165,7 +167,8 @@ export function FolderPicker(props: {
         keyExtractor={(x) => String(x.id)}
         removeClippedSubviews={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ gap: 10, paddingBottom: 8 }}
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={{ gap: 10, paddingBottom: keyboard.visible ? keyboard.bottom + 16 : 8 }}
         ListHeaderComponent={
           RootRow ? (
             <View style={{ gap: 10 }}>
