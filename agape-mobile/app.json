@@ -9,6 +9,8 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "androidNavigationBar": {
@@ -39,21 +41,14 @@
       "expo-secure-store",
       "expo-font",
       "expo-web-browser",
-      "expo-asset",
       [
         "expo-splash-screen",
         {
+          "image": "./assets/images/splash.png",
+          "resizeMode": "contain",
           "backgroundColor": "#ffffff",
-          "android": {
-            "image": "./assets/images/splash-blank.png",
-            "resizeMode": "contain",
-            "backgroundColor": "#ffffff",
-            "imageWidth": 1
-          },
+          "imageWidth": 240,
           "ios": {
-            "image": "./assets/images/splash.png",
-            "resizeMode": "cover",
-            "backgroundColor": "#ffffff",
             "enableFullScreenImage_legacy": true
           }
         }
