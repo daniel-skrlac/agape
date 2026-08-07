@@ -6,20 +6,29 @@
   "scripts": {
     "dev": "astro dev",
     "dev:host": "astro dev --host 0.0.0.0",
-    "start": "astro dev",
+    "start": "node ./dist/server/entry.mjs",
     "check": "astro check",
     "build": "astro build",
+    "poster:build": "node marketing/posters/socka-city-campaign-v2/source/build-poster.mjs",
     "preview": "astro preview",
+    "test": "vitest run",
     "preview:host": "astro preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@astrojs/node": "^9.5.5",
     "@fontsource/manrope": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
-    "astro": "5.18.2",
-    "simple-icons": "^16.23.0"
+    "astro": "^5.18.2",
+    "bwip-js": "^4.11.2",
+    "qrcode": "^1.5.4",
+    "simple-icons": "^16.23.0",
+    "stripe": "^22.3.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "typescript": "5.9.3"
+    "@types/node": "^20.19.43",
+    "@types/qrcode": "^1.5.6",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.10"
   }
 }

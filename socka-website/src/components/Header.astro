@@ -59,7 +59,7 @@ const currentPath = Astro.url.pathname;
           );
         })}
       </ul>
-      <a class="nav-cta" href="/kako-pomoci/">Želim pomoći</a>
+      <a class="nav-cta" href="/doniraj/">Želim pomoći</a>
 
       <div class="nav-panel__mobile-meta" aria-label="Brzi kontakt">
         <a class="nav-panel__contact" href={`tel:${site.phone.href}`}>
@@ -192,8 +192,12 @@ const currentPath = Astro.url.pathname;
       const target = event.target;
       const link = target instanceof Element ? target.closest('a[href]') : null;
       if (link) {
-        setOpen(false, false, false);
-        resetGlobalNavState();
+        // Let the anchor complete its native/Astro navigation before making
+        // the panel inert. Doing this synchronously can cancel activation.
+        window.setTimeout(() => {
+          setOpen(false, false, false);
+          resetGlobalNavState();
+        }, 0);
       }
     };
     const onBackdropClick = () => setOpen(false);

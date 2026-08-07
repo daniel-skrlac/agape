@@ -1,0 +1,104 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHero from '../../components/PageHero.astro';
+import { getPublicDonationConfig } from '../../lib/donations/config';
+
+const customerPortalUrl = getPublicDonationConfig().customerPortalUrl;
+---
+<BaseLayout
+  title="Provjera donacije"
+  description="Provjera statusa online donacije za Socijalnu samoposlugu Kruh sv. Antuna Varaždin."
+  canonicalPath="/doniraj/uspjeh/"
+  noindex
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Doniraj', href: '/doniraj/' },
+    { label: 'Provjera donacije', href: '/doniraj/uspjeh/' }
+  ]}
+>
+  <PageHero
+    eyebrow="Provjera"
+    title="Provjeravamo status vaše donacije."
+    text="Pričekajte trenutak dok sigurno provjerimo je li postupak dovršen."
+  />
+
+  <section class="section donation-result-section">
+    <div class="container donation-result-card" data-donation-status-page>
+      <p class="eyebrow">Status</p>
+      <h2 data-result-title>Provjera je u tijeku.</h2>
+      <p data-result-message>Pričekajte trenutak dok dohvatimo potvrđeni status plaćanja.</p>
+      <div class="button-row">
+        {customerPortalUrl && (
+          <a
+            class="btn btn--primary"
+            href={customerPortalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-monthly-portal
+            hidden
+          >
+            Upravljaj mjesečnom donacijom
+          </a>
+        )}
+        <a class="btn btn--primary" href="/doniraj/">Nova donacija</a>
+        <a class="btn btn--secondary" href="/">Početna</a>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const initDonationStatusPage = () => {
+      const root = document.querySelector('[data-donation-status-page]');
+      if (!(root instanceof HTMLElement) || root.dataset.statusReady === 'true') return;
+
+      root.dataset.statusReady = 'true';
+      const title = root.querySelector('[data-result-title]');
+      const message = root.querySelector('[data-result-message]');
+      const monthlyPortal = root.querySelector('[data-monthly-portal]');
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('session_id');
+
+      const setResult = (nextTitle: string, nextMessage: string, tone: 'success' | 'pending' | 'error') => {
+        if (title instanceof HTMLElement) title.textContent = nextTitle;
+        if (message instanceof HTMLElement) message.textContent = nextMessage;
+        root.dataset.tone = tone;
+      };
+
+      if (!sessionId) {
+        setResult('Nedostaju podaci za provjeru.', 'Možete pokušati ponovno ili odabrati brzu uplatu.', 'error');
+        return;
+      }
+
+      fetch(`/api/donations/session-status?session_id=${encodeURIComponent(sessionId)}`, {
+        headers: { accept: 'application/json' }
+      })
+        .then((response) => response.json().then((data) => ({ response, data })))
+        .then(({ response, data }) => {
+          if (!response.ok || !data?.ok) {
+            throw new Error(data?.message || 'Status nije moguće provjeriti.');
+          }
+
+          const isMonthly = data.session?.donationType === 'monthly';
+          const type = isMonthly ? 'mjesečne podrške' : 'donacije';
+          if (data.state === 'confirmed') {
+            setResult('Donacija je potvrđena.', `Hvala vam. Potvrđena je ${type}${data.session?.amountLabel ? ` u iznosu ${data.session.amountLabel}` : ''}.`, 'success');
+            if (isMonthly && monthlyPortal instanceof HTMLAnchorElement) monthlyPortal.hidden = false;
+            return;
+          }
+
+          if (data.state === 'canceled') {
+            setResult('Plaćanje nije dovršeno.', 'Postupak je istekao ili je prekinut. Možete pokušati ponovno.', 'error');
+            return;
+          }
+
+          setResult('Plaćanje se još provjerava.', 'Ako je uplata upravo napravljena, potvrda može kasniti nekoliko trenutaka.', 'pending');
+        })
+        .catch((error) => {
+          setResult('Status trenutno nije moguće provjeriti.', error instanceof Error ? error.message : 'Pokušajte ponovno za nekoliko trenutaka.', 'error');
+        });
+    };
+
+    initDonationStatusPage();
+    document.addEventListener('astro:page-load', initDonationStatusPage);
+  </script>
+</BaseLayout>

@@ -33,6 +33,13 @@ import { historicalImpact, historyTimeline, site } from '../lib/site';
         <p>
           Projekt je izrastao iz franjevačke inicijative i lokalne solidarnosti, a danas se nastavlja kroz škole, župe, tvrtke, udruge, studente i građane koji žele dati ono što mogu.
         </p>
+        <div class="affiliation-note" aria-label={`Dio organizacije ${site.affiliation.name}`}>
+          <img src={site.affiliation.logo} alt="" width="48" height="48" loading="lazy" />
+          <span>
+            <small>Djelujemo u okviru</small>
+            <strong>{site.affiliation.name}</strong>
+          </span>
+        </div>
       </div>
       <figure class="image-block image-block--portrait reveal">
         <img src="/images/recent/volonterke-u-samoposluzi.webp" alt="Volonterke u prostoru Socijalne samoposluge uz prikupljene namirnice" width="1200" height="1600" loading="lazy" />

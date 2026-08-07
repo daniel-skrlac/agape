@@ -1,0 +1,82 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import QuickDonationPanel from '../../components/QuickDonationPanel.astro';
+import { historicalImpact, site } from '../../lib/site';
+
+const [packages, hours] = historicalImpact;
+---
+<BaseLayout
+  title="Doniraj"
+  description="Odaberite jednokratnu donaciju, mjesečnu podršku ili brzu uplatu za Socijalnu samoposlugu Kruh sv. Antuna Varaždin."
+  canonicalPath="/doniraj/"
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Doniraj', href: '/doniraj/' }
+  ]}
+>
+  <section class="donation-landing">
+    <div class="container donation-landing__grid">
+      <div class="donation-landing__intro">
+        <p class="eyebrow">Doniraj</p>
+        <h1>Odaberite podršku koja vam najviše odgovara.</h1>
+        <p>
+          Svaka donacija pomaže da police budu spremnije, paketi potpuniji i pomoć brže dođe do ljudi kojima je potrebna.
+        </p>
+        <div class="donation-landing__chips" aria-label="Načini podrške">
+          <span>Jednokratno</span>
+          <span>Mjesečno</span>
+          <span>Brza uplata</span>
+        </div>
+        <div class="donation-landing__notes" aria-label="Učinak donacija">
+          <span>
+            <strong>{packages.value}</strong>
+            {packages.label} od 2013. do kraja 2025.
+          </span>
+          <span>
+            <strong>{hours.value}</strong>
+            {hours.label} darovano zajednici.
+          </span>
+        </div>
+      </div>
+      <div class="donation-landing__main">
+        <QuickDonationPanel variant="page" id="quick-donation-full" />
+        <aside class="donation-credentials" aria-label="Organizacijski i humanitarni status">
+          <div class="donation-credential">
+            <img src={site.affiliation.logo} alt="" width="52" height="52" loading="lazy" />
+            <span>
+              <small>Djelujemo u okviru</small>
+              <strong>{site.affiliation.shortName}</strong>
+            </span>
+          </div>
+          <div class="donation-credential">
+            <img src={site.humanitarianStatus.logo} alt="" width="52" height="52" loading="lazy" />
+            <span>
+              <small>Humanitarni status</small>
+              <strong>{site.humanitarianStatus.label}</strong>
+            </span>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--white donation-trust-section">
+    <div class="container donation-trust-grid">
+      <article>
+        <p class="eyebrow">Jednostavno</p>
+        <h2>Vi birate iznos i način.</h2>
+        <p>Najprije odaberete iznos, a zatim nastavite samo ako vam sve prikazano odgovara.</p>
+      </article>
+      <article>
+        <p class="eyebrow">Mjesečno</p>
+        <h2>Podrška može biti redovita.</h2>
+        <p>Ako želite pomagati iz mjeseca u mjesec, iznos je jasno prikazan prije potvrde.</p>
+      </article>
+      <article>
+        <p class="eyebrow">Brza uplata</p>
+        <h2>Podaci su na jednom mjestu.</h2>
+        <p>Kada je uplata dostupna, stranica pripremi iznos, primatelja i podatke koje možete provjeriti prije plaćanja.</p>
+      </article>
+    </div>
+  </section>
+</BaseLayout>

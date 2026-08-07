@@ -22,12 +22,12 @@ const visibleNotices = typeof limit === 'number' ? notices.slice(0, limit) : not
 const isSlider = slider && visibleNotices.length > 1;
 ---
 {visibleNotices.length > 0 && isSlider ? (
-  <section class="announcement-slider" data-announcement-slider aria-label="Najnovije obavijesti">
+  <section class="announcement-slider" data-announcement-slider data-notice-count={visibleNotices.length} aria-label="Najnovije obavijesti">
     <div class="announcement-slider__controls" aria-label="Upravljanje obavijestima">
-      <button class="slider-arrow-button announcement-slider__button" type="button" data-announcement-prev aria-label="Prethodna obavijest">
+      <button class="slider-arrow-button announcement-slider__button" type="button" data-announcement-prev aria-label="Prethodna grupa obavijesti">
         <span class="slider-chevron slider-chevron--left" aria-hidden="true"></span>
       </button>
-      <button class="slider-arrow-button announcement-slider__button" type="button" data-announcement-next aria-label="Sljedeća obavijest">
+      <button class="slider-arrow-button announcement-slider__button" type="button" data-announcement-next aria-label="Sljedeća grupa obavijesti">
         <span class="slider-chevron slider-chevron--right" aria-hidden="true"></span>
       </button>
     </div>
@@ -48,12 +48,13 @@ const isSlider = slider && visibleNotices.length > 1;
             style={`--i: ${index + 1}`}
           />
         ))}
+        <span class="announcement-slider__tail" data-announcement-tail aria-hidden="true"></span>
       </div>
     </div>
 
     <div class="announcement-slider__dots" data-announcement-dots aria-label="Odabir obavijesti">
-      {visibleNotices.map((notice, index) => (
-        <button type="button" data-announcement-dot={index} aria-label={`Prikaži obavijest: ${notice.data.title}`} aria-current={index === 0 ? 'true' : undefined}></button>
+      {visibleNotices.map((_, index) => (
+        <button type="button" data-announcement-dot={index} aria-label={`Prikaži ${index + 1}. grupu obavijesti`} aria-current={index === 0 ? 'true' : undefined}></button>
       ))}
     </div>
   </section>
@@ -114,6 +115,8 @@ const isSlider = slider && visibleNotices.length > 1;
     if (!(slider instanceof HTMLElement) || slider.dataset.sliderReady === 'true') return;
 
     const viewport = slider.querySelector('[data-announcement-viewport]');
+    const track = slider.querySelector('.announcement-slider__track');
+    const tail = slider.querySelector('[data-announcement-tail]');
     const prevButton = slider.querySelector('[data-announcement-prev]');
     const nextButton = slider.querySelector('[data-announcement-next]');
     const cards = [...slider.querySelectorAll('.announcement-slider__card')].filter(
@@ -123,35 +126,87 @@ const isSlider = slider && visibleNotices.length > 1;
       (dot): dot is HTMLButtonElement => dot instanceof HTMLButtonElement
     );
 
-    if (!(viewport instanceof HTMLElement) || !(prevButton instanceof HTMLButtonElement) || !(nextButton instanceof HTMLButtonElement) || cards.length === 0) return;
+    if (!(viewport instanceof HTMLElement) || !(track instanceof HTMLElement) || !(tail instanceof HTMLElement) || !(prevButton instanceof HTMLButtonElement) || !(nextButton instanceof HTMLButtonElement) || cards.length === 0) return;
 
     slider.dataset.sliderReady = 'true';
     announcementWindow.sockaAnnouncementSliderRoots?.add(slider);
 
     let frame = 0;
-    let currentIndex = 0;
+    let scrollEndTimer = 0;
+    let cardsPerPage = 1;
+    let currentPage = 0;
+    let targetPage: number | null = null;
+    let pageStarts = [0];
+    let layoutSignature = '';
 
     const maxScrollLeft = () => Math.max(0, viewport.scrollWidth - viewport.clientWidth);
 
-    const nearestIndex = () => {
-      const scrollLeft = viewport.scrollLeft;
-      return cards.reduce((nearest, card, index) => {
-        const nearestDistance = Math.abs(cards[nearest].offsetLeft - scrollLeft);
-        const distance = Math.abs(card.offsetLeft - scrollLeft);
+    const cardScrollLeft = (index: number) => {
+      const firstCard = cards[0];
+      const card = cards[index];
+      if (!firstCard || !card) return 0;
+      return Math.min(maxScrollLeft(), Math.max(0, card.offsetLeft - firstCard.offsetLeft));
+    };
+
+    const nearestIndexAt = (scrollLeft: number) => {
+      return cards.reduce((nearest, _card, index) => {
+        const nearestDistance = Math.abs(cardScrollLeft(nearest) - scrollLeft);
+        const distance = Math.abs(cardScrollLeft(index) - scrollLeft);
         return distance < nearestDistance ? index : nearest;
       }, 0);
     };
 
-    const updateState = () => {
-      currentIndex = nearestIndex();
-      const canScroll = maxScrollLeft() > 2;
-      const atStart = viewport.scrollLeft <= 2;
-      const atEnd = viewport.scrollLeft >= maxScrollLeft() - 2;
+    const rebuildPages = () => {
+      const configuredCount = Number.parseInt(
+        window.getComputedStyle(slider).getPropertyValue('--announcement-cards-per-view'),
+        10
+      );
+      const nextCardsPerPage = Math.min(cards.length, Math.max(1, Number.isFinite(configuredCount) ? configuredCount : 1));
+      const nextSignature = `${nextCardsPerPage}:${viewport.clientWidth}:${cards.length}`;
+      if (layoutSignature === nextSignature) return;
 
-      prevButton.disabled = !canScroll || atStart;
-      nextButton.disabled = !canScroll || atEnd;
+      cardsPerPage = nextCardsPerPage;
+      layoutSignature = nextSignature;
+      tail.style.display = 'none';
+      tail.style.flexBasis = '0px';
+
+      const pageCount = Math.ceil(cards.length / cardsPerPage);
+      const missingCards = pageCount * cardsPerPage - cards.length;
+      if (pageCount > 1 && missingCards > 0) {
+        const trackStyle = window.getComputedStyle(track);
+        const trackGap = Number.parseFloat(trackStyle.columnGap || trackStyle.gap) || 0;
+        const cardWidth = cards[0]?.getBoundingClientRect().width || 0;
+        tail.style.display = 'block';
+        tail.style.flexBasis = `${Math.max(0, missingCards * (cardWidth + trackGap) - trackGap)}px`;
+      }
+
+      pageStarts = Array.from({ length: pageCount }, (_, page) => page * cardsPerPage);
+      slider.dataset.cardsPerView = String(cardsPerPage);
+      slider.dataset.pageCount = String(pageStarts.length);
+    };
+
+    const nearestPageAt = (scrollLeft: number) => pageStarts.reduce((nearest, start, page) => {
+      const nearestDistance = Math.abs(cardScrollLeft(pageStarts[nearest]) - scrollLeft);
+      const distance = Math.abs(cardScrollLeft(start) - scrollLeft);
+      return distance < nearestDistance ? page : nearest;
+    }, 0);
+
+    const renderState = () => {
+      const canScroll = pageStarts.length > 1 && maxScrollLeft() > 2;
+
+      slider.classList.toggle('is-static', !canScroll);
+      prevButton.disabled = !canScroll || currentPage === 0;
+      nextButton.disabled = !canScroll || currentPage === pageStarts.length - 1;
+      viewport.setAttribute(
+        'aria-label',
+        canScroll
+          ? `Klizni prikaz obavijesti, grupa ${currentPage + 1} od ${pageStarts.length}`
+          : 'Najnovije obavijesti'
+      );
+
       dots.forEach((dot, index) => {
-        if (index === currentIndex) {
+        dot.hidden = !canScroll || index >= pageStarts.length;
+        if (index === currentPage) {
           dot.setAttribute('aria-current', 'true');
         } else {
           dot.removeAttribute('aria-current');
@@ -159,22 +214,54 @@ const isSlider = slider && visibleNotices.length > 1;
       });
     };
 
+    const updateState = () => {
+      rebuildPages();
+      currentPage = targetPage === null
+        ? nearestPageAt(viewport.scrollLeft)
+        : Math.min(Math.max(targetPage, 0), pageStarts.length - 1);
+      renderState();
+    };
+
     const requestStateUpdate = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(updateState);
     };
 
-    const goTo = (index: number) => {
-      const target = cards[Math.min(Math.max(index, 0), cards.length - 1)];
-      if (!target) return;
+    const goToPage = (page: number, behavior: ScrollBehavior = 'smooth') => {
+      rebuildPages();
+      const nextPage = Math.min(Math.max(page, 0), pageStarts.length - 1);
+      const cardIndex = pageStarts[nextPage];
+      targetPage = nextPage;
+      currentPage = nextPage;
+      renderState();
       viewport.scrollTo({
-        left: target.offsetLeft,
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+        left: cardScrollLeft(cardIndex),
+        behavior: behavior === 'smooth' && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : behavior
       });
     };
 
-    const onPrevious = () => goTo(currentIndex - 1);
-    const onNext = () => goTo(currentIndex + 1);
+    const onPrevious = () => goToPage(currentPage - 1);
+    const onNext = () => goToPage(currentPage + 1);
+    const onScroll = () => {
+      requestStateUpdate();
+      window.clearTimeout(scrollEndTimer);
+      scrollEndTimer = window.setTimeout(() => {
+        targetPage = null;
+        updateState();
+      }, 180);
+    };
+    const onResize = () => {
+      const anchorCard = pageStarts[currentPage] ?? nearestIndexAt(viewport.scrollLeft);
+      targetPage = null;
+      rebuildPages();
+      const nextPage = pageStarts.reduce((nearest, start, page) => {
+        return Math.abs(start - anchorCard) < Math.abs(pageStarts[nearest] - anchorCard) ? page : nearest;
+      }, 0);
+      goToPage(nextPage, 'auto');
+    };
+    const onDirectInteraction = () => {
+      targetPage = null;
+    };
     const onKeydown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
@@ -188,25 +275,35 @@ const isSlider = slider && visibleNotices.length > 1;
     const onDotClick = (event: Event) => {
       const target = event.currentTarget;
       if (!(target instanceof HTMLButtonElement)) return;
-      goTo(Number(target.dataset.announcementDot || 0));
+      goToPage(Number(target.dataset.announcementDot || 0));
     };
 
     prevButton.addEventListener('click', onPrevious);
     nextButton.addEventListener('click', onNext);
-    viewport.addEventListener('scroll', requestStateUpdate, { passive: true });
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    viewport.addEventListener('pointerdown', onDirectInteraction, { passive: true });
+    viewport.addEventListener('wheel', onDirectInteraction, { passive: true });
     viewport.addEventListener('keydown', onKeydown);
-    window.addEventListener('resize', requestStateUpdate, { passive: true });
+    window.addEventListener('resize', onResize, { passive: true });
     dots.forEach((dot) => dot.addEventListener('click', onDotClick));
     updateState();
 
     announcementWindow.sockaAnnouncementSliderCleanups?.set(slider, () => {
       window.cancelAnimationFrame(frame);
+      window.clearTimeout(scrollEndTimer);
       prevButton.removeEventListener('click', onPrevious);
       nextButton.removeEventListener('click', onNext);
-      viewport.removeEventListener('scroll', requestStateUpdate);
+      viewport.removeEventListener('scroll', onScroll);
+      viewport.removeEventListener('pointerdown', onDirectInteraction);
+      viewport.removeEventListener('wheel', onDirectInteraction);
       viewport.removeEventListener('keydown', onKeydown);
-      window.removeEventListener('resize', requestStateUpdate);
+      window.removeEventListener('resize', onResize);
       dots.forEach((dot) => dot.removeEventListener('click', onDotClick));
+      dots.forEach((dot) => {
+        dot.hidden = false;
+      });
+      tail.removeAttribute('style');
+      slider.classList.remove('is-static');
       slider.removeAttribute('data-slider-ready');
     });
   });

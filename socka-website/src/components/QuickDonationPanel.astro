@@ -1,0 +1,926 @@
+---
+import { getPublicDonationConfig } from '../lib/donations/config';
+
+interface Props {
+  variant?: 'hero' | 'page';
+  id?: string;
+}
+
+const { variant = 'hero', id = variant === 'hero' ? 'quick-donation-hero' : 'quick-donation-page' } = Astro.props;
+const donationConfig = getPublicDonationConfig();
+const configJson = JSON.stringify(donationConfig);
+const firstAmount = donationConfig.amountOptions[0];
+const isHero = variant === 'hero';
+const requestedMethod = Astro.url.searchParams.get('nacin');
+const defaultInitialMethod = donationConfig.methods.oneTime.enabled
+  ? 'oneTime'
+  : donationConfig.methods.bank.enabled
+    ? 'bank'
+    : donationConfig.methods.monthly.enabled
+      ? 'monthly'
+      : 'oneTime';
+const initialMethod = requestedMethod === 'bank' ? 'bank' : requestedMethod === 'mjesecno' ? 'monthly' : defaultInitialMethod;
+const requestedAmount = Number(Astro.url.searchParams.get('iznos'));
+const initialAmountCents = Number.isSafeInteger(requestedAmount) && requestedAmount > 0 ? requestedAmount : firstAmount.cents;
+const isInitialMethod = (method: 'oneTime' | 'monthly' | 'bank') => initialMethod === method;
+---
+<section class:list={['quick-donation-panel', `quick-donation-panel--${variant}`, { 'quick-donation-panel--hero-full': isHero }]} aria-labelledby={`${id}-title`} data-quick-donation data-initial-method={initialMethod} data-active-method={initialMethod} data-initial-amount={initialAmountCents}>
+  <script is:inline type="application/json" data-donation-config set:html={configJson} />
+
+  <div class="quick-donation-panel__shine" aria-hidden="true"></div>
+
+  <div class="quick-donation-panel__head">
+    <p class="eyebrow">{isHero ? 'Donirajte odmah' : 'Donacije'}</p>
+    <h2 id={`${id}-title`}>{isHero ? 'Odaberite iznos koji može pomoći već danas.' : 'Pomozite odmah, na način koji vam odgovara.'}</h2>
+    <p>
+      {isHero
+        ? 'Svaka donacija pomaže da police budu spremnije, a paket potpuniji za obitelji koje čekaju pomoć.'
+        : 'Odaberite iznos i način podrške. Vidjet ćete što ste odabrali prije nego nastavite.'}
+    </p>
+    {!isHero && <div class="quick-donation-panel__proof" aria-label="Prednosti donacije">
+      <span>
+        <strong>Toplo</strong>
+        mali iznos puni stvaran paket
+      </span>
+      <span>
+        <strong>Redovito</strong>
+        mjesečna podrška olakšava planiranje
+      </span>
+      <span>
+        <strong>Konkretno</strong>
+        pomoć ide susjedima u Varaždinu
+      </span>
+    </div>}
+  </div>
+
+  <div class="quick-donation-tabs" role="tablist" aria-label="Način donacije">
+    <button
+      class:list={['quick-donation-tab', { 'is-active': isInitialMethod('oneTime') }]}
+      id={`${id}-tab-one-time`}
+      type="button"
+      role="tab"
+      aria-selected={isInitialMethod('oneTime') ? 'true' : 'false'}
+      aria-controls={`${id}-panel-one-time`}
+      data-donation-tab="oneTime"
+      data-method-enabled={String(donationConfig.methods.oneTime.enabled)}
+    >
+      Doniraj
+    </button>
+    <button
+      class:list={['quick-donation-tab', { 'is-active': isInitialMethod('monthly') }]}
+      id={`${id}-tab-monthly`}
+      type="button"
+      role="tab"
+      aria-selected={isInitialMethod('monthly') ? 'true' : 'false'}
+      aria-controls={`${id}-panel-monthly`}
+      data-donation-tab="monthly"
+      data-method-enabled={String(donationConfig.methods.monthly.enabled)}
+    >
+      Mjesečno
+    </button>
+    <button
+      class:list={['quick-donation-tab', { 'is-active': isInitialMethod('bank') }]}
+      id={`${id}-tab-bank`}
+      type="button"
+      role="tab"
+      aria-selected={isInitialMethod('bank') ? 'true' : 'false'}
+      aria-controls={`${id}-panel-bank`}
+      data-donation-tab="bank"
+      data-method-enabled={String(donationConfig.methods.bank.enabled)}
+    >
+      Brza uplata
+    </button>
+  </div>
+
+  <div
+    class:list={['quick-donation-method', { 'is-active': isInitialMethod('oneTime') }]}
+    id={`${id}-panel-one-time`}
+    role="tabpanel"
+    aria-labelledby={`${id}-tab-one-time`}
+    data-donation-panel="oneTime"
+    hidden={!isInitialMethod('oneTime')}
+  >
+    <div class="quick-donation-method__intro">
+      <h3>Jednokratna donacija</h3>
+      <p>Odaberite iznos koji želite darovati. I mala donacija brzo postaje kruh, mlijeko ili ulje u paketu.</p>
+    </div>
+
+    <div class="quick-donation-amounts" role="group" aria-label="Odaberite iznos jednokratne donacije">
+      {donationConfig.amountOptions.map((amount, index) => (
+        <button
+          class:list={['quick-donation-amount', { 'is-selected': index === 0 }]}
+          type="button"
+          aria-pressed={index === 0 ? 'true' : 'false'}
+          data-donation-amount={amount.cents}
+          data-donation-method="oneTime"
+        >
+          {amount.label}
+        </button>
+      ))}
+    </div>
+
+    <label class="quick-donation-custom">
+      <span>Drugi iznos</span>
+      <input
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        placeholder="npr. 15"
+        aria-describedby={`${id}-one-time-error`}
+        data-custom-amount
+        data-donation-method="oneTime"
+      />
+      <small>Možete unijeti i vlastiti iznos.</small>
+    </label>
+    <p class="quick-donation-error" id={`${id}-one-time-error`} data-amount-error="oneTime" aria-live="polite"></p>
+
+    <div class="quick-donation-summary">
+      <span>Odabrano</span>
+      <strong data-amount-summary="oneTime">{firstAmount.label}</strong>
+    </div>
+
+    <button class="btn btn--primary quick-donation-submit" type="button" data-donation-submit="oneTime">
+      <span class="quick-donation-submit__label">Doniraj jednokratno</span>
+      <span class="quick-donation-submit__busy" aria-hidden="true">
+        <span class="quick-donation-submit__spinner" aria-hidden="true"></span>
+        Pripremamo...
+      </span>
+    </button>
+
+    {!donationConfig.methods.oneTime.enabled && (
+      <p class="quick-donation-unavailable">{donationConfig.methods.oneTime.unavailableMessage}</p>
+    )}
+
+    <p class="quick-donation-method-foot">I mali iznos postaje konkretna pomoć kada se udruži s drugima.</p>
+  </div>
+
+  <div
+    class:list={['quick-donation-method', { 'is-active': isInitialMethod('monthly') }]}
+    id={`${id}-panel-monthly`}
+    role="tabpanel"
+    aria-labelledby={`${id}-tab-monthly`}
+    data-donation-panel="monthly"
+    hidden={!isInitialMethod('monthly')}
+  >
+    <div class="quick-donation-method__intro">
+      <h3>Mjesečna podrška</h3>
+      <p>Odaberite redovitu podršku koja vam odgovara. Svaki mjesec pomaže da police ostanu spremne.</p>
+    </div>
+
+    <div class="quick-donation-amounts quick-donation-amounts--subscriptions" role="group" aria-label="Odaberite mjesečni iznos">
+      {donationConfig.amountOptions.map((amount, index) => (
+        <button
+          class:list={['quick-donation-amount', 'quick-donation-amount--subscription', { 'is-selected': index === 0 }]}
+          type="button"
+          aria-pressed={index === 0 ? 'true' : 'false'}
+          data-donation-amount={amount.cents}
+          data-donation-method="monthly"
+        >
+          <span class="quick-donation-amount__main">{amount.label}</span>
+          <span class="quick-donation-amount__meta">mjesečno</span>
+        </button>
+      ))}
+    </div>
+
+    <label class="quick-donation-custom">
+      <span>Drugi mjesečni iznos</span>
+      <input
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        placeholder="npr. 15"
+        aria-describedby={`${id}-monthly-error`}
+        data-custom-amount
+        data-donation-method="monthly"
+      />
+      <small>Možete upisati iznos koji vam je ugodan za redovitu podršku.</small>
+    </label>
+    <p class="quick-donation-error" id={`${id}-monthly-error`} data-amount-error="monthly" aria-live="polite"></p>
+
+    <div class="quick-donation-summary">
+      <span>Mjesečno</span>
+      <strong data-amount-summary="monthly">{firstAmount.monthlyLabel}</strong>
+    </div>
+
+    <button class="btn btn--primary quick-donation-submit" type="button" data-donation-submit="monthly">
+      <span class="quick-donation-submit__label">Pokreni mjesečnu podršku</span>
+      <span class="quick-donation-submit__busy" aria-hidden="true">
+        <span class="quick-donation-submit__spinner" aria-hidden="true"></span>
+        Pripremamo...
+      </span>
+    </button>
+
+    {!donationConfig.methods.monthly.enabled && (
+      <p class="quick-donation-unavailable">{donationConfig.methods.monthly.unavailableMessage}</p>
+    )}
+
+    <p class="quick-donation-method-foot">Redovita podrška pomaže da se police lakše planiraju iz mjeseca u mjesec.</p>
+
+    {!isHero && donationConfig.customerPortalUrl && (
+      <div class="quick-donation-portal">
+        <span>Već mjesečno pomažete?</span>
+        <a href={donationConfig.customerPortalUrl} target="_blank" rel="noopener noreferrer">
+          Upravljaj mjesečnom donacijom
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 5h5v5M19 5l-8 8M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+          </svg>
+        </a>
+      </div>
+    )}
+  </div>
+
+  <div
+    class:list={['quick-donation-method', { 'is-active': isInitialMethod('bank') }]}
+    id={`${id}-panel-bank`}
+    role="tabpanel"
+    aria-labelledby={`${id}-tab-bank`}
+    data-donation-panel="bank"
+    hidden={!isInitialMethod('bank')}
+  >
+    <div class="quick-donation-method__intro">
+      <h3>Brza uplata</h3>
+      <p>Odaberite iznos i odmah pripremite HUB3 barkod za mobilno bankarstvo.</p>
+    </div>
+
+    <div class="quick-donation-amounts" role="group" aria-label="Odaberite iznos za brzu uplatu">
+      {donationConfig.amountOptions.map((amount, index) => (
+        <button
+          class:list={['quick-donation-amount', { 'is-selected': index === 0 }]}
+          type="button"
+          aria-pressed={index === 0 ? 'true' : 'false'}
+          data-donation-amount={amount.cents}
+          data-donation-method="bank"
+        >
+          {amount.label}
+        </button>
+      ))}
+    </div>
+
+    <label class="quick-donation-custom">
+      <span>Drugi iznos</span>
+      <input
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        placeholder="npr. 25"
+        aria-describedby={`${id}-bank-error`}
+        data-custom-amount
+        data-donation-method="bank"
+      />
+      <small>Iznos se odmah prenosi u barkod.</small>
+    </label>
+    <p class="quick-donation-error" id={`${id}-bank-error`} data-amount-error="bank" aria-live="polite"></p>
+
+    <div class="quick-donation-summary">
+      <span>Odabrano</span>
+      <strong data-amount-summary="bank">{firstAmount.label}</strong>
+    </div>
+
+    {!donationConfig.methods.bank.enabled && (
+      <p class="quick-donation-unavailable">{donationConfig.methods.bank.unavailableMessage}</p>
+    )}
+
+    <div class="quick-donation-codes quick-donation-codes--bank" data-code-result hidden aria-live="polite">
+      <div class="quick-donation-code-card quick-donation-code-card--wide quick-donation-code-card--pdf417">
+        <p class="eyebrow">Skenirajte u mobilnom bankarstvu</p>
+        <div class="quick-donation-barcode-shell">
+          <span class="quick-donation-barcode-loading" data-code-loading>Pripremamo barkod...</span>
+          <img data-pdf417-image alt="HUB3 PDF417 barkod za uplatu putem mobilnog bankarstva" />
+        </div>
+        <div class="quick-donation-code-actions">
+          <a class="quick-donation-download" data-pdf417-download download>Preuzmi barkod</a>
+          <button class="quick-donation-download" type="button" data-donation-submit="bank">Osvježi barkod</button>
+        </div>
+      </div>
+
+      <div class="quick-donation-details" aria-label="Podaci za uplatu">
+        <dl>
+          <div><dt>Primatelj</dt><dd data-detail="recipient"></dd></div>
+          <div><dt>Iznos</dt><dd data-detail="amount"></dd></div>
+          <div><dt>Opis</dt><dd data-detail="description"></dd></div>
+          <div data-model-row hidden><dt>Model i poziv</dt><dd data-detail="modelReference"></dd></div>
+        </dl>
+        <div class="quick-donation-copy-row">
+          <button type="button" data-copy-detail="all" data-copy-default-label="Kopiraj podatke">
+            <span class="quick-donation-copy-check" aria-hidden="true"></span>
+            <span data-copy-label>Kopiraj podatke</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <p class="quick-donation-method-foot">Prije uplate mirno provjerite iznos, primatelja i opis plaćanja.</p>
+  </div>
+
+  <p class="quick-donation-status" role="status" aria-live="polite" data-donation-status></p>
+
+  {donationConfig.messages.stripeTrust && (
+    <p class="quick-donation-trust">{donationConfig.messages.stripeTrust}</p>
+  )}
+
+  {!isHero && <a class="quick-donation-more" href="/doniraj/">Pogledajte sve načine doniranja</a>}
+</section>
+
+<script>
+  type DonationMethod = 'oneTime' | 'monthly' | 'bank';
+
+  interface DonationAmount {
+    cents: number;
+    label: string;
+    monthlyLabel: string;
+  }
+
+  interface DonationPanelConfig {
+    minAmountCents: number;
+    maxAmountCents: number;
+    amountOptions: DonationAmount[];
+    methods: Record<DonationMethod, { enabled: boolean; unavailableMessage: string }>;
+    messages: {
+      stripeTrust: string | null;
+      monthlyNotice: string;
+      bankNotice: string;
+    };
+    bankTransfer: {
+      bankName: string;
+      recipientName: string;
+      iban: string;
+    };
+  }
+
+  const donationWindow = window as typeof window & { sockaQuickDonationReady?: boolean };
+
+  const formatEuro = (amountCents: number) => `${(amountCents / 100).toLocaleString('hr-HR', {
+    minimumFractionDigits: amountCents % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2
+  })} €`;
+
+  type ParsedCustomAmount = { ok: true; cents: number } | { ok: false; message: string };
+
+  const parseCustomAmount = (value: string, config: DonationPanelConfig): ParsedCustomAmount => {
+    const trimmed = value.trim();
+    if (!trimmed) return { ok: false, message: '' };
+    if (!/^\d+(?:[,.]\d{1,2})?$/.test(trimmed)) {
+      return { ok: false, message: 'Unesite iznos u eurima, npr. 10 ili 10,50.' };
+    }
+
+    const [euroPart, centPart = ''] = trimmed.replace(',', '.').split('.');
+    const amountCents = Number(euroPart) * 100 + Number(`${centPart}00`.slice(0, 2));
+    if (!Number.isSafeInteger(amountCents)) return { ok: false, message: 'Iznos nije moguće obraditi.' };
+    if (amountCents <= 0) return { ok: false, message: 'Iznos mora biti veći od 0 €.' };
+    if (amountCents < config.minAmountCents) return { ok: false, message: `Najmanji iznos je ${formatEuro(config.minAmountCents)}.` };
+    if (amountCents > config.maxAmountCents) return { ok: false, message: `Najveći iznos je ${formatEuro(config.maxAmountCents)}.` };
+    return { ok: true, cents: amountCents };
+  };
+
+  const initQuickDonationPanels = () => document.querySelectorAll('[data-quick-donation]').forEach((root) => {
+    if (!(root instanceof HTMLElement) || root.dataset.quickDonationReady === 'true') return;
+
+    const configScript = root.querySelector('[data-donation-config]');
+    if (!(configScript instanceof HTMLScriptElement) || !configScript.textContent) return;
+
+    const config = JSON.parse(configScript.textContent) as DonationPanelConfig;
+    const tabs = [...root.querySelectorAll('[data-donation-tab]')].filter((tab): tab is HTMLButtonElement => tab instanceof HTMLButtonElement);
+    const panels = [...root.querySelectorAll('[data-donation-panel]')].filter((panel): panel is HTMLElement => panel instanceof HTMLElement);
+    const status = root.querySelector('[data-donation-status]');
+    const submitButtons = [...root.querySelectorAll('[data-donation-submit]')].filter((button): button is HTMLButtonElement => button instanceof HTMLButtonElement);
+    const firstAmount = config.amountOptions[0]?.cents || 500;
+    const keepBankMethodHeight = root.classList.contains('quick-donation-panel--hero-full');
+
+    const state = {
+      method: 'oneTime' as DonationMethod,
+      amountCents: {
+        oneTime: firstAmount,
+        monthly: firstAmount,
+        bank: firstAmount
+      } satisfies Record<DonationMethod, number>,
+      customValid: {
+        oneTime: true,
+        monthly: true,
+        bank: true
+      } as Record<DonationMethod, boolean>,
+      busy: false,
+      submittingMethod: null as 'oneTime' | 'monthly' | null,
+      sequence: 0,
+      controller: null as AbortController | null
+    };
+    let bankCodeTimer: number | undefined;
+    let bankCodeSequence = 0;
+    let bankCodeController: AbortController | null = null;
+    const bankCodeCache = new Map<number, any>();
+    const copyFeedbackTimers = new WeakMap<HTMLButtonElement, number>();
+
+    root.dataset.quickDonationReady = 'true';
+
+    const expandButton = root.querySelector('[data-donation-expand]');
+    const setStatus = (message = '', tone: 'neutral' | 'error' | 'success' = 'neutral') => {
+      if (!(status instanceof HTMLElement)) return;
+      status.textContent = message;
+      status.dataset.tone = tone;
+    };
+
+    const syncHeroPanelHeight = () => {
+      if (!keepBankMethodHeight || state.method !== 'bank') {
+        root.style.removeProperty('--quick-donation-method-min-height');
+        return;
+      }
+
+      const activePanel = panels.find((panel) => !panel.hidden);
+      const panelWidth = activePanel?.getBoundingClientRect().width || 0;
+
+      root.style.removeProperty('--quick-donation-method-min-height');
+
+      const measuredHeights = panels
+        .filter((panel) => panel.dataset.donationPanel === 'bank')
+        .map((panel) => {
+          const previousHidden = panel.hidden;
+          const previousPosition = panel.style.position;
+          const previousVisibility = panel.style.visibility;
+          const previousPointerEvents = panel.style.pointerEvents;
+          const previousWidth = panel.style.width;
+          const wasActive = panel.classList.contains('is-active');
+
+          panel.hidden = false;
+          panel.classList.add('is-active');
+          panel.style.position = 'absolute';
+          panel.style.visibility = 'hidden';
+          panel.style.pointerEvents = 'none';
+          if (panelWidth > 0) panel.style.width = `${panelWidth}px`;
+
+          const height = Math.ceil(Math.max(panel.getBoundingClientRect().height, panel.scrollHeight));
+
+          panel.hidden = previousHidden;
+          panel.classList.toggle('is-active', wasActive);
+          panel.style.position = previousPosition;
+          panel.style.visibility = previousVisibility;
+          panel.style.pointerEvents = previousPointerEvents;
+          panel.style.width = previousWidth;
+
+          return height;
+        });
+
+      const tallestPanel = Math.max(...measuredHeights, 0);
+      if (tallestPanel > 0) {
+        const measuredReserve = Math.ceil((tallestPanel + 10) / 8) * 8;
+        root.style.setProperty('--quick-donation-method-min-height', `${measuredReserve}px`);
+      }
+    };
+
+    const getMethodEnabled = (method: DonationMethod) => Boolean(config.methods[method]?.enabled);
+
+    const syncSubmitState = () => {
+      submitButtons.forEach((button) => {
+        const method = button.dataset.donationSubmit as DonationMethod | undefined;
+        const disabled = state.busy || !method || !getMethodEnabled(method) || !state.customValid[method];
+        button.disabled = disabled;
+        button.setAttribute('aria-disabled', String(disabled));
+      });
+    };
+
+    const setBusy = (busy: boolean, method: 'oneTime' | 'monthly' | null = null) => {
+      state.busy = busy;
+      state.submittingMethod = busy ? method : null;
+      root.classList.toggle('is-busy', busy);
+      submitButtons.forEach((button) => {
+        const isLoading = busy && button.dataset.donationSubmit === state.submittingMethod;
+        button.classList.toggle('is-loading', isLoading);
+        button.setAttribute('aria-busy', String(isLoading));
+      });
+      syncSubmitState();
+    };
+
+    const abortPending = () => {
+      state.sequence += 1;
+      state.controller?.abort();
+      state.controller = null;
+      setBusy(false);
+    };
+
+    const setBankCodeLoading = (loading: boolean) => {
+      const result = root.querySelector('[data-code-result]');
+      if (!(result instanceof HTMLElement)) return;
+      if (loading) {
+        result.hidden = false;
+        result.classList.remove('is-ready');
+        const pdf417 = result.querySelector('[data-pdf417-image]');
+        const download = result.querySelector('[data-pdf417-download]');
+        if (pdf417 instanceof HTMLImageElement) pdf417.removeAttribute('src');
+        if (download instanceof HTMLAnchorElement) download.removeAttribute('href');
+      }
+      result.classList.toggle('is-loading', loading);
+      root.classList.toggle('is-bank-code-loading', loading);
+      window.requestAnimationFrame(syncHeroPanelHeight);
+    };
+
+    const cancelBankCodeRefresh = () => {
+      if (bankCodeTimer !== undefined) {
+        window.clearTimeout(bankCodeTimer);
+        bankCodeTimer = undefined;
+      }
+      bankCodeSequence += 1;
+      bankCodeController?.abort();
+      bankCodeController = null;
+      setBankCodeLoading(false);
+    };
+
+    const updateSummaries = (method: DonationMethod) => {
+      root.querySelectorAll(`[data-amount-summary="${method}"]`).forEach((summary) => {
+        if (!(summary instanceof HTMLElement)) return;
+        const amount = formatEuro(state.amountCents[method]);
+        summary.textContent = method === 'monthly' ? `${amount} mjesečno` : amount;
+      });
+    };
+
+    const selectAmount = (method: DonationMethod, amountCents: number, clearCustom = true) => {
+      state.amountCents[method] = amountCents;
+      state.customValid[method] = true;
+
+      root.querySelectorAll(`[data-donation-method="${method}"][data-donation-amount]`).forEach((button) => {
+        if (!(button instanceof HTMLButtonElement)) return;
+        const selected = Number(button.dataset.donationAmount) === amountCents;
+        button.classList.toggle('is-selected', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      });
+
+      const custom = root.querySelector(`[data-custom-amount][data-donation-method="${method}"]`);
+      if (clearCustom && custom instanceof HTMLInputElement) custom.value = '';
+
+      const error = root.querySelector(`[data-amount-error="${method}"]`);
+      if (error instanceof HTMLElement) error.textContent = '';
+
+      if (method === 'bank') scheduleBankCodeRefresh();
+
+      updateSummaries(method);
+      syncSubmitState();
+      setStatus('');
+    };
+
+    const setMethod = (method: DonationMethod, focusTab = false) => {
+      abortPending();
+      state.method = method;
+      root.dataset.activeMethod = method;
+
+      tabs.forEach((tab) => {
+        const active = tab.dataset.donationTab === method;
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-selected', String(active));
+        tab.tabIndex = active ? 0 : -1;
+        if (focusTab && active) tab.focus();
+      });
+
+      panels.forEach((panel) => {
+        const active = panel.dataset.donationPanel === method;
+        panel.hidden = !active;
+        panel.classList.toggle('is-active', active);
+      });
+
+      setStatus('');
+      if (method === 'bank') scheduleBankCodeRefresh(0);
+      else cancelBankCodeRefresh();
+      syncHeroPanelHeight();
+      syncSubmitState();
+    };
+
+    const refreshCustomAmount = (input: HTMLInputElement) => {
+      const method = input.dataset.donationMethod as DonationMethod;
+      const parsed = parseCustomAmount(input.value, config);
+      const error = root.querySelector(`[data-amount-error="${method}"]`);
+
+      if (!input.value.trim()) {
+        state.customValid[method] = true;
+        if (error instanceof HTMLElement) error.textContent = '';
+        syncSubmitState();
+        return;
+      }
+
+      if (parsed.ok) {
+        selectAmount(method, parsed.cents, false);
+        if (error instanceof HTMLElement) error.textContent = '';
+        return;
+      }
+
+      state.customValid[method] = false;
+      if (error instanceof HTMLElement) error.textContent = parsed.message;
+      syncSubmitState();
+    };
+
+    const postJson = async (url: string, payload: Record<string, unknown>) => {
+      state.controller?.abort();
+      const controller = new AbortController();
+      state.controller = controller;
+      const sequence = ++state.sequence;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      const data = await response.json().catch(() => null);
+      if (sequence !== state.sequence) return null;
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.message || 'Zahtjev nije uspio. Pokušajte ponovno.');
+      }
+      return data;
+    };
+
+    const fetchBankCode = async (amountCents: number, sequence: number) => {
+      bankCodeController?.abort();
+      const controller = new AbortController();
+      bankCodeController = controller;
+      const response = await fetch('/api/donations/bank-code', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          amountCents,
+          idempotencyKey: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`
+        }),
+        signal: controller.signal
+      });
+      const data = await response.json().catch(() => null);
+      if (sequence !== bankCodeSequence) return null;
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.message || 'Barkod nije moguće pripremiti.');
+      }
+      return data.code;
+    };
+
+    const submitOnline = async (method: 'oneTime' | 'monthly') => {
+      const endpoint = method === 'monthly' ? '/api/donations/subscription-session' : '/api/donations/checkout-session';
+      const loadingMessage = method === 'monthly' ? 'Pripremamo mjesečnu podršku...' : 'Pripremamo sigurnu donaciju...';
+      setBusy(true, method);
+      setStatus(loadingMessage);
+
+      try {
+        const data = await postJson(endpoint, {
+          amountCents: state.amountCents[method],
+          idempotencyKey: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`
+        });
+        if (!data) return;
+        setStatus('Preusmjeravamo vas na sigurnu stranicu za plaćanje...');
+        window.location.assign(data.checkoutUrl);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setStatus(error instanceof Error ? error.message : 'Online donacija trenutno nije dostupna.', 'error');
+        setBusy(false);
+      }
+    };
+
+    const renderBankCode = (code: any) => {
+      const result = root.querySelector('[data-code-result]');
+      if (!(result instanceof HTMLElement)) return;
+
+      const pdf417 = result.querySelector('[data-pdf417-image]');
+      const qr = result.querySelector('[data-qr-image]');
+      const download = result.querySelector('[data-pdf417-download]');
+      const qrLink = result.querySelector('[data-qr-link]');
+      const modelRow = result.querySelector('[data-model-row]');
+
+      if (pdf417 instanceof HTMLImageElement) pdf417.src = code.pdf417DataUrl;
+      if (qr instanceof HTMLImageElement) qr.src = code.qrDataUrl;
+      if (download instanceof HTMLAnchorElement) {
+        download.href = code.pdf417DataUrl;
+        download.download = code.downloadName;
+      }
+      if (qrLink instanceof HTMLAnchorElement) qrLink.href = code.qrUrl;
+
+      const modelReference = [code.model, code.reference].filter(Boolean).join(' ');
+      const details = {
+        bank: code.bankName,
+        recipient: `${code.recipientName}, ${code.recipientAddress}, ${code.recipientCity}`,
+        iban: code.iban,
+        amount: code.amountLabel,
+        description: code.description,
+        modelReference
+      };
+
+      Object.entries(details).forEach(([key, value]) => {
+        const target = result.querySelector(`[data-detail="${key}"]`);
+        if (target instanceof HTMLElement) target.textContent = value;
+      });
+
+      if (modelRow instanceof HTMLElement) modelRow.hidden = !modelReference;
+
+      result.hidden = false;
+      result.classList.add('is-ready');
+      result.classList.remove('is-loading');
+      root.classList.remove('is-bank-code-loading');
+      result.dataset.copyPayload = [
+        details.bank ? `Banka: ${details.bank}` : '',
+        `Primatelj: ${details.recipient}`,
+        `IBAN: ${details.iban}`,
+        `Iznos: ${details.amount}`,
+        modelReference ? `Model i poziv: ${modelReference}` : '',
+        `Opis: ${details.description}`
+      ].filter(Boolean).join('\n');
+      window.requestAnimationFrame(syncHeroPanelHeight);
+    };
+
+    const refreshBankCode = async ({ force = false, announce = false } = {}) => {
+      if (!getMethodEnabled('bank') || !state.customValid.bank) return;
+
+      const amountCents = state.amountCents.bank;
+      const cached = bankCodeCache.get(amountCents);
+      if (cached && !force) {
+        renderBankCode(cached);
+        return;
+      }
+
+      const sequence = ++bankCodeSequence;
+      setBankCodeLoading(true);
+      if (announce) setStatus('Osvježavamo barkod...');
+
+      try {
+        const code = await fetchBankCode(amountCents, sequence);
+        if (!code) return;
+        bankCodeCache.set(amountCents, code);
+        renderBankCode(code);
+        if (announce) setStatus('Barkod je spreman za skeniranje u mobilnom bankarstvu.', 'success');
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setBankCodeLoading(false);
+        if (state.method === 'bank') {
+          setStatus(error instanceof Error ? error.message : 'Barkod nije moguće pripremiti.', 'error');
+        }
+      }
+    };
+
+    function scheduleBankCodeRefresh(delay = 350) {
+      if (!getMethodEnabled('bank') || !state.customValid.bank) return;
+      if (bankCodeTimer !== undefined) window.clearTimeout(bankCodeTimer);
+      const cached = bankCodeCache.get(state.amountCents.bank);
+      if (cached) {
+        renderBankCode(cached);
+        return;
+      }
+      setBankCodeLoading(true);
+      bankCodeTimer = window.setTimeout(() => {
+        bankCodeTimer = undefined;
+        refreshBankCode();
+      }, delay);
+    };
+
+    const submitBank = async () => {
+      await refreshBankCode({ force: true, announce: true });
+    };
+
+    const writeClipboardText = async (text: string) => {
+      if (!text.trim()) throw new Error('No text to copy');
+
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.inset = '0 auto auto 0';
+      textarea.style.width = '1px';
+      textarea.style.height = '1px';
+      textarea.style.opacity = '0';
+      textarea.style.pointerEvents = 'none';
+      document.body.append(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, text.length);
+      const execCopy = (document as unknown as { execCommand?: (commandId: string) => boolean }).execCommand;
+      const copied = typeof execCopy === 'function' && execCopy.call(document, 'copy');
+      textarea.remove();
+
+      if (!copied) throw new Error('Copy command failed');
+    };
+
+    const setCopyButtonState = (button: HTMLButtonElement, state: 'idle' | 'success' | 'error') => {
+      const existingTimer = copyFeedbackTimers.get(button);
+      if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+
+      const label = button.querySelector('[data-copy-label]');
+      const defaultLabel = button.dataset.copyDefaultLabel || 'Kopiraj podatke';
+
+      button.classList.remove('is-copied', 'is-copy-error');
+
+      if (state === 'idle') {
+        if (label instanceof HTMLElement) label.textContent = defaultLabel;
+        button.removeAttribute('aria-label');
+        button.removeAttribute('data-copy-state');
+        return;
+      }
+
+      button.dataset.copyState = state;
+      button.classList.add(state === 'success' ? 'is-copied' : 'is-copy-error');
+      button.setAttribute(
+        'aria-label',
+        state === 'success' ? 'Podaci za uplatu su kopirani' : 'Kopiranje nije uspjelo'
+      );
+      if (label instanceof HTMLElement) label.textContent = state === 'success' ? 'Kopirano' : 'Pokušajte ručno';
+
+      const timer = window.setTimeout(() => setCopyButtonState(button, 'idle'), state === 'success' ? 1900 : 2400);
+      copyFeedbackTimers.set(button, timer);
+    };
+
+    tabs.forEach((tab, index) => {
+      tab.tabIndex = tab.classList.contains('is-active') ? 0 : -1;
+      tab.addEventListener('click', () => {
+        const method = tab.dataset.donationTab as DonationMethod;
+        setMethod(method);
+      });
+      tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const nextIndex =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? tabs.length - 1
+              : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        const next = tabs[nextIndex];
+        const nextMethod = next?.dataset.donationTab as DonationMethod | undefined;
+        if (nextMethod) setMethod(nextMethod, true);
+      });
+    });
+
+    root.querySelectorAll('[data-donation-amount]').forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      button.addEventListener('click', () => {
+        const method = button.dataset.donationMethod as DonationMethod;
+        const amount = Number(button.dataset.donationAmount);
+        selectAmount(method, amount);
+      });
+    });
+
+    root.querySelectorAll('[data-custom-amount]').forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) return;
+      input.addEventListener('input', () => refreshCustomAmount(input));
+      input.addEventListener('blur', () => refreshCustomAmount(input));
+    });
+
+    submitButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const method = button.dataset.donationSubmit as DonationMethod;
+        if (state.busy || !getMethodEnabled(method) || !state.customValid[method]) return;
+        if (method === 'bank') submitBank();
+        else submitOnline(method);
+      });
+    });
+
+    root.querySelectorAll('[data-copy-detail]').forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      button.addEventListener('click', async () => {
+        const result = root.querySelector('[data-code-result]');
+        if (!(result instanceof HTMLElement)) return;
+
+        const type = button.dataset.copyDetail;
+        const text =
+          type === 'iban'
+            ? result.querySelector('[data-detail="iban"]')?.textContent || ''
+            : result.dataset.copyPayload || '';
+
+        try {
+          await writeClipboardText(text);
+          setCopyButtonState(button, 'success');
+          setStatus('Podaci za uplatu su kopirani.', 'success');
+        } catch {
+          setCopyButtonState(button, 'error');
+          setStatus('Kopiranje nije uspjelo. Podatke možete označiti i kopirati ručno.', 'error');
+        }
+      });
+    });
+
+    if (expandButton instanceof HTMLButtonElement) {
+      expandButton.addEventListener('click', () => {
+        root.classList.add('is-expanded');
+        expandButton.setAttribute('aria-expanded', 'true');
+        syncHeroPanelHeight();
+      });
+    }
+
+    selectAmount('oneTime', firstAmount);
+    selectAmount('monthly', firstAmount);
+    selectAmount('bank', firstAmount);
+    const initialMethod = root.dataset.initialMethod as DonationMethod | undefined;
+    const initialAmount = Number(root.dataset.initialAmount || firstAmount);
+    if (Number.isSafeInteger(initialAmount) && initialAmount > 0) {
+      selectAmount(initialMethod || 'oneTime', initialAmount, false);
+    }
+    setMethod(initialMethod || 'oneTime');
+    window.requestAnimationFrame(() => window.requestAnimationFrame(syncHeroPanelHeight));
+    window.addEventListener('load', syncHeroPanelHeight, { once: true });
+    if ('fonts' in document) {
+      document.fonts.ready.then(syncHeroPanelHeight).catch(() => {});
+    }
+    window.addEventListener('resize', syncHeroPanelHeight, { passive: true });
+    window.addEventListener('pageshow', () => {
+      if (!state.busy) return;
+      state.controller?.abort();
+      state.controller = null;
+      setBusy(false);
+      setStatus('');
+    });
+  });
+
+  initQuickDonationPanels();
+
+  if (!donationWindow.sockaQuickDonationReady) {
+    donationWindow.sockaQuickDonationReady = true;
+    document.addEventListener('astro:page-load', initQuickDonationPanels);
+  }
+</script>

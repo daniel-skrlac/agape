@@ -1,0 +1,33 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHero from '../../components/PageHero.astro';
+---
+<BaseLayout
+  title="Donacija nije dovršena"
+  description="Online donacija nije dovršena. Možete pokušati ponovno ili odabrati uplatu putem mobilnog bankarstva."
+  canonicalPath="/doniraj/otkazano/"
+  noindex
+  breadcrumbs={[
+    { label: 'Početna', href: '/' },
+    { label: 'Doniraj', href: '/doniraj/' },
+    { label: 'Donacija nije dovršena', href: '/doniraj/otkazano/' }
+  ]}
+>
+  <PageHero
+    eyebrow="Nije dovršeno"
+    title="Postupak donacije je prekinut."
+    text="Ništa nije potvrđeno. Možete pokušati ponovno ili odabrati brzu uplatu."
+  />
+
+  <section class="section donation-result-section">
+    <div class="container donation-result-card" data-tone="pending">
+      <p class="eyebrow">Sljedeći korak</p>
+      <h2>Odaberite drugi način ili pokušajte ponovno.</h2>
+      <p>Ako ste slučajno zatvorili plaćanje, novi pokušaj će se sigurno pripremiti iz početka.</p>
+      <div class="button-row">
+        <a class="btn btn--primary" href="/doniraj/">Pokušaj ponovno</a>
+        <a class="btn btn--secondary" href="/doniraj/?nacin=bank">Brza uplata</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

@@ -26,6 +26,15 @@ export const site = {
   baseUrl: import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321',
   logo: '/images/logo.jpg',
   defaultImage: '/images/og/socka-share.png',
+  affiliation: {
+    name: 'Franjevački svjetovni red sv. Ivana Krstitelja Varaždin',
+    shortName: 'Franjevački svjetovni red',
+    logo: '/images/identity/ofs-logo.webp'
+  },
+  humanitarianStatus: {
+    label: 'Stalni prikupljač humanitarne pomoći',
+    logo: '/images/identity/stalni-prikupljatelj.svg'
+  },
   description:
     'Socijalna samoposluga "Kruh sv. Antuna" Varaždin povezuje donatore, volontere i susjede kako bi osnovne namirnice postale konkretna podrška obiteljima u potrebi.',
   contactGuidance:
@@ -72,6 +81,7 @@ export const navigation = [
   { label: 'O nama', href: '/o-nama/' },
   { label: 'Kako pomoći', href: '/kako-pomoci/' },
   { label: 'Volonteri', href: '/volonteri/' },
+  { label: 'Doniraj', href: '/doniraj/' },
   { label: 'Kontakt', href: '/kontakt/' }
 ] as const;
 

@@ -81,7 +81,16 @@ const roles = [
             data-real-index={index}
           >
             <figure class="volunteer-slide__image">
-              <img src={role.image} alt={role.alt} width="900" height="675" loading="lazy" style={`object-position: ${role.position}`} />
+              <img
+                src={role.image}
+                alt={role.alt}
+                width="900"
+                height="675"
+                loading={index === 0 ? 'eager' : 'lazy'}
+                decoding="async"
+                draggable="false"
+                style={`object-position: ${role.position}`}
+              />
             </figure>
             <div class="volunteer-slide__content">
               <p class="eyebrow">Volonterski zadatak</p>
@@ -118,6 +127,20 @@ const roles = [
     let isAnimating = false;
     let fallbackTimer = 0;
 
+    const preloadImage = (index: number) => {
+      const panel = panels[(index + total) % total];
+      const image = panel?.querySelector('img');
+      if (!(image instanceof HTMLImageElement) || image.complete) return;
+      const preloader = new Image();
+      preloader.src = image.currentSrc || image.src;
+    };
+
+    const preloadNearbyImages = () => {
+      preloadImage(current);
+      preloadImage(current + 1);
+      preloadImage(current - 1);
+    };
+
     const controls = [previous, next].filter((control): control is HTMLButtonElement => control instanceof HTMLButtonElement);
     const isInteractiveTarget = (target: EventTarget | null) =>
       target instanceof Element && Boolean(target.closest('a[href], button, input, select, textarea, label, summary, [role="button"], [contenteditable="true"]'));
@@ -125,6 +148,7 @@ const roles = [
     const setControlsBusy = (busy: boolean) => {
       controls.forEach((control) => {
         control.setAttribute('aria-disabled', String(busy));
+        control.disabled = busy;
       });
       rolesRoot.classList.toggle('is-animating', busy);
     };
@@ -173,17 +197,27 @@ const roles = [
       current = (current + direction + total) % total;
       rolesRoot.dataset.slideDirection = direction > 0 ? 'next' : 'previous';
       updateActive(previousIndex);
+      preloadNearbyImages();
 
       if (reduceMotion) {
         finishTransition();
         return;
       }
 
-      fallbackTimer = window.setTimeout(finishTransition, 620);
+      fallbackTimer = window.setTimeout(finishTransition, 340);
     };
 
-    if (previous instanceof HTMLButtonElement) previous.addEventListener('click', () => moveBy(-1));
-    if (next instanceof HTMLButtonElement) next.addEventListener('click', () => moveBy(1));
+    const onPreviousClick = (event: MouseEvent) => {
+      event.preventDefault();
+      moveBy(-1);
+    };
+    const onNextClick = (event: MouseEvent) => {
+      event.preventDefault();
+      moveBy(1);
+    };
+
+    if (previous instanceof HTMLButtonElement) previous.addEventListener('click', onPreviousClick);
+    if (next instanceof HTMLButtonElement) next.addEventListener('click', onNextClick);
 
     if (viewport instanceof HTMLElement) {
       viewport.addEventListener('keydown', (event) => {
@@ -229,6 +263,7 @@ const roles = [
     }
 
     updateActive();
+    preloadNearbyImages();
     requestAnimationFrame(() => rolesRoot.classList.add('is-ready'));
   });
 

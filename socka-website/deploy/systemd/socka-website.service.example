@@ -1,0 +1,24 @@
+[Unit]
+Description=Socka Astro website
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=CHANGE_ME
+Group=CHANGE_ME
+WorkingDirectory=/home/CHANGE_ME/socka-website
+EnvironmentFile=/home/CHANGE_ME/socka-website/.env
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=4321
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+UMask=0027
+SyslogIdentifier=socka-website
+
+[Install]
+WantedBy=multi-user.target

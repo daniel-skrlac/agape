@@ -1,5 +1,6 @@
 ---
 import { historicalImpact } from '../lib/site';
+import QuickDonationPanel from './QuickDonationPanel.astro';
 
 const [packages, hours, value] = historicalImpact;
 const counterTarget = (input: string) => Number(input.replace(/\D/g, ''));
@@ -73,6 +74,10 @@ const counterTarget = (input: string) => Number(input.replace(/\D/g, ''));
           </span>
         </div>
       </div>
+    </div>
+
+    <div class="hero-cinema__donation" data-hero-donation>
+      <QuickDonationPanel variant="hero" />
     </div>
   </div>
 </section>

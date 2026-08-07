@@ -1,8 +1,10 @@
 ---
 import SocialLinks from './SocialLinks.astro';
+import { getPublicDonationConfig } from '../lib/donations/config';
 import { footerNavigation, site } from '../lib/site';
 
 const year = new Date().getFullYear();
+const customerPortalUrl = getPublicDonationConfig().customerPortalUrl;
 ---
 <footer class="site-footer">
   <div class="container footer-panel">
@@ -18,6 +20,9 @@ const year = new Date().getFullYear();
       <h2>Stranice</h2>
       <ul>
         {footerNavigation.map((item) => <li><a href={item.href}>{item.label}</a></li>)}
+        {customerPortalUrl && (
+          <li><a href={customerPortalUrl} target="_blank" rel="noopener noreferrer">Upravljaj mjesečnom donacijom</a></li>
+        )}
       </ul>
     </div>
 

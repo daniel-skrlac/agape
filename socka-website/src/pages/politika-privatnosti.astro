@@ -13,22 +13,29 @@ import PageHero from '../components/PageHero.astro';
 >
   <PageHero
     eyebrow="Privatnost"
-    title="Ne koristimo kolačiće za praćenje ni skrivene analitičke alate."
-    text="Ova stranica objašnjava kako je web mjesto postavljeno s naglaskom na minimalno prikupljanje podataka."
+    title="Podatke obrađujemo samo kada je to potrebno za kontakt ili donaciju."
+    text="Ova stranica objašnjava kako je web mjesto postavljeno s naglaskom na minimalno prikupljanje podataka i sigurno plaćanje."
   />
   <section class="section section--white">
     <div class="container article-body article-body--standalone">
       <h2>Koje podatke obrađujemo</h2>
-      <p>Web stranica je statična i sama ne prikuplja osobne podatke kroz obrasce, komentare, račune korisnika ili analitiku.</p>
+      <p>Web stranica ne koristi račune korisnika, komentare ni skrivenu analitiku. Ako nas kontaktirate telefonom, e-poštom ili preko društvenih mreža, podaci se obrađuju kroz odabrani komunikacijski kanal.</p>
 
       <h2>Kolačići i analitika</h2>
       <p>Ne postavljamo kolačiće za praćenje, Facebook Pixel, TikTok Pixel ni druge skrivene marketinške alate. Zato se ne prikazuje nepotreban banner za kolačiće.</p>
 
+      <h2>Online donacije</h2>
+      <p>Ako odaberete online donaciju, web stranica priprema sigurnu Stripe Checkout sesiju i preusmjerava vas na Stripe. Kartični podaci ne unose se i ne pohranjuju na ovoj web stranici.</p>
+      <p>Za provjeru statusa donacije stranica može obraditi tehnički identifikator Stripe sesije. Konačna potvrda plaćanja oslanja se na server-side provjeru i Stripe webhook, a ne samo na povratak u preglednik.</p>
+
+      <h2>Uplata putem mobilnog bankarstva</h2>
+      <p>Kada su bankovni podaci konfigurirani, stranica može generirati HUB3 PDF417 2D barkod za uplatu i zaseban QR kod za otvaranje online donacije. Ti kodovi sadrže podatke potrebne za odabrani način uplate.</p>
+
       <h2>Vanjske poveznice</h2>
-      <p>Poveznice na društvene mreže i karte vode na vanjske stranice. Te usluge mogu obrađivati podatke prema vlastitim pravilima privatnosti.</p>
+      <p>Poveznice na Stripe, društvene mreže i karte vode na vanjske stranice. Te usluge mogu obrađivati podatke prema vlastitim pravilima privatnosti.</p>
 
       <h2>Kontakt</h2>
-      <p>Ako se javite telefonom ili preko društvenih mreža, podaci se obrađuju kroz taj kanal komunikacije. Na ovoj web stranici nema pozadinske pohrane takvih poruka.</p>
+      <p>Za pitanja o donacijama, kontaktu ili obradi podataka javite se putem službenog telefona ili e-pošte navedenih na stranici Kontakt.</p>
     </div>
   </section>
 </BaseLayout>
