@@ -79,7 +79,7 @@ const customerPortalUrl = getPublicDonationConfig().customerPortalUrl;
           }
 
           const isMonthly = data.session?.donationType === 'monthly';
-          const type = isMonthly ? 'mjesečne podrške' : 'donacije';
+          const type = isMonthly ? 'mjesečna podrška' : 'donacija';
           if (data.state === 'confirmed') {
             setResult('Donacija je potvrđena.', `Hvala vam. Potvrđena je ${type}${data.session?.amountLabel ? ` u iznosu ${data.session.amountLabel}` : ''}.`, 'success');
             if (isMonthly && monthlyPortal instanceof HTMLAnchorElement) monthlyPortal.hidden = false;
