@@ -9,6 +9,7 @@ const staticPages = [
   '/o-nama/',
   '/kako-pomoci/',
   '/volonteri/',
+  '/doniraj/',
   '/kontakt/',
   '/politika-privatnosti/',
   '/izjava-o-pristupacnosti/'
