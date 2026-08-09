@@ -258,7 +258,7 @@ export function getPublicDonationConfig(): PublicDonationConfig {
       }
     },
     messages: {
-      stripeTrust: stripeEnabled ? 'Hvala što birate pomoći. Svaka potvrđena donacija pretvara se u konkretnu podršku.' : null,
+      stripeTrust: stripeEnabled ? 'Hvala što birate pomoći. Svaka potvrđena donacija donosi podršku obiteljima kojima je potrebna.' : null,
       monthlyNotice: 'Odabrani iznos pomaže iz mjeseca u mjesec.',
       bankNotice: 'Prije uplate provjerite primatelja, IBAN i odabrani iznos.'
     },

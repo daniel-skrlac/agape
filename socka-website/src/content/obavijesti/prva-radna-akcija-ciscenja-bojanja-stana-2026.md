@@ -11,7 +11,7 @@ draft: false
 
 Organizirali smo prvu radnu akciju čišćenja i bojanja stana za našeg korisnika. Uz puno dobre volje, zajedništva i spremnosti na pomoć, uredili smo njegov dom i još jednom pokazali koliko možemo kada djelujemo zajedno.
 
-Volonteri su očistili prostor, pripremili namještaj, zaštitili stvari, obojili zidove i pomogli da stan ponovno bude uredniji, svjetliji i ugodniji za život. Nekada je najveća pomoć upravo ona konkretna: doći, zasukati rukave i biti uz čovjeka kojemu je teško samome napraviti prvi korak.
+Volonteri su očistili prostor, pripremili namještaj, zaštitili stvari, obojili zidove i pomogli da stan ponovno bude uredniji, svjetliji i ugodniji za život. Nekada najveću razliku čini upravo dolazak: zasukati rukave i biti uz čovjeka kojemu je teško samome napraviti prvi korak.
 
 Zahvaljujemo voditeljici Katici na organizaciji, a posebno dečkima koji su objeručke prihvatili poziv i pokazali koliko srce i rad ruku mogu značiti u jednom danu.
 
@@ -32,7 +32,7 @@ Nakon radova uslijedilo je druženje uz ćevape, što je našem korisniku iz Bos
   </figure>
 </div>
 
-Ovo je tek početak. Pozivamo mlade i starije da se uključe u rad Socijalne samoposluge, bilo kroz prikupljanje namirnica, pomoć u prostoru samoposluge ili ovakve konkretne radne akcije. Svatko svojim vremenom, znanjem i dobrom voljom može učiniti puno dobra.
+Ovo je tek početak. Pozivamo mlade i starije da se uključe u rad Socijalne samoposluge, bilo kroz prikupljanje namirnica, pomoć u prostoru samoposluge ili ovakve radne akcije. Svatko svojim vremenom, znanjem i dobrom voljom može učiniti puno dobra.
 
 <div class="article-callout">
   <strong>Želite se uključiti u iduću akciju?</strong>

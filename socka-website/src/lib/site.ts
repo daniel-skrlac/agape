@@ -36,7 +36,7 @@ export const site = {
     logo: '/images/identity/stalni-prikupljatelj.svg'
   },
   description:
-    'Socijalna samoposluga "Kruh sv. Antuna" Varaždin povezuje donatore, volontere i susjede kako bi osnovne namirnice postale konkretna podrška obiteljima u potrebi.',
+    'Socijalna samoposluga "Kruh sv. Antuna" Varaždin povezuje donatore, volontere i susjede kako bi osnovne namirnice stigle do obitelji kojima su potrebne.',
   contactGuidance:
     'Želite donirati, volontirati ili pokrenuti akciju? Javite se i zajedno ćemo dogovoriti najkorisniji sljedeći korak.',
   address: {
@@ -285,7 +285,7 @@ export const historyTimeline = [
   {
     year: 'Danas',
     title: 'Daruj malo, pomozi puno',
-    text: 'Svaka donacija, sat volontiranja i dobro organizirana akcija pretvaraju se u konkretnu podršku za susjede u Varaždinu.'
+    text: 'Svaka donacija, sat volontiranja i dobro organizirana akcija donose podršku susjedima u Varaždinu.'
   }
 ] as const;
 

@@ -1,22 +1,19 @@
 ---
-import { getCollection, render } from 'astro:content';
+import { render } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { absoluteUrl, site } from '../../lib/site';
-import { formatDate, noticeSlug } from '../../lib/notices';
+import { formatDate, getPublishedNotices, noticeSlug } from '../../lib/notices';
 
-export const prerender = true;
+export const prerender = false;
 
-export async function getStaticPaths() {
-  const notices = await getCollection('obavijesti', ({ data }) => !data.draft);
-  return notices.map((entry) => ({
-    params: { slug: noticeSlug(entry.id) },
-    props: { entry }
-  }));
+const slug = Astro.params.slug;
+const entry = (await getPublishedNotices()).find((notice) => noticeSlug(notice.id) === slug);
+
+if (!entry) {
+  return Astro.rewrite('/404');
 }
 
-const { entry } = Astro.props;
 const { Content } = await render(entry);
-const slug = noticeSlug(entry.id);
 const articleJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
