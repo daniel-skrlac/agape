@@ -14,6 +14,7 @@ if (!entry) {
 }
 
 const { Content } = await render(entry);
+const detailImage = entry.data.detailImage || entry.data.image;
 const articleJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
@@ -21,7 +22,7 @@ const articleJsonLd = {
   description: entry.data.description,
   datePublished: entry.data.pubDate.toISOString(),
   dateModified: (entry.data.updatedDate || entry.data.pubDate).toISOString(),
-  image: absoluteUrl(entry.data.image),
+  image: absoluteUrl(detailImage),
   author: {
     '@type': 'Organization',
     name: site.name
@@ -52,7 +53,13 @@ const articleJsonLd = {
 >
   <section class="section section--white">
     <article class="article-content">
-      <img src={entry.data.image} alt={entry.data.imageAlt || entry.data.title} width="1200" height="750" />
+      <img
+        class:list={['article-content__hero', { 'article-content__hero--square': Boolean(entry.data.detailImage) }]}
+        src={detailImage}
+        alt={entry.data.imageAlt || entry.data.title}
+        width="1200"
+        height={entry.data.detailImage ? '1200' : '750'}
+      />
       <p class="article-meta">{entry.data.category} / {formatDate(entry.data.pubDate)}</p>
       <h1>{entry.data.title}</h1>
       <Content />

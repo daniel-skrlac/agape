@@ -938,6 +938,14 @@ textarea {
   object-fit: cover;
 }
 
+.article-content img.article-content__hero--square {
+  aspect-ratio: 1;
+}
+
+.article-content img.article-content__hero {
+  height: auto;
+}
+
 .article-content .article-gallery {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
