@@ -3,11 +3,11 @@ title: "Prikupljanje namirnica na dvije lokacije: SPAR Banfica i KTC Supermarket
 description: "U subotu, 24. listopada, od 10 do 19 sati naši volonteri dijele letke i prikupljaju namirnice ispred SPAR-a na Banfici i KTC Supermarketa u Varaždinu."
 pubDate: 2026-10-23
 eventDate: 2026-10-24
-image: "/images/obavijesti/prikupljanje-spar-ktc-24-listopada-2026/kartica-ktc-spar.webp"
-detailImage: "/images/obavijesti/prikupljanje-spar-ktc-24-listopada-2026/instagram-objava-ktc-spar.webp"
+image: "/images/obavijesti/prikupljanje-spar-ktc-24-listopada-2026/kartica-volonteri-kolaz.webp"
+detailImage: "/images/obavijesti/prikupljanje-spar-ktc-24-listopada-2026/instagram-objava-volonteri-kolaz.webp"
 detailImageWidth: 1200
 detailImageHeight: 1200
-imageAlt: "Poziv na prikupljanje namirnica 24. listopada 2026. od 10 do 19 sati: SPAR Banfica i KTC Supermarket, uz izvorne fotografije obiju trgovina i volontera"
+imageAlt: "Poziv na prikupljanje namirnica 24. listopada 2026. od 10 do 19 sati: SPAR Banfica i KTC Supermarket, uz veliki kolaž izvornih fotografija volontera i manje fotografije obiju trgovina"
 category: "Najava akcije prikupljanja namirnica"
 featured: true
 draft: false
