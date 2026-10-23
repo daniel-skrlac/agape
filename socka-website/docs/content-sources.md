@@ -138,6 +138,7 @@ This document records source material inspected for the Socka website rewrite. P
     - `public/images/recent/volonter-s-namirnicama.webp`
     - `public/images/recent/volonterke-u-samoposluzi.webp`
     - `public/images/recent/podaci-2026.webp`
+  - The unused optimized `podaci-2026.webp` was later removed from the public assets; the extracted facts remain documented here.
   - The public site uses the recent volunteer photos as primary imagery. The supermarket-location photo was reviewed but intentionally not used on the public website because it does not represent the organization's location.
 - Facts requiring confirmation:
   - Current opening hours, distribution schedule, volunteer shifts, active supermarket action dates and recipient eligibility.
@@ -176,6 +177,7 @@ This document records source material inspected for the Socka website rewrite. P
     - `public/images/community/police-i-volonteri.webp` from `ppt/media/image27.jpeg`
     - `public/images/community/prikupljene-namirnice.webp` from `ppt/media/image30.jpeg`
     - `public/images/community/volonterska-ekipa.webp` from `ppt/media/image47.jpeg`
+  - The unused optimized `police-i-volonteri.webp` and `volonterska-ekipa.webp` were later removed from public assets. The original presentation remains the provenance source.
   - Usage status: local presentation material supplied with the project; final organizational approval recommended before public launch, especially for identifiable volunteers.
 - Facts requiring confirmation:
   - Current permission to publish identifiable volunteer photos.

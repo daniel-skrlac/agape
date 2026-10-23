@@ -7,10 +7,11 @@ import sharp from 'sharp';
 // photographic filters, retouching, recolouring or face editing.
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = `${root}public/images/obavijesti/prikupljanje-spar-ktc-24-listopada-2026/`;
+const sourceDirectory = `${root}assets/obavijesti/prikupljanje-spar-ktc-24-listopada-2026/izvorne/`;
 const handwritingFont = `${root}assets/fonts/Caveat.ttf`;
 const sources = ['prilog-ktc-par.png', 'prilog-ktc-volonteri.png', 'prilog-spar-volonteri-1.png', 'prilog-spar-volonteri-2.png'];
-const photos = await Promise.all(sources.map(async source => `data:image/png;base64,${(await readFile(`${output}izvorne/${source}`)).toString('base64')}`));
-const storefronts = await Promise.all(['prilog-ktc-supermarket.png', 'prilog-spar-ulaz.png'].map(async source => `data:image/png;base64,${(await readFile(`${output}izvorne/${source}`)).toString('base64')}`));
+const photos = await Promise.all(sources.map(async source => `data:image/png;base64,${(await readFile(`${sourceDirectory}${source}`)).toString('base64')}`));
+const storefronts = await Promise.all(['prilog-ktc-supermarket.png', 'prilog-spar-ulaz.png'].map(async source => `data:image/png;base64,${(await readFile(`${sourceDirectory}${source}`)).toString('base64')}`));
 const orange = '#f46822';
 const ink = '#10131a';
 const cream = '#fff8eb';
@@ -53,7 +54,7 @@ function storefront(index, x, y, width) {
 // The cream information panel meets the edge-to-edge photo collage directly.
 const panel = `<path d="M0 0H564C570 117 596 223 583 342C566 475 550 570 561 696C571 829 591 965 574 1089Q565 1160 546 1200H0Z" fill="${cream}"/>`;
 
-async function render({ name, width, height, backdrop, body, note, webp = true }) {
+async function render({ name, width, height, backdrop, body, note, pngExport = true, webp = true }) {
   const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
     <defs>
       <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#50220d" flood-opacity=".16"/></filter>
@@ -72,7 +73,7 @@ async function render({ name, width, height, backdrop, body, note, webp = true }
     .composite([{ input: lettering, blend: 'dest-in' }]).png().toBuffer();
   const notePng = await sharp(coloured).resize(note.width, note.height, { fit: 'inside' }).rotate(-5, { background: '#00000000' }).png().toBuffer();
   const png = await sharp(svg).composite([{ input: notePng, left: note.x, top: note.y }]).png().toBuffer();
-  await sharp(png).toFile(`${output}${name}.png`);
+  if (pngExport) await sharp(png).toFile(`${output}${name}.png`);
   if (webp) await sharp(png).webp({ lossless: true }).toFile(`${output}${name}.webp`);
   console.log(`Saved ${name}: ${width} × ${height}; original-photo background collage, no AI image processing`);
 }
@@ -100,7 +101,7 @@ await render({
 });
 
 await render({
-  name: 'kartica-volonteri-kolaz', width: 1200, height: 750,
+  name: 'kartica-volonteri-kolaz', width: 1200, height: 750, pngExport: false,
   backdrop: collage(550, 0, 650, 750),
   body: [
     `<g transform="scale(1 .625)">${panel}</g>`,
