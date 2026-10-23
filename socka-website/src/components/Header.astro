@@ -52,7 +52,7 @@ const currentPath = Astro.url.pathname;
           const isActive = currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href));
           return (
             <li>
-              <a class:list={[{ active: isActive }]} href={item.href} aria-current={isActive ? 'page' : undefined}>
+              <a class:list={[{ active: isActive }]} href={item.href} data-astro-prefetch aria-current={isActive ? 'page' : undefined}>
                 {item.label}
               </a>
             </li>

@@ -6,11 +6,25 @@ import NoticeCard from '../../components/NoticeCard.astro';
 import { getNoticeCategories, getPublishedNotices, noticeSlug, paginateNotices } from '../../lib/notices';
 
 const allNotices = await getPublishedNotices();
-const featured = allNotices.filter((notice) => notice.data.featured);
-const featuredIds = new Set(featured.map((notice) => notice.id));
-const regularNotices = featured.length > 0 ? allNotices.filter((notice) => !featuredIds.has(notice.id)) : allNotices;
 const categories = getNoticeCategories(allNotices);
-const { items: notices, currentPage, totalPages } = paginateNotices(regularNotices);
+const requestedCategory = Astro.url.searchParams.get('kategorija') || '';
+const activeCategory = categories.includes(requestedCategory) ? requestedCategory : '';
+const filteredNotices = activeCategory
+  ? allNotices.filter((notice) => notice.data.category === activeCategory)
+  : allNotices;
+const featured = filteredNotices.filter((notice) => notice.data.featured);
+const featuredIds = new Set(featured.map((notice) => notice.id));
+const regularNotices = filteredNotices.filter((notice) => !featuredIds.has(notice.id));
+const requestedPage = Number(Astro.url.searchParams.get('stranica') || 1);
+const { items: notices, currentPage, totalPages } = paginateNotices(
+  regularNotices, Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 1
+);
+const filterHref = (category: string, page = 1) => {
+  const params = new URLSearchParams();
+  if (category) params.set('kategorija', category);
+  if (page > 1) params.set('stranica', String(page));
+  return `/obavijesti/${params.size ? `?${params}` : ''}`;
+};
 ---
 <BaseLayout
   title="Obavijesti"
@@ -32,10 +46,13 @@ const { items: notices, currentPage, totalPages } = paginateNotices(regularNotic
       {categories.length > 0 && (
         <div class="filter-row" aria-label="Kategorije obavijesti">
           <span>Kategorije:</span>
-          <a href="/obavijesti/" aria-current="page">Sve</a>
-          {categories.map((category) => <a href={`#${category.toLowerCase().replaceAll(' ', '-')}`}>{category}</a>)}
+          <a href="/obavijesti/" aria-current={!activeCategory ? 'page' : undefined}>Sve</a>
+          {categories.map((category) => (
+            <a href={filterHref(category)} aria-current={activeCategory === category ? 'page' : undefined}>{category}</a>
+          ))}
         </div>
       )}
+      {activeCategory && <p role="status">{activeCategory}: {filteredNotices.length} obavijesti</p>}
 
       {featured.length > 0 && (
         <div class="featured-notices">
@@ -63,6 +80,8 @@ const { items: notices, currentPage, totalPages } = paginateNotices(regularNotic
           {totalPages > 1 && (
             <nav class="pagination" aria-label="Stranice obavijesti">
               <span>Stranica {currentPage} od {totalPages}</span>
+              {currentPage > 1 && <a href={filterHref(activeCategory, currentPage - 1)} rel="prev">Prethodna</a>}
+              {currentPage < totalPages && <a href={filterHref(activeCategory, currentPage + 1)} rel="next">Sljedeća</a>}
             </nav>
           )}
         </>

@@ -23,7 +23,7 @@ export const site = {
   organizationType: 'Volonterski projekt',
   location: 'Varaždin',
   locale: 'hr_HR',
-  baseUrl: import.meta.env.PUBLIC_SITE_URL || 'http://localhost:4321',
+  baseUrl: import.meta.env.PUBLIC_SITE_URL || 'https://socka.hr',
   logo: '/images/logo.jpg',
   defaultImage: '/images/og/socka-share.png',
   affiliation: {

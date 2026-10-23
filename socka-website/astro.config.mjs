@@ -3,6 +3,7 @@ import node from '@astrojs/node';
 
 export default defineConfig({
   output: 'server',
+  prefetch: { defaultStrategy: 'hover' },
   adapter: node({
     mode: 'standalone'
   }),

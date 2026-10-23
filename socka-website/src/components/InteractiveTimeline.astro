@@ -50,10 +50,12 @@ const { items } = Astro.props;
 </div>
 
 <script>
-  document.querySelectorAll('[data-timeline-signature]').forEach((timeline) => {
+  const initTimelines = () => document.querySelectorAll<HTMLElement>('[data-timeline-signature]').forEach((timeline) => {
+    if (timeline.dataset.timelineReady === 'true') return;
     const buttons = [...timeline.querySelectorAll('[data-timeline-year]')] as HTMLButtonElement[];
     const panels = [...timeline.querySelectorAll('[data-timeline-panel]')] as HTMLElement[];
     if (buttons.length === 0 || panels.length === 0) return;
+    timeline.dataset.timelineReady = 'true';
 
     timeline.classList.add('is-enhanced');
     let activeIndex = 0;
@@ -100,4 +102,7 @@ const { items } = Astro.props;
     activate(0);
     requestAnimationFrame(() => timeline.classList.add('is-ready'));
   });
+
+  initTimelines();
+  document.addEventListener('astro:page-load', initTimelines);
 </script>

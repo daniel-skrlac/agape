@@ -3,10 +3,14 @@ import { render } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { absoluteUrl, site } from '../../lib/site';
 import { formatDate, getPublishedNotices, noticeSlug } from '../../lib/notices';
+import { noticeRedirects } from '../../lib/notice-redirects';
 
 export const prerender = false;
 
 const slug = Astro.params.slug;
+if (slug && noticeRedirects[slug]) {
+  return Astro.redirect(`/obavijesti/${noticeRedirects[slug]}/`, 301);
+}
 const entry = (await getPublishedNotices()).find((notice) => noticeSlug(notice.id) === slug);
 
 if (!entry) {
@@ -57,8 +61,9 @@ const articleJsonLd = {
         class:list={['article-content__hero', { 'article-content__hero--square': Boolean(entry.data.detailImage) }]}
         src={detailImage}
         alt={entry.data.imageAlt || entry.data.title}
-        width="1200"
-        height={entry.data.detailImage ? '1200' : '750'}
+        width={entry.data.detailImageWidth || 1200}
+        height={entry.data.detailImageHeight || (entry.data.detailImage ? 1200 : 750)}
+        style={entry.data.detailImageWidth && entry.data.detailImageHeight ? `aspect-ratio: ${entry.data.detailImageWidth} / ${entry.data.detailImageHeight}` : undefined}
       />
       <p class="article-meta">{entry.data.category} / {formatDate(entry.data.pubDate)}</p>
       <h1>{entry.data.title}</h1>

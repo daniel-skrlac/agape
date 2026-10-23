@@ -1,5 +1,5 @@
 ---
-title: "Prikupljanje namirnica u SPAR-u na Banfici"
+title: "Prikupljanje namirnica u SPAR-u na Banfici – 26. rujna 2026."
 description: "U subotu, 26. rujna, od 10 do 19 sati prikupljamo namirnice, higijenske potrepštine i novčane donacije za Socijalnu samoposlugu."
 pubDate: 2026-09-23
 image: "/images/obavijesti/prikupljanje-namirnica-spar-banfica-2026-card.webp"

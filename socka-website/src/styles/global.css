@@ -668,6 +668,11 @@ textarea {
   color: var(--primary-dark);
 }
 
+.filter-row a[aria-current="page"] {
+  background: var(--primary-dark);
+  color: #fff;
+}
+
 .split-section,
 .editorial-layout,
 .contact-grid {
@@ -4114,16 +4119,15 @@ body {
 
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 220ms;
-  animation-timing-function: var(--ease-standard);
+  animation: none;
 }
 
 ::view-transition-new(root) {
-  animation-name: pageEnter;
+  animation-name: none;
 }
 
 ::view-transition-old(root) {
-  animation-name: pageLeave;
+  animation-name: none;
 }
 
 .section {

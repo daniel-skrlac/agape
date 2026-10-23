@@ -77,7 +77,7 @@ const breadcrumbJsonLd =
 const jsonLd = [organizationJsonLd, breadcrumbJsonLd, ...(Array.isArray(structuredData) ? structuredData : structuredData ? [structuredData] : [])].filter(Boolean);
 ---
 <!doctype html>
-<html lang="hr">
+<html lang="hr" transition:animate="none">
   <head>
     <meta charset="UTF-8" />
     <script is:inline>
@@ -108,7 +108,7 @@ const jsonLd = [organizationJsonLd, breadcrumbJsonLd, ...(Array.isArray(structur
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={imageUrl} />
     <slot name="head" />
-    <ClientRouter />
+    <ClientRouter fallback="swap" />
     <title>{pageTitle}</title>
     {jsonLd.map((item) => <script is:inline type="application/ld+json" set:html={JSON.stringify(item)} />)}
   </head>
