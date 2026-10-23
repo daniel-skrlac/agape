@@ -65,7 +65,19 @@ const articleJsonLd = {
         height={entry.data.detailImageHeight || (entry.data.detailImage ? 1200 : 750)}
         style={entry.data.detailImageWidth && entry.data.detailImageHeight ? `aspect-ratio: ${entry.data.detailImageWidth} / ${entry.data.detailImageHeight}` : undefined}
       />
-      <p class="article-meta">{entry.data.category} / {formatDate(entry.data.pubDate)}</p>
+      <p class="article-meta">
+        {entry.data.category} / {entry.data.eventDate ? (
+          <>
+            {entry.data.category === 'Rezultati akcije prikupljanja namirnica' ? 'Akcija održana' : 'Datum akcije'}{' '}
+            <time datetime={entry.data.eventDate.toISOString()}>{formatDate(entry.data.eventDate)}</time>
+          </>
+        ) : (
+          <>Objavljeno <time datetime={entry.data.pubDate.toISOString()}>{formatDate(entry.data.pubDate)}</time></>
+        )}
+      </p>
+      {entry.data.eventDate && (
+        <p class="article-meta">Objavljeno <time datetime={entry.data.pubDate.toISOString()}>{formatDate(entry.data.pubDate)}</time></p>
+      )}
       <h1>{entry.data.title}</h1>
       <Content />
     </article>

@@ -2,15 +2,18 @@
 title: "Rekordan odaziv u SPAR-u na Banfici – 26. rujna 2026."
 description: "Zahvaljujući velikom odazivu građana, u akciji u SPAR-u na Banfici prikupili smo rekordan broj donacija za korisnike Socijalne samoposluge."
 pubDate: 2026-10-01
-image: "/images/obavijesti/rekordna-akcija-spar-banfica-2026/prikupljene-donacije.webp"
-detailImage: "/images/obavijesti/rekordna-akcija-spar-banfica-2026/prikupljene-donacije.webp"
-detailImageWidth: 443
-detailImageHeight: 590
-imageAlt: "Volonteri uz velik broj namirnica i potrepština prikupljenih u akciji u SPAR-u na Banfici"
-category: "Akcija prikupljanja"
+eventDate: 2026-09-26
+image: "/images/obavijesti/rekordna-akcija-spar-banfica-2026/donacije-kartica.webp"
+detailImage: "/images/obavijesti/rekordna-akcija-spar-banfica-2026/donacije-izvorna.webp"
+detailImageWidth: 1367
+detailImageHeight: 1823
+imageAlt: "Kutije s prikupljenim namirnicama i potrepštinama u prostoru Socijalne samoposluge nakon akcije u SPAR-u na Banfici"
+category: "Rezultati akcije prikupljanja namirnica"
 featured: true
 draft: false
 ---
+
+> [Pogledaj najavu ove akcije](/obavijesti/prikupljanje-namirnica-spar-banfica-26-rujna-2026/).
 
 U subotu, **26. rujna 2026.**, od 10 do 19 sati održali smo akciju prikupljanja donacija u **SPAR-u na Banfici**.
 

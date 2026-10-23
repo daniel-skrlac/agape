@@ -6,6 +6,7 @@ const obavijesti = defineCollection({
     title: z.string(),
     description: z.string(),
     pubDate: z.coerce.date(),
+    eventDate: z.coerce.date().optional(),
     updatedDate: z.coerce.date().optional(),
     image: z.string().optional().default('/images/og/socka-share.png'),
     detailImage: z.string().optional(),

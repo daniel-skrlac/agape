@@ -15,8 +15,17 @@ export async function getFeaturedNotices() {
 export function getNoticeCategories(
   notices: Awaited<ReturnType<typeof getPublishedNotices>>
 ) {
+  const collectionCategories = [
+    'Najava akcije prikupljanja namirnica',
+    'Rezultati akcije prikupljanja namirnica'
+  ];
+  const categoryOrder = (category: string) => {
+    const index = collectionCategories.indexOf(category);
+    return index < 0 ? collectionCategories.length : index;
+  };
+
   return [...new Set(notices.map((notice) => notice.data.category).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b, 'hr')
+    categoryOrder(a) - categoryOrder(b) || a.localeCompare(b, 'hr')
   );
 }
 

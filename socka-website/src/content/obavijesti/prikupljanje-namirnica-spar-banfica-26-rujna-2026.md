@@ -2,13 +2,16 @@
 title: "Prikupljanje namirnica u SPAR-u na Banfici – 26. rujna 2026."
 description: "U subotu, 26. rujna, od 10 do 19 sati prikupljamo namirnice, higijenske potrepštine i novčane donacije za Socijalnu samoposlugu."
 pubDate: 2026-09-23
+eventDate: 2026-09-26
 image: "/images/obavijesti/prikupljanje-namirnica-spar-banfica-2026-card.webp"
 detailImage: "/images/obavijesti/prikupljanje-namirnica-spar-banfica-2026-detail.webp"
 imageAlt: "Najava prikupljanja namirnica u SPAR-u na Banfici u subotu, 26. rujna, od 10 do 19 sati"
-category: "Akcija prikupljanja"
+category: "Najava akcije prikupljanja namirnica"
 featured: true
 draft: false
 ---
+
+> Ova akcija je završena. [Pogledaj rezultate ove akcije](/obavijesti/rekordan-odaziv-spar-banfica-26-rujna-2026/).
 
 Dobri ljudi,
 

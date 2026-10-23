@@ -6,6 +6,7 @@ interface Props {
   title: string;
   description: string;
   pubDate: Date;
+  eventDate?: Date;
   image: string;
   imageAlt?: string;
   category?: string;
@@ -19,6 +20,7 @@ const {
   title,
   description,
   pubDate,
+  eventDate,
   image,
   imageAlt = '',
   category = 'Obavijest',
@@ -34,7 +36,7 @@ const {
   <span class="notice-card__content">
     <span class="notice-card__meta">
       <span>{category}</span>
-      <span>{formatDate(pubDate)}</span>
+      <span>{eventDate ? 'Akcija: ' : 'Objavljeno: '}<time datetime={(eventDate || pubDate).toISOString()}>{formatDate(eventDate || pubDate)}</time></span>
     </span>
     <strong>{title}</strong>
     <span>{description}</span>
