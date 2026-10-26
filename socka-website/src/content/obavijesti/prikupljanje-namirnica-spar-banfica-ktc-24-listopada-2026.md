@@ -13,6 +13,8 @@ featured: true
 draft: false
 ---
 
+> Ova akcija je završena. [Pogledaj rezultate ove akcije](/obavijesti/uspjesno-prikupljanje-namirnica-spar-banfica-ktc-24-listopada-2026/).
+
 Dobri ljudi,
 
 u subotu, **24. listopada 2026.**, od **10:00 do 19:00 sati** prikupljamo namirnice za korisnike Socijalne samoposluge **Kruh sv. Antuna u Varaždinu**. Ovoga puta možete nam se pridružiti na **dvije lokacije**!
